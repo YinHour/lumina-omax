@@ -36,8 +36,11 @@ class AsyncMigration:
     async def run(self, bump: bool = True) -> None:
         """Run the migration."""
         try:
-            async with db_connection() as connection:
-                await connection.query(self.sql)
+            if self.sql:
+                async with db_connection() as connection:
+                    await connection.query(self.sql)
+            else:
+                logger.info("Skipping empty migration")
 
             if bump:
                 await bump_version()

@@ -3,7 +3,7 @@
 .PHONY: docker-push docker-push-latest docker-release docker-build-local tag export-docs
 
 # Get version from pyproject.toml
-VERSION := $(shell grep -m1 version pyproject.toml | cut -d'"' -f2)
+VERSION := $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
 
 # Image names for both registries
 DOCKERHUB_IMAGE := lfnovo/open_notebook
