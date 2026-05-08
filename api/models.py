@@ -390,6 +390,7 @@ class SourceListResponse(BaseModel):
     processing_info: Optional[Dict[str, Any]] = None
     notebook_count: int = 0
     origin_notebook_id: Optional[str] = None
+    imported_at: Optional[str] = None
 
 
 # Context API models

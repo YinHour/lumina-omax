@@ -1,0 +1,1 @@
+DEFINE FIELD IF NOT EXISTS created ON TABLE reference TYPE datetime DEFAULT time::now();

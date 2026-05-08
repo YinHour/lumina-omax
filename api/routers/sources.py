@@ -174,8 +174,8 @@ async def get_sources(
                 status_code=400, detail="sort_order must be 'asc' or 'desc'"
             )
 
-        # Build ORDER BY clause
-        order_clause = f"ORDER BY {sort_by} {sort_order.upper()}"
+        # Build ORDER BY clause - append 'id ASC' to ensure deterministic sorting for pagination
+        order_clause = f"ORDER BY {sort_by} {sort_order.upper()}, id ASC"
         
         # Build conditions and parameters
         conditions = []
@@ -199,12 +199,17 @@ async def get_sources(
             else:
                 conditions.append("id IN (SELECT VALUE in FROM reference WHERE out = $notebook_id)")
             params["notebook_id"] = ensure_record_id(notebook_id)
+            
+            imported_at_field = "(SELECT VALUE created FROM reference WHERE in = $parent.id AND out = $notebook_id LIMIT 1)[0] OR created AS imported_at,"
+        else:
+            imported_at_field = "NONE AS imported_at,"
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         # Query sources - include command field with FETCH
         query = f"""
             SELECT id, asset, created, title, updated, topics, command, origin_notebook_id,
+            {imported_at_field}
             (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
             (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded,
             (SELECT VALUE id FROM kg_entity WHERE source_id = type::string($parent.id) LIMIT 1) != [] AS kg_extracted,
@@ -272,6 +277,7 @@ async def get_sources(
                     processing_info=processing_info,
                     notebook_count=row.get("notebook_count", 0),
                     origin_notebook_id=row.get("origin_notebook_id"),
+                    imported_at=str(row["imported_at"]) if row.get("imported_at") else None,
                 )
             )
 

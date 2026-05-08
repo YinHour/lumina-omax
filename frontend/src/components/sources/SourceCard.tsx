@@ -31,6 +31,7 @@ import { TranslationKeys } from '@/lib/locales'
 import { cn } from '@/lib/utils'
 import { ContextToggle } from '@/components/common/ContextToggle'
 import { ContextMode } from '@/app/(dashboard)/notebooks/[id]/page'
+import { format } from 'date-fns'
 
 interface SourceCardProps {
   source: SourceListResponse
@@ -262,6 +263,11 @@ export function SourceCard({
               <Badge variant="secondary" className="text-xs flex items-center gap-1">
                 <SourceTypeIcon className="h-3 w-3" />
                 {sourceType === 'link' ? t.sources.addUrl : sourceType === 'upload' ? t.sources.uploadFile : t.sources.enterText}
+              </Badge>
+
+              {/* Timestamp badge */}
+              <Badge variant="secondary" className="text-xs bg-muted/50 text-muted-foreground border-0 font-normal">
+                {format(new Date(source.imported_at || source.created), 'yyyy-MM-dd HH:mm:ss')}
               </Badge>
 
               {isCompleted && source.insights_count > 0 && (

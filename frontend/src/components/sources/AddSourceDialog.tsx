@@ -361,7 +361,7 @@ export function AddSourceDialog({
   }
 
   // Batch submission
-  const submitBatch = async (data: CreateSourceFormData): Promise<{ success: number; failed: number }> => {
+  const submitBatch = async (data: CreateSourceFormData, filterDuplicates = false): Promise<{ success: number; failed: number }> => {
     const results = { success: 0, failed: 0 }
     const items: { type: 'url' | 'file'; value: string | File }[] = []
 
@@ -369,8 +369,15 @@ export function AddSourceDialog({
     if (data.type === 'link' && parsedUrls.length > 0) {
       parsedUrls.forEach((url: string) => items.push({ type: 'url', value: url }))
     } else if (data.type === 'upload' && parsedFiles.length > 0) {
-      parsedFiles.forEach((file: File) => items.push({ type: 'file', value: file }))
+      parsedFiles.forEach((file: File) => {
+        if (filterDuplicates && duplicateFiles.includes(file.name)) {
+          return // Skip duplicates
+        }
+        items.push({ type: 'file', value: file })
+      })
     }
+
+    if (items.length === 0) return results
 
     setBatchProgress({
       total: items.length,
@@ -424,13 +431,16 @@ export function AddSourceDialog({
   }
 
   // Form submission
-  const onSubmit = async (data: CreateSourceFormData, skipDuplicateCheck = false) => {
+  const onSubmit = async (data: CreateSourceFormData, skipDuplicateCheck = false, filterDuplicates = false) => {
     // If the event object is accidentally passed as the second argument, ignore it
     if (typeof skipDuplicateCheck !== 'boolean') {
       skipDuplicateCheck = false;
     }
+    if (typeof filterDuplicates !== 'boolean') {
+      filterDuplicates = false;
+    }
     
-    console.log('onSubmit triggered', { data, skipDuplicateCheck, processing })
+    console.log('onSubmit triggered', { data, skipDuplicateCheck, filterDuplicates, processing })
     if (skipDuplicateCheck) {
       toast.info('onSubmit 被调用，跳过重复检查')
     }
@@ -536,7 +546,13 @@ export function AddSourceDialog({
       if (isBatchMode) {
         // Batch submission
         setProcessingStatus({ message: t.sources.processingFiles })
-        const results = await submitBatch(data)
+        const results = await submitBatch(data, filterDuplicates)
+
+        if (results.success === 0 && results.failed === 0) {
+          toast.info(language.startsWith('zh') ? '没有上传新文件，全部为重复项' : 'No new files uploaded, all were duplicates')
+          handleClose()
+          return
+        }
 
         // Show summary toast
         if (results.failed === 0) {
@@ -549,6 +565,12 @@ export function AddSourceDialog({
 
         handleClose()
       } else {
+        if (filterDuplicates) {
+          toast.info(language.startsWith('zh') ? '该文件为重复项，已跳过' : 'File was a duplicate and skipped')
+          handleClose()
+          return
+        }
+        
         // Single source submission
         setProcessingStatus({ message: t.sources.submittingSource })
         await submitSingleSource(data)
@@ -669,6 +691,47 @@ export function AddSourceDialog({
     setTimeout(() => {
       setDuplicateFiles([])
     }, 300)
+  }
+
+  const handleUploadNonDuplicates = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    console.log('handleUploadNonDuplicates triggered', { pendingSubmitData })
+
+    if (pendingSubmitData) {
+      isConfirmingRef.current = true
+      
+      const dataToSubmit = { ...pendingSubmitData }
+      if (pendingSubmitData.file) {
+        dataToSubmit.file = pendingSubmitData.file
+      }
+      
+      console.log('Calling onSubmit with dataToSubmit (filtering duplicates):', dataToSubmit)
+      toast.info(language.startsWith('zh') ? '确认继续上传，过滤重复项...' : 'Continuing upload, filtering duplicates...')
+      
+      setShowDuplicateWarning(false)
+      setProcessing(true)
+      
+      try {
+        // Pass true for skipDuplicateCheck and true for filterDuplicates
+        onSubmit(dataToSubmit, true, true).catch(err => {
+          console.error('Error in onSubmit called from handleUploadNonDuplicates:', err)
+          setProcessing(false) // Reset on error
+        }).finally(() => {
+          isConfirmingRef.current = false
+          setPendingSubmitData(null)
+        })
+      } catch (err) {
+        console.error('Synchronous error in onSubmit:', err)
+        isConfirmingRef.current = false
+        setPendingSubmitData(null)
+        setProcessing(false) // Reset on error
+      }
+      
+    } else {
+      setShowDuplicateWarning(false)
+    }
   }
 
   // Processing view
@@ -935,11 +998,17 @@ export function AddSourceDialog({
           }}>
             {language.startsWith('zh') ? '否 (取消)' : 'No (Cancel)'}
           </Button>
+          <Button type="button" variant="secondary" onClick={(e) => {
+            console.log('Upload non-duplicates button clicked')
+            handleUploadNonDuplicates(e)
+          }}>
+            {language.startsWith('zh') ? '仅上传非重复文件' : 'Only Non-duplicates'}
+          </Button>
           <Button type="button" onClick={(e) => {
             console.log('Confirm button clicked')
             handleConfirmDuplicate(e)
           }}>
-            {language.startsWith('zh') ? '是 (继续上传)' : 'Yes (Continue Upload)'}
+            {language.startsWith('zh') ? '是 (全部上传)' : 'Yes (Upload All)'}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

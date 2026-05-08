@@ -11,7 +11,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -400,10 +400,7 @@ export default function SourcesPage() {
                     </div>
                   </td>
                   <td className="h-12 px-4 text-muted-foreground text-sm hidden sm:table-cell">
-                    {formatDistanceToNow(new Date(source.created), { 
-                      addSuffix: true,
-                      locale: getDateLocale(language)
-                    })}
+                    {format(new Date(source.created), 'yyyy-MM-dd HH:mm:ss')}
                   </td>
                   <td className="h-12 px-4 text-center hidden md:table-cell">
                     <span className="text-sm font-medium">{source.insights_count || 0}</span>
