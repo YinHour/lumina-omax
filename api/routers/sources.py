@@ -314,6 +314,11 @@ async def create_source(
         if upload_file and source_data.type == "upload":
             try:
                 file_path = await save_uploaded_file(upload_file)
+                # Convert legacy office formats if necessary
+                if file_path and file_path.lower().endswith(('.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx')):
+                    import asyncio
+                    from open_notebook.utils.office_converter import convert_to_modern_office_format
+                    file_path = await asyncio.to_thread(convert_to_modern_office_format, file_path)
             except Exception as e:
                 logger.error(f"File upload failed: {e}")
                 raise HTTPException(
