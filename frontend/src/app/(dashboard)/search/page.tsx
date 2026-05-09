@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion } from 'lucide-react'
+import { Search, ChevronDown, AlertCircle, Settings, MessageCircleQuestion } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
@@ -395,17 +395,6 @@ export default function SearchPage() {
                           {language.startsWith('zh') ? '清空内容' : 'Clear'}
                         </Button>
                       )}
-
-                      {ask.finalAnswer && (
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowSaveDialog(true)}
-                          className="w-full sm:flex-1"
-                        >
-                          <Save className="h-4 w-4 mr-2" />
-                          {t.searchPage.saveToNotebooks}
-                        </Button>
-                      )}
                     </div>
                   </>
                 )}
@@ -416,6 +405,7 @@ export default function SearchPage() {
                   strategy={ask.strategy}
                   answers={ask.answers}
                   finalAnswer={ask.finalAnswer}
+                  onSaveRequest={() => setShowSaveDialog(true)}
                 />
 
                 {/* Advanced Models Dialog */}
@@ -574,7 +564,7 @@ export default function SearchPage() {
                   <div className="mt-6 space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-medium">
-                        {t.searchPage.resultsFound.replace('{count}', activeSearchData.total_count.toString())}
+                        {t.searchPage.resultsFound?.replace('{count}', activeSearchData.total_count.toString()) || `${activeSearchData.total_count} results found`}
                       </h3>
                       <Badge variant="outline">{activeSearchData.search_type === 'text' ? t.searchPage.textSearch : t.searchPage.vectorSearch}</Badge>
                     </div>
