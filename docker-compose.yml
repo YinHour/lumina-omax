@@ -26,6 +26,8 @@ services:
       - SURREAL_PASSWORD=root
       - SURREAL_NAMESPACE=open_notebook
       - SURREAL_DATABASE=open_notebook
+      - SURREAL_POOL_SIZE=20
+      - SURREAL_POOL_ACQUIRE_TIMEOUT=10.0
       # 3. 将原 .env 中的自定义配置迁移至此
       - CCORE_DOCUMENT_ENGINE=docling
       - ENABLE_KNOWLEDGE_GRAPH=true
