@@ -62,6 +62,33 @@ export function SourcesColumn({
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [sourceToRemove, setSourceToRemove] = useState<string | null>(null)
 
+  // Group and sort sources for aggregated notebooks
+  const displaySources = useMemo(() => {
+    if (!sources || sources.length === 0) return sources;
+    
+    // Check if any source belongs to a different notebook to infer it's an aggregated view
+    const isAggregated = sources.some(s => s.origin_notebook_id && s.origin_notebook_id !== notebookId);
+    
+    if (!isAggregated) {
+      return sources;
+    }
+
+    // Sort by origin notebook name, then by updated
+    return [...sources].sort((a, b) => {
+      const nameA = a.origin_notebook_name || t.navigation.notebooks;
+      const nameB = b.origin_notebook_name || t.navigation.notebooks;
+      
+      if (nameA !== nameB) {
+        return nameA.localeCompare(nameB);
+      }
+      
+      // Fallback to updated desc
+      const dateA = new Date(a.updated).getTime();
+      const dateB = new Date(b.updated).getTime();
+      return dateB - dateA;
+    });
+  }, [sources, notebookId, t.navigation.notebooks]);
+
   const { openModal } = useModalManager()
   const deleteSource = useDeleteSource()
   const retrySource = useRetrySource()
@@ -227,7 +254,7 @@ export function SourcesColumn({
               <div className="flex items-center justify-center py-8">
                 <LoadingSpinner />
               </div>
-            ) : !sources || sources.length === 0 ? (
+            ) : !displaySources || displaySources.length === 0 ? (
               <EmptyState
                 icon={FileText}
                 title={t.sources.noSourcesYet}
@@ -235,7 +262,7 @@ export function SourcesColumn({
               />
             ) : (
               <div className="space-y-3">
-                {sources.map((source) => (
+                {displaySources.map((source) => (
                   <SourceCard
                     key={source.id}
                     source={source}

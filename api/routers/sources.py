@@ -196,19 +196,51 @@ async def get_sources(
                 
             if notebook.is_aggregated:
                 conditions.append("id IN (SELECT VALUE in FROM reference WHERE out = $notebook_id OR out IN (SELECT VALUE out FROM aggregates WHERE in = $notebook_id))")
+                origin_notebook_id_field = """
+                IF origin_notebook_id != NONE THEN 
+                    origin_notebook_id 
+                ELSE 
+                    (SELECT VALUE out FROM reference WHERE in = $parent.id AND out IN (SELECT VALUE out FROM aggregates WHERE in = $notebook_id) LIMIT 1)[0] 
+                END AS resolved_origin_notebook_id,
+                """
+                origin_notebook_name_field = """
+                IF origin_notebook_id != NONE THEN 
+                    type::record(origin_notebook_id).name
+                ELSE 
+                    (SELECT VALUE out.name FROM reference WHERE in = $parent.id AND out IN (SELECT VALUE out FROM aggregates WHERE in = $notebook_id) LIMIT 1)[0]
+                END AS origin_notebook_name,
+                """
             else:
                 conditions.append("id IN (SELECT VALUE in FROM reference WHERE out = $notebook_id)")
+                origin_notebook_id_field = "origin_notebook_id AS resolved_origin_notebook_id,"
+                origin_notebook_name_field = """
+                IF origin_notebook_id != NONE THEN 
+                    type::record(origin_notebook_id).name
+                ELSE 
+                    NONE 
+                END AS origin_notebook_name,
+                """
             params["notebook_id"] = ensure_record_id(notebook_id)
             
             imported_at_field = "(SELECT VALUE created FROM reference WHERE in = $parent.id AND out = $notebook_id LIMIT 1)[0] OR created AS imported_at,"
         else:
+            origin_notebook_id_field = "origin_notebook_id AS resolved_origin_notebook_id,"
+            origin_notebook_name_field = """
+            IF origin_notebook_id != NONE THEN 
+                type::record(origin_notebook_id).name
+            ELSE 
+                NONE 
+            END AS origin_notebook_name,
+            """
             imported_at_field = "NONE AS imported_at,"
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         # Query sources - include command field with FETCH
         query = f"""
-            SELECT id, asset, created, title, updated, topics, command, origin_notebook_id,
+            SELECT id, asset, created, title, updated, topics, command,
+            {origin_notebook_id_field}
+            {origin_notebook_name_field}
             {imported_at_field}
             (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
             (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded,
@@ -276,7 +308,8 @@ async def get_sources(
                     status=status,
                     processing_info=processing_info,
                     notebook_count=row.get("notebook_count", 0),
-                    origin_notebook_id=row.get("origin_notebook_id"),
+                    origin_notebook_id=str(row.get("resolved_origin_notebook_id")) if row.get("resolved_origin_notebook_id") else None,
+                    origin_notebook_name=row.get("origin_notebook_name"),
                     imported_at=str(row["imported_at"]) if row.get("imported_at") else None,
                 )
             )
@@ -699,6 +732,15 @@ async def get_source(source_id: str):
         notebook_ids = (
             [str(nb_id) for nb_id in notebooks_query] if notebooks_query else []
         )
+        
+        origin_notebook_name = None
+        if source.origin_notebook_id:
+            name_query = await repo_query(
+                "SELECT VALUE name FROM notebook WHERE id = $id LIMIT 1",
+                {"id": ensure_record_id(source.origin_notebook_id)},
+            )
+            if name_query:
+                origin_notebook_name = name_query[0]
 
         return SourceResponse(
             id=source.id or "",
@@ -725,6 +767,7 @@ async def get_source(source_id: str):
             notebooks=notebook_ids,
             notebook_count=len(notebook_ids),
             origin_notebook_id=source.origin_notebook_id,
+            origin_notebook_name=origin_notebook_name,
         )
     except HTTPException:
         raise

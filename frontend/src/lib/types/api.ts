@@ -43,6 +43,7 @@ export interface SourceListResponse {
   processing_info?: Record<string, unknown>
   notebook_count: number
   origin_notebook_id?: string | null
+  origin_notebook_name?: string | null
   imported_at?: string | null
 }
 
