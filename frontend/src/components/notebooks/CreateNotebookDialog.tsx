@@ -102,22 +102,22 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notebook-password">Password (Optional)</Label>
+            <Label htmlFor="notebook-password">{t.notebooks.passwordOptional}</Label>
             <Input
               id="notebook-password"
               type="password"
               {...register('password')}
-              placeholder="Leave blank for no password"
+              placeholder={t.notebooks.leaveBlankForNoPassword}
               autoComplete="new-password"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notebook-creator">Creator Name (Optional)</Label>
+            <Label htmlFor="notebook-creator">{t.notebooks.creatorNameOptional}</Label>
             <Input
               id="notebook-creator"
               {...register('creator_name')}
-              placeholder="Your name"
+              placeholder={t.notebooks.yourName}
               autoComplete="off"
             />
           </div>

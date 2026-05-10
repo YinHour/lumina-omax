@@ -113,8 +113,7 @@ export function SourcesColumn({
 
     const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
     if (masterPassword && deletePassword !== masterPassword) {
-      // Use window.localStorage or similar if language isn't available directly
-      setDeletePasswordError('密码错误 / Incorrect password')
+      setDeletePasswordError(t.notebooks.incorrectPassword)
       return
     }
 
@@ -298,7 +297,7 @@ export function SourcesColumn({
           {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
             <div className="space-y-2 py-4">
               <p className="text-sm font-medium">
-                Admin Password Required
+                {t.common.adminPasswordRequired}
               </p>
               <Input
                 type="password"
@@ -316,7 +315,7 @@ export function SourcesColumn({
                     handleDeleteConfirm()
                   }
                 }}
-                placeholder="Enter password"
+                placeholder={t.notebooks.enterPassword}
                 autoFocus
               />
               {deletePasswordError && (
