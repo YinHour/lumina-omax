@@ -262,6 +262,7 @@ export const zhCN = {
     protectedNotebook: "受保护的笔记本",
     passwordRequiredDesc: "访问此笔记本需要密码。",
     enterPassword: "输入密码",
+    enterPasswordOrAdmin: "输入笔记本密码（或管理员密码）",
     unlock: "解锁",
     incorrectPassword: "密码错误",
     leaveBlankForNoPassword: "留空则不设置密码",

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useNotebookDeletePreview, useDeleteNotebook } from '@/lib/hooks/use-notebooks'
@@ -23,6 +24,7 @@ interface NotebookDeleteDialogProps {
   onOpenChange: (open: boolean) => void
   notebookId: string
   notebookName: string
+  hasPassword?: boolean
   redirectAfterDelete?: boolean
 }
 
@@ -31,16 +33,19 @@ export function NotebookDeleteDialog({
   onOpenChange,
   notebookId,
   notebookName,
+  hasPassword = false,
   redirectAfterDelete = false,
 }: NotebookDeleteDialogProps) {
   const { t } = useTranslation()
   const router = useRouter()
   const [sourceAction, setSourceAction] = useState<'keep' | 'delete'>('keep')
+  const [password, setPassword] = useState('')
 
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
       setSourceAction('keep')
+      setPassword('')
     }
   }, [open, notebookId])
 
@@ -53,13 +58,18 @@ export function NotebookDeleteDialog({
   const deleteNotebook = useDeleteNotebook()
 
   const handleConfirm = async () => {
-    await deleteNotebook.mutateAsync({
-      id: notebookId,
-      deleteExclusiveSources: sourceAction === 'delete',
-    })
-    onOpenChange(false)
-    if (redirectAfterDelete) {
-      router.push('/notebooks')
+    try {
+      await deleteNotebook.mutateAsync({
+        id: notebookId,
+        deleteExclusiveSources: sourceAction === 'delete',
+        password: hasPassword ? password : undefined,
+      })
+      onOpenChange(false)
+      if (redirectAfterDelete) {
+        router.push('/notebooks')
+      }
+    } catch (error) {
+      // Error is handled by the mutation onError, but we catch it here to prevent dialog from closing
     }
   }
 
@@ -147,6 +157,27 @@ export function NotebookDeleteDialog({
                       </Label>
                     </div>
                   </RadioGroup>
+                </div>
+              )}
+
+              {/* Password input section */}
+              {hasPassword && (
+                <div className="pt-3 border-t space-y-3">
+                  <Label htmlFor="notebook-password">
+                    {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD 
+                      ? t.notebooks.enterPasswordOrAdmin 
+                      : t.notebooks.enterPassword}
+                  </Label>
+                  <Input
+                    id="notebook-password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD 
+                      ? t.notebooks.enterPasswordOrAdmin 
+                      : t.notebooks.enterPassword}
+                    disabled={isDeleting}
+                  />
                 </div>
               )}
             </>

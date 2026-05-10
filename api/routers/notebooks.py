@@ -1,6 +1,9 @@
 from typing import List, Optional
+import os
+from pathlib import Path
+from dotenv import dotenv_values
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header
 from loguru import logger
 
 from api.models import (
@@ -494,6 +497,7 @@ async def delete_notebook(
         False,
         description="Whether to delete sources that belong only to this notebook",
     ),
+    x_notebook_password: Optional[str] = Header(None, alias="X-Notebook-Password")
 ):
     """
     Delete a notebook with cascade deletion.
@@ -506,6 +510,19 @@ async def delete_notebook(
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+
+        # Validate password if notebook is protected
+        if notebook.password:
+            # Check for master password
+            master_pwd = os.environ.get("NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD")
+            if not master_pwd:
+                env_vals = dotenv_values(Path("frontend/.env.local"))
+                master_pwd = env_vals.get("NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD")
+                
+            is_master = master_pwd and x_notebook_password == master_pwd
+            
+            if not is_master and (not x_notebook_password or x_notebook_password != notebook.password):
+                raise HTTPException(status_code=403, detail="Incorrect notebook password")
 
         result = await notebook.delete(delete_exclusive_sources=delete_exclusive_sources)
 

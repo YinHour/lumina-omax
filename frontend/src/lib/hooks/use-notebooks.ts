@@ -112,10 +112,12 @@ export function useDeleteNotebook() {
     mutationFn: ({
       id,
       deleteExclusiveSources = false,
+      password,
     }: {
       id: string
       deleteExclusiveSources?: boolean
-    }) => notebooksApi.delete(id, deleteExclusiveSources),
+      password?: string
+    }) => notebooksApi.delete(id, deleteExclusiveSources, password),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
       // Also invalidate sources since some may have been deleted

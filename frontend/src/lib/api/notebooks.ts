@@ -41,10 +41,14 @@ export const notebooksApi = {
     return response.data
   },
 
-  delete: async (id: string, deleteExclusiveSources: boolean = false) => {
-    const response = await apiClient.delete<NotebookDeleteResponse>(`/notebooks/${id}`, {
+  delete: async (id: string, deleteExclusiveSources: boolean = false, password?: string) => {
+    const config: any = {
       params: { delete_exclusive_sources: deleteExclusiveSources },
-    })
+    }
+    if (password) {
+      config.headers = { 'X-Notebook-Password': password }
+    }
+    const response = await apiClient.delete<NotebookDeleteResponse>(`/notebooks/${id}`, config)
     return response.data
   },
 

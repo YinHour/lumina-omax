@@ -121,6 +121,7 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
         onOpenChange={setShowDeleteDialog}
         notebookId={notebook.id}
         notebookName={notebook.name}
+        hasPassword={!!notebook.password}
         redirectAfterDelete
       />
     </>
