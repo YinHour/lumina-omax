@@ -324,7 +324,7 @@ export default function SourcesPage() {
     )
   }
 
-  if (sources.length === 0) {
+  if (sources.length === 0 && page === 1) {
     return (
       <AppShell>
         <EmptyState
