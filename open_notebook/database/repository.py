@@ -371,12 +371,9 @@ async def repo_update(
 
 async def repo_delete(record_id: Union[str, RecordID]):
     """Delete a record by record id"""
-
     try:
-        async with db_connection() as connection:
-            return await _run_with_query_timeout(
-                connection.delete(ensure_record_id(record_id))
-            )
+        query = f"DELETE {ensure_record_id(record_id)};"
+        return await repo_transaction(query)
     except Exception as e:
         logger.exception(e)
         raise RuntimeError(f"Failed to delete record: {str(e)}")

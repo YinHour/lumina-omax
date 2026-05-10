@@ -589,26 +589,25 @@ class Source(ObjectModel):
         # Delete associated embeddings and insights to prevent orphaned records
         try:
             source_id = ensure_record_id(self.id)
-            await repo_query(
-                "DELETE source_embedding WHERE source = $source_id",
-                {"source_id": source_id},
-            )
-            await repo_query(
-                "DELETE source_insight WHERE source = $source_id",
-                {"source_id": source_id},
+            query = """
+            DELETE source_embedding WHERE source = $source_id;
+            DELETE source_insight WHERE source = $source_id;
+            """
+            
+            if os.environ.get("ENABLE_KNOWLEDGE_GRAPH", "false").lower() == "true":
+                query += """
+                DELETE kg_entity WHERE source_id = $source_id_str;
+                DELETE kg_relation WHERE source_id = $source_id_str;
+                """
+                
+            await repo_transaction(
+                query,
+                {
+                    "source_id": source_id,
+                    "source_id_str": str(self.id)
+                },
             )
             
-            # Delete associated knowledge graph entities and relations
-            if os.environ.get("ENABLE_KNOWLEDGE_GRAPH", "false").lower() == "true":
-                await repo_query(
-                    "DELETE kg_entity WHERE source_id = $source_id_str",
-                    {"source_id_str": str(self.id)},
-                )
-                await repo_query(
-                    "DELETE kg_relation WHERE source_id = $source_id_str",
-                    {"source_id_str": str(self.id)},
-                )
-                
             logger.debug(f"Deleted embeddings, insights, and KG data for source {self.id}")
         except Exception as e:
             logger.warning(
