@@ -62,6 +62,33 @@ export function SourcesColumn({
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [sourceToRemove, setSourceToRemove] = useState<string | null>(null)
 
+  // Group and sort sources for aggregated notebooks
+  const displaySources = useMemo(() => {
+    if (!sources || sources.length === 0) return sources;
+    
+    // Check if any source belongs to a different notebook to infer it's an aggregated view
+    const isAggregated = sources.some(s => s.origin_notebook_id && s.origin_notebook_id !== notebookId);
+    
+    if (!isAggregated) {
+      return sources;
+    }
+
+    // Sort by origin notebook name, then by updated
+    return [...sources].sort((a, b) => {
+      const nameA = a.origin_notebook_name || t.navigation.notebooks;
+      const nameB = b.origin_notebook_name || t.navigation.notebooks;
+      
+      if (nameA !== nameB) {
+        return nameA.localeCompare(nameB);
+      }
+      
+      // Fallback to updated desc
+      const dateA = new Date(a.updated).getTime();
+      const dateB = new Date(b.updated).getTime();
+      return dateB - dateA;
+    });
+  }, [sources, notebookId, t.navigation.notebooks]);
+
   const { openModal } = useModalManager()
   const deleteSource = useDeleteSource()
   const retrySource = useRetrySource()
@@ -113,8 +140,7 @@ export function SourcesColumn({
 
     const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
     if (masterPassword && deletePassword !== masterPassword) {
-      // Use window.localStorage or similar if language isn't available directly
-      setDeletePasswordError('密码错误 / Incorrect password')
+      setDeletePasswordError(t.notebooks.incorrectPassword)
       return
     }
 
@@ -228,7 +254,7 @@ export function SourcesColumn({
               <div className="flex items-center justify-center py-8">
                 <LoadingSpinner />
               </div>
-            ) : !sources || sources.length === 0 ? (
+            ) : !displaySources || displaySources.length === 0 ? (
               <EmptyState
                 icon={FileText}
                 title={t.sources.noSourcesYet}
@@ -236,7 +262,7 @@ export function SourcesColumn({
               />
             ) : (
               <div className="space-y-3">
-                {sources.map((source) => (
+                {displaySources.map((source) => (
                   <SourceCard
                     key={source.id}
                     source={source}
@@ -298,7 +324,7 @@ export function SourcesColumn({
           {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
             <div className="space-y-2 py-4">
               <p className="text-sm font-medium">
-                Admin Password Required
+                {t.common.adminPasswordRequired}
               </p>
               <Input
                 type="password"
@@ -316,7 +342,7 @@ export function SourcesColumn({
                     handleDeleteConfirm()
                   }
                 }}
-                placeholder="Enter password"
+                placeholder={t.notebooks.enterPassword}
                 autoFocus
               />
               {deletePasswordError && (

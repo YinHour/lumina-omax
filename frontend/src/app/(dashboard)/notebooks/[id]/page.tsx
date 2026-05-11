@@ -102,7 +102,7 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
         setIsUnlocked(true)
         setPasswordError('')
       } else {
-        setPasswordError('Incorrect password')
+        setPasswordError(t.notebooks.incorrectPassword)
       }
     }
   }
@@ -209,16 +209,16 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
               <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
                 <Lock className="h-6 w-6 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold tracking-tight">Protected Notebook</h2>
+              <h2 className="text-2xl font-bold tracking-tight">{t.notebooks.protectedNotebook}</h2>
               <p className="text-muted-foreground text-sm">
-                This notebook requires a password to access.
+                {t.notebooks.passwordRequiredDesc}
               </p>
             </div>
             <form onSubmit={handleUnlock} className="space-y-4">
               <div className="space-y-2">
                 <Input
                   type="password"
-                  placeholder="Enter password"
+                  placeholder={t.notebooks.enterPassword}
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   autoFocus
@@ -228,7 +228,7 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
                 )}
               </div>
               <Button type="submit" className="w-full">
-                Unlock
+                {t.notebooks.unlock}
               </Button>
             </form>
           </div>

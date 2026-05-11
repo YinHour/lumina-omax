@@ -30,10 +30,11 @@ export function useCreateNote() {
 
   return useMutation({
     mutationFn: (data: CreateNoteRequest) => notesApi.create(data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: QUERY_KEYS.notes(variables.notebook_id) 
-      })
+    onSuccess: () => {
+      // Invalidate all notes queries so aggregate notebooks and related views update
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+      // Also invalidate notebooks to update their note counts
+      queryClient.invalidateQueries({ queryKey: ['notebooks'] })
       toast({
         title: t.common.success,
         description: t.notebooks.noteCreatedSuccess,

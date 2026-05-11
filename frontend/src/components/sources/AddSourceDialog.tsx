@@ -126,6 +126,7 @@ export function AddSourceDialog({
   // Batch-specific state
   const [urlValidationErrors, setUrlValidationErrors] = useState<{ url: string; line: number }[]>([])
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null)
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false)
 
   // Cleanup timeouts to prevent memory leaks
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -441,32 +442,17 @@ export function AddSourceDialog({
     }
     
     console.log('onSubmit triggered', { data, skipDuplicateCheck, filterDuplicates, processing })
-    if (skipDuplicateCheck) {
-      toast.info('onSubmit 被调用，跳过重复检查')
-    }
     
-    // Check if we are already processing and NOT skipping duplicate check
-    // If we are skipping duplicate check, we might already be in processing state
-    // because handleConfirmDuplicate sets it to true before calling onSubmit
     if (processing && !skipDuplicateCheck) {
       console.log('Already processing, ignoring submission')
       return
     }
 
-    // Always force processing state to true to show loading UI
-    console.log('Setting processing to true in onSubmit')
-    setProcessing(true)
-    
-    // If we are skipping duplicate check, we don't need to wait for state to settle
-    // because we already did that in handleConfirmDuplicate
+    // Set checking state to prevent double clicks
     if (!skipDuplicateCheck) {
-      // Wait a tiny bit for state to settle before starting heavy work
-      // This is crucial for React to render the processing state before we block the thread
-      // We use a small timeout to allow the UI to update
-      await new Promise(resolve => setTimeout(resolve, 0))
-      console.log('Finished waiting for state to settle')
+      setIsCheckingDuplicates(true)
     }
-    
+
     // Duplicate check for file uploads
     if (data.type === 'upload' && !skipDuplicateCheck) {
       const duplicates: string[] = []
@@ -515,19 +501,17 @@ export function AddSourceDialog({
           dataToSave.file = data.file
         }
         
-        console.log('Setting pendingSubmitData:', dataToSave)
         setPendingSubmitData(dataToSave)
+        setIsCheckingDuplicates(false)
         
-        // We're stopping submission, so reset processing state
-        setProcessing(false)
-        
-        // Use setTimeout to ensure state is updated before showing dialog
         setTimeout(() => {
           setShowDuplicateWarning(true)
         }, 10)
         return // Stop submission, wait for user confirmation
       }
     }
+
+    setIsCheckingDuplicates(false)
 
     try {
       console.log('Starting processing, setting processing to true')
@@ -920,10 +904,10 @@ export function AddSourceDialog({
               {/* Show Done button on all steps, styled as primary */}
               <Button
                 type="submit"
-                disabled={!currentStepValid || createSource.isPending}
+                disabled={!currentStepValid || createSource.isPending || isCheckingDuplicates}
                 className="min-w-[120px]"
               >
-                {createSource.isPending ? t.common.adding : t.common.done}
+                {createSource.isPending || isCheckingDuplicates ? t.common.adding : t.common.done}
               </Button>
             </div>
           </div>

@@ -10,7 +10,8 @@ import { AppShell } from '@/components/layout/AppShell'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,13 @@ export default function SourcesPage() {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const PAGE_SIZE = 30
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [batchDeleteDialog, setBatchDeleteDialog] = useState(false)
+  const [batchDeletePassword, setBatchDeletePassword] = useState('')
+  const [batchDeletePasswordError, setBatchDeletePasswordError] = useState('')
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false)
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null)
 
   const fetchSources = useCallback(async () => {
     try {
@@ -264,6 +272,38 @@ export default function SourcesPage() {
     }
   }
 
+  const handleBatchDeleteConfirm = async () => {
+    const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
+    if (masterPassword && batchDeletePassword !== masterPassword) {
+      setBatchDeletePasswordError(language.startsWith('zh') ? '密码错误' : 'Incorrect password')
+      return
+    }
+
+    setIsBatchDeleting(true)
+    let successCount = 0
+    let failCount = 0
+
+    const promises = Array.from(selectedIds).map(id => sourcesApi.delete(id))
+    const results = await Promise.allSettled(promises)
+    
+    results.forEach(result => {
+      if (result.status === 'fulfilled') successCount++
+      else failCount++
+    })
+
+    if (failCount === 0) {
+      toast.success(t.sources.batchDeleteSuccess?.replace('{count}', successCount.toString()) ?? (language.startsWith('zh') ? `成功删除 ${successCount} 个来源` : `Successfully deleted ${successCount} sources`))
+    } else {
+      toast.error(t.sources.batchPartialSuccess?.replace('{success}', successCount.toString()).replace('{failed}', failCount.toString()) ?? (language.startsWith('zh') ? `成功删除 ${successCount} 个，失败 ${failCount} 个` : `Deleted ${successCount} sources, ${failCount} failed`))
+    }
+
+    setIsBatchDeleting(false)
+    setBatchDeleteDialog(false)
+    setSelectedIds(new Set())
+    setBatchDeletePassword('')
+    fetchSources()
+  }
+
   if (loading) {
     return (
       <AppShell>
@@ -284,7 +324,7 @@ export default function SourcesPage() {
     )
   }
 
-  if (sources.length === 0) {
+  if (sources.length === 0 && page === 1) {
     return (
       <AppShell>
         <EmptyState
@@ -313,6 +353,7 @@ export default function SourcesPage() {
             className="w-full min-w-[800px] outline-none table-fixed"
           >
             <colgroup>
+              <col className="w-[50px]" />
               <col className="w-[120px]" />
               <col className="w-auto" />
               <col className="w-[140px]" />
@@ -324,6 +365,7 @@ export default function SourcesPage() {
             </colgroup>
             <thead className="sticky top-0 bg-background z-10">
               <tr className="border-b bg-muted/50">
+                <th className="h-12 w-[50px] px-4 text-left align-middle"></th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                   {t.common.type}
                 </th>
@@ -379,6 +421,42 @@ export default function SourcesPage() {
                       : "hover:bg-muted/50"
                   )}
                 >
+                  <td 
+                    className="h-12 w-[50px] px-4 select-none" 
+                    onMouseDown={(e) => {
+                      // Prevent text selection when shift-clicking
+                      if (e.shiftKey) {
+                        e.preventDefault()
+                      }
+                    }}
+                    onClick={(e) => {
+                    e.stopPropagation()
+                    if (e.shiftKey) {
+                      window.getSelection()?.removeAllRanges()
+                    }
+                    const isChecked = !selectedIds.has(source.id)
+                    setSelectedIds(prev => {
+                      const next = new Set(prev)
+                      if (e.shiftKey && lastSelectedIndex !== null) {
+                        const start = Math.min(lastSelectedIndex, index)
+                        const end = Math.max(lastSelectedIndex, index)
+                        for (let i = start; i <= end; i++) {
+                          if (isChecked) next.add(sources[i].id)
+                          else next.delete(sources[i].id)
+                        }
+                      } else {
+                        if (isChecked) next.add(source.id)
+                        else next.delete(source.id)
+                      }
+                      return next
+                    })
+                    setLastSelectedIndex(index)
+                  }}>
+                    <Checkbox
+                      checked={selectedIds.has(source.id)}
+                      className="pointer-events-none"
+                    />
+                  </td>
                   <td className="h-12 px-4">
                     <div className="flex items-center gap-2">
                       {getSourceIcon(source)}
@@ -438,7 +516,7 @@ export default function SourcesPage() {
         <div className="flex items-center justify-between mt-4 pt-4 border-t">
           <Button 
             variant="outline" 
-            onClick={() => setPage(p => Math.max(1, p - 1))}
+            onClick={() => { setPage(p => Math.max(1, p - 1)); setSelectedIds(new Set()); }}
             disabled={page === 1}
           >
             {language.startsWith('zh') ? '上一页' : 'Previous'}
@@ -448,7 +526,7 @@ export default function SourcesPage() {
           </span>
           <Button 
             variant="outline" 
-            onClick={() => setPage(p => p + 1)}
+            onClick={() => { setPage(p => p + 1); setSelectedIds(new Set()); }}
             disabled={!hasMore}
           >
             {language.startsWith('zh') ? '下一页' : 'Next'}
@@ -509,6 +587,80 @@ export default function SourcesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={batchDeleteDialog} onOpenChange={(open) => {
+        if (!open) {
+          setBatchDeletePassword('')
+          setBatchDeletePasswordError('')
+        }
+        if (!isBatchDeleting) {
+          setBatchDeleteDialog(open)
+        }
+      }}>
+        <DialogContent className="sm:max-w-[425px]" onPointerDownOutside={(e) => { if (isBatchDeleting) e.preventDefault() }} onEscapeKeyDown={(e) => { if (isBatchDeleting) e.preventDefault() }}>
+          <DialogHeader>
+            <DialogTitle>{t.sources?.batchDelete ?? (language.startsWith('zh') ? '批量删除' : 'Batch Delete')}</DialogTitle>
+            <DialogDescription>
+              {t.sources?.batchDeleteConfirm?.replace('{count}', selectedIds.size.toString()) ?? (language.startsWith('zh') ? `确定要永久删除选定的 ${selectedIds.size} 个来源吗？` : `Are you sure you want to permanently delete the selected ${selectedIds.size} sources?`)}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
+            <div className="space-y-2 py-4">
+              <p className="text-sm font-medium">
+                {language.startsWith('zh') ? '需要管理员密码' : 'Admin Password Required'}
+              </p>
+              <Input
+                type="password"
+                value={batchDeletePassword}
+                onChange={e => {
+                  setBatchDeletePassword(e.target.value)
+                  setBatchDeletePasswordError('')
+                }}
+                onKeyDown={e => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter' && !isBatchDeleting) {
+                    e.preventDefault()
+                    handleBatchDeleteConfirm()
+                  }
+                }}
+                placeholder={language.startsWith('zh') ? '请输入密码' : 'Enter password'}
+                autoFocus
+                disabled={isBatchDeleting}
+              />
+              {batchDeletePasswordError && (
+                <p className="text-sm text-destructive">{batchDeletePasswordError}</p>
+              )}
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBatchDeleteDialog(false)} disabled={isBatchDeleting}>
+              {t.common?.cancel ?? 'Cancel'}
+            </Button>
+            <Button variant="destructive" onClick={handleBatchDeleteConfirm} disabled={isBatchDeleting}>
+              {isBatchDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t.common?.delete ?? 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-popover border shadow-lg rounded-full px-4 py-3 flex items-center gap-4 animate-in slide-in-from-bottom-5">
+          <span className="text-sm font-medium whitespace-nowrap">
+            {t.sources?.itemsSelected?.replace('{count}', selectedIds.size.toString()) ?? (language.startsWith('zh') ? `已选择 ${selectedIds.size} 项` : `${selectedIds.size} items selected`)}
+          </span>
+          <div className="h-4 w-px bg-border"></div>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            {t.sources?.clearSelection ?? (language.startsWith('zh') ? '取消选择' : 'Clear Selection')}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => setBatchDeleteDialog(true)}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            {t.sources?.batchDelete ?? (language.startsWith('zh') ? '批量删除' : 'Batch Delete')}
+          </Button>
+        </div>
+      )}
     </AppShell>
   )
 }

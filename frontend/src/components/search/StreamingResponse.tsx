@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { CheckCircle, Sparkles, Lightbulb, ChevronDown } from 'lucide-react'
+import { CheckCircle, Sparkles, Lightbulb, ChevronDown, Copy, Save } from 'lucide-react'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -24,18 +24,54 @@ interface StreamingResponseProps {
   strategy: StrategyData | null
   answers: string[]
   finalAnswer: string | null
+  onSaveRequest?: () => void
 }
 
 export function StreamingResponse({
   isStreaming,
   strategy,
   answers,
-  finalAnswer
+  finalAnswer,
+  onSaveRequest
 }: StreamingResponseProps) {
   const [strategyOpen, setStrategyOpen] = useState(true)
   const [answersOpen, setAnswersOpen] = useState(true)
+  const [copySuccess, setCopySuccess] = useState(false)
   const { openModal } = useModalManager()
   const { t } = useTranslation()
+
+  const handleCopyToClipboard = async () => {
+    if (!finalAnswer) return
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(finalAnswer)
+        toast.success(t.common.copyToClipboard || 'Copied to clipboard')
+        setCopySuccess(true)
+        setTimeout(() => setCopySuccess(false), 2000)
+      } else {
+        const textArea = document.createElement('textarea')
+        textArea.value = finalAnswer
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        textArea.style.top = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        try {
+          document.execCommand('copy')
+          toast.success(t.common.copyToClipboard || 'Copied to clipboard')
+          setCopySuccess(true)
+          setTimeout(() => setCopySuccess(false), 2000)
+        } catch {
+          toast.error(t.common.error || 'Failed to copy')
+        }
+        document.body.removeChild(textArea)
+      }
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err)
+      toast.error(t.common.error || 'Failed to copy')
+    }
+  }
 
   const handleReferenceClick = (type: string, id: string) => {
     const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
@@ -144,6 +180,29 @@ export function StreamingResponse({
               content={finalAnswer}
               onReferenceClick={handleReferenceClick}
             />
+            {/* Action buttons at the bottom of the final answer */}
+            <div className="flex gap-2 mt-4 pt-4 border-t border-border/50">
+              <button
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={handleCopyToClipboard}
+              >
+                {copySuccess ? (
+                  <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {t.common.copyToClipboard || 'Copy'}
+              </button>
+              {onSaveRequest && (
+                <button
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={onSaveRequest}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {t.searchPage?.saveToNotebooks || t.common.saveToNote || 'Save to Notebooks'}
+                </button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

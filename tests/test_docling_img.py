@@ -1,9 +1,11 @@
 import asyncio
+import pytest
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.datamodel.base_models import InputFormat
 import sys
 
+@pytest.mark.asyncio
 async def test_docling():
     opts = PdfPipelineOptions()
     opts.generate_picture_images = True

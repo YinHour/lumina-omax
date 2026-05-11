@@ -151,6 +151,7 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
         onOpenChange={setShowDeleteDialog}
         notebookId={notebook.id}
         notebookName={notebook.name}
+        hasPassword={!!notebook.password}
       />
     </>
   )
