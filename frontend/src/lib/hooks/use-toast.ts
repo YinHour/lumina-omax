@@ -15,10 +15,12 @@ export function useToast() {
       if (variant === 'destructive') {
         sonnerToast.error(title || t.common.error, {
           description,
+          duration: 3000,
         })
       } else {
         sonnerToast.success(title || t.common.success, {
           description,
+          duration: 3000,
         })
       }
     }
