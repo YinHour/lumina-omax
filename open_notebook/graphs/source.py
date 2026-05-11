@@ -138,7 +138,7 @@ async def content_process(state: SourceState) -> dict:
                                     img_name = os.path.basename(img_path)
                                     return f"(/api/uploads/images/{safe_source_id}/{img_name})"
                                 
-                                md_content = re.sub(r'\((images/[^)]+)\)', replace_image_path, md_content)
+                                md_content = re.sub(r'\!?\[.*?\]\((images/[^)]+)\)', lambda m: f"![](/api/uploads/images/{safe_source_id}/{os.path.basename(m.group(1))})", md_content)
                         
                         if md_content:
                             logger.info(f"Successfully extracted {len(md_content)} chars using MinerU.")
