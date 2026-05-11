@@ -132,13 +132,22 @@ async def content_process(state: SourceState) -> dict:
                                 for img_file in os.listdir(images_dir):
                                     shutil.copy2(os.path.join(images_dir, img_file), os.path.join(persistent_images_dir, img_file))
                                 
-                                # Replace image paths in markdown
-                                def replace_image_path(match):
-                                    img_path = match.group(1)
-                                    img_name = os.path.basename(img_path)
-                                    return f"(/api/uploads/images/{safe_source_id}/{img_name})"
+                                # Replace image paths in both Markdown and HTML formats
+                                safe_images_url = f"/api/uploads/images/{safe_source_id}"
                                 
-                                md_content = re.sub(r'\!?\[.*?\]\((images/[^)]+)\)', lambda m: f"![](/api/uploads/images/{safe_source_id}/{os.path.basename(m.group(1))})", md_content)
+                                # 1. Replace Markdown image syntax: ![alt](images/xxx.jpg)
+                                md_content = re.sub(
+                                    r'\!?\[.*?\]\((images/[^)]+)\)',
+                                    lambda m: f"![](/api/uploads/images/{safe_source_id}/{os.path.basename(m.group(1))})",
+                                    md_content
+                                )
+                                # 2. Replace HTML <img> tags: <img src="images/xxx.jpg" ...>
+                                md_content = re.sub(
+                                    r'<img\s+([^>]*?)src=["\']images/([^"\']+)["\']([^>]*)>',
+                                    lambda m: f'<img {m.group(1)}src="{safe_images_url}/{os.path.basename(m.group(2))}"{m.group(3)}>',
+                                    md_content
+                                )
+                                logger.debug(f"Replaced image paths pointing to {safe_images_url}")
                         
                         if md_content:
                             logger.info(f"Successfully extracted {len(md_content)} chars using MinerU.")
