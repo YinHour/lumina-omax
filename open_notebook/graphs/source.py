@@ -69,7 +69,7 @@ async def content_process(state: SourceState) -> dict:
         import tempfile
         from content_core.common import ProcessSourceState
         
-        def _sync_extract(state):
+        def _sync_extract(state, source_id):
             engine = state.get("document_engine")
             file_path = state.get("file_path")
             
@@ -108,20 +108,37 @@ async def content_process(state: SourceState) -> dict:
                         base_name = os.path.splitext(os.path.basename(file_path))[0]
                         out_dir = os.path.join(temp_dir, base_name, "auto")
                         
+                        target_dir = out_dir if os.path.exists(out_dir) else os.path.join(temp_dir, base_name)
+                        
                         md_content = ""
-                        if os.path.exists(out_dir):
-                            for file in os.listdir(out_dir):
+                        if os.path.exists(target_dir):
+                            for file in os.listdir(target_dir):
                                 if file.endswith(".md"):
-                                    with open(os.path.join(out_dir, file), "r", encoding="utf-8") as f:
+                                    with open(os.path.join(target_dir, file), "r", encoding="utf-8") as f:
                                         md_content = f.read()
                                     break
-                        elif os.path.exists(os.path.join(temp_dir, base_name)):
-                            # Fallback in case mineru behavior changes and doesn't nest inside 'auto'
-                            for file in os.listdir(os.path.join(temp_dir, base_name)):
-                                if file.endswith(".md"):
-                                    with open(os.path.join(temp_dir, base_name, file), "r", encoding="utf-8") as f:
-                                        md_content = f.read()
-                                    break
+                            
+                            # Copy images to persistent storage
+                            import shutil
+                            import re
+                            
+                            images_dir = os.path.join(target_dir, "images")
+                            if os.path.exists(images_dir) and source_id:
+                                safe_source_id = str(source_id).split(':')[-1]
+                                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                                persistent_images_dir = os.path.join(project_root, "data", "uploads", "images", safe_source_id)
+                                os.makedirs(persistent_images_dir, exist_ok=True)
+                                
+                                for img_file in os.listdir(images_dir):
+                                    shutil.copy2(os.path.join(images_dir, img_file), os.path.join(persistent_images_dir, img_file))
+                                
+                                # Replace image paths in markdown
+                                def replace_image_path(match):
+                                    img_path = match.group(1)
+                                    img_name = os.path.basename(img_path)
+                                    return f"(/api/uploads/images/{safe_source_id}/{img_name})"
+                                
+                                md_content = re.sub(r'\((images/[^)]+)\)', replace_image_path, md_content)
                         
                         if md_content:
                             logger.info(f"Successfully extracted {len(md_content)} chars using MinerU.")
@@ -150,7 +167,7 @@ async def content_process(state: SourceState) -> dict:
                 loop.close()
                 
         # 让 CPU 密集型任务在背景线程中运行，不阻塞主事件循环
-        processed_state = await asyncio.to_thread(_sync_extract, content_state)
+        processed_state = await asyncio.to_thread(_sync_extract, content_state, state.get("source_id"))
         logger.info(f"Content extraction completed for source_id={state.get('source_id')}")
         logger.debug(f"Extracted content length: {len(processed_state.content or '')} characters")
     except Exception as e:
