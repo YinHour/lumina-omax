@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 import { searchApi } from '@/lib/api/search'

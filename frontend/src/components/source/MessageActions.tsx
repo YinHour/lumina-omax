@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Save, Copy, Loader2, Check } from 'lucide-react'
 import { useCreateNote } from '@/lib/hooks/use-notes'
-import { toast } from 'sonner'
+import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 interface MessageActionsProps {

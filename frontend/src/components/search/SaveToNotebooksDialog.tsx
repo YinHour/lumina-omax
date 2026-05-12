@@ -14,7 +14,7 @@ import { CheckboxList } from '@/components/ui/checkbox-list'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useCreateNote } from '@/lib/hooks/use-notes'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { toast } from 'sonner'
+import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 interface SaveToNotebooksDialogProps {

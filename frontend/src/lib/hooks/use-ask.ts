@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { searchApi } from '@/lib/api/search'
