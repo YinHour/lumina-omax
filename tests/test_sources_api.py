@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from open_notebook.ai.models import DefaultModels
 from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.domain.notebook import Source
 
@@ -16,6 +17,16 @@ def client():
     from api.main import app
 
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_default_models():
+    """Keep source creation tests focused on asset persistence, not model setup."""
+    with patch(
+        "open_notebook.ai.models.model_manager.get_defaults", new_callable=AsyncMock
+    ) as mock_get_defaults:
+        mock_get_defaults.return_value = DefaultModels(default_chat_model="model:test")
+        yield mock_get_defaults
 
 
 class TestAsyncSourceAssetPersistence:
