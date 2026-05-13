@@ -282,11 +282,11 @@ export default function SearchPage() {
 
   return (
     <AppShell>
-      <div className="p-4 md:p-6">
-        <h1 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">{t.searchPage.askAndSearch}</h1>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6">
+        <h1 className="shrink-0 text-xl md:text-2xl font-bold mb-4 md:mb-6">{t.searchPage.askAndSearch}</h1>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full space-y-6">
-          <div className="space-y-2">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full flex-1 min-h-0 space-y-6 overflow-hidden">
+          <div className="shrink-0 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.searchPage.chooseAMode}</p>
             <TabsList aria-label={t.common.accessibility.searchKB} className="w-full max-w-xl">
               <TabsTrigger value="ask">
@@ -300,15 +300,15 @@ export default function SearchPage() {
             </TabsList>
           </div>
 
-          <TabsContent value="ask" className="mt-6">
-            <Card>
-              <CardHeader>
+          <TabsContent value="ask" className="mt-0 min-h-0 overflow-hidden data-[state=inactive]:hidden">
+            <Card className="h-full min-h-0 overflow-hidden">
+              <CardHeader className="shrink-0">
                 <CardTitle className="text-lg">{t.searchPage.askYourKb}</CardTitle>
                 <p className="text-sm text-muted-foreground">
                   {t.searchPage.askYourKbDesc}
                 </p>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pb-6 pr-3 [scrollbar-gutter:stable]">
                 {/* Question Input */}
                 <div className="space-y-2">
                   <Label htmlFor="ask-question">{t.searchPage.question}</Label>
@@ -433,7 +433,7 @@ export default function SearchPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="search" className="mt-6">
+          <TabsContent value="search" className="mt-0 min-h-0 overflow-y-auto data-[state=inactive]:hidden">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">{t('searchPage.search')}</CardTitle>
