@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -125,6 +126,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Mount static files for uploads
+import os
+uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "uploads")
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
 # Add password authentication middleware first
 # Exclude /api/auth/status and /api/config from authentication
 app.add_middleware(
@@ -137,6 +144,7 @@ app.add_middleware(
         "/redoc",
         "/api/auth/status",
         "/api/config",
+        "/api/uploads",
     ],
 )
 

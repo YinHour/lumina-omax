@@ -12,7 +12,7 @@ import rehypeRaw from 'rehype-raw'
 import { convertReferencesToMarkdownLinks, createReferenceLinkComponent } from '@/lib/utils/source-references'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { toast } from 'sonner'
+import { toast } from '@/lib/hooks/use-toast'
 
 interface StrategyData {
   reasoning: string

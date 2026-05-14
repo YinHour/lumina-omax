@@ -576,7 +576,7 @@ export default function SearchPage() {
                         </CardContent>
                       </Card>
                     ) : (
-                      <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+                      <div className="space-y-2">
                         {activeSearchData.results.map((result: any, index: number) => {
                           // Parse type from parent_id (format: "source:id" or "note:id" or "source_insight:id")
                           // Handle null parent_id gracefully (orphaned records)
