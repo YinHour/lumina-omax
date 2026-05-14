@@ -1,4 +1,5 @@
 import { toast as sonnerToast } from 'sonner'
+import type { ReactNode } from 'react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 type ToastProps = {
@@ -32,8 +33,8 @@ export function useToast() {
 const createDurationToast = () => {
   const handler: Record<string, unknown> = {}
 
-  const wrap = (method: 'success' | 'error' | 'message' | 'loading' | 'custom') => {
-    handler[method] = (message: string | React.ReactNode, options?: any) => {
+  const wrap = (method: 'success' | 'error' | 'info' | 'warning' | 'message' | 'loading' | 'custom') => {
+    handler[method] = (message: string | ReactNode, options?: any) => {
       const mergedOptions = { ...(options || {}), duration: 3000 }
       if (method === 'message' || method === 'custom') {
         return (sonnerToast as any)(message, mergedOptions)
@@ -44,11 +45,13 @@ const createDurationToast = () => {
 
   wrap('success')
   wrap('error')
+  wrap('info')
+  wrap('warning')
   wrap('message')
   wrap('loading')
   wrap('custom')
 
-  return handler as Pick<typeof sonnerToast, 'success' | 'error' | 'message' | 'loading' | 'custom'>
+  return handler as Pick<typeof sonnerToast, 'success' | 'error' | 'info' | 'warning' | 'message' | 'loading' | 'custom'>
 }
 
 export const toast = createDurationToast()

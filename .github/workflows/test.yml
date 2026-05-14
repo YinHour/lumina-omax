@@ -32,6 +32,23 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Start SurrealDB
+        run: docker compose up -d surrealdb
+
+      - name: Wait for SurrealDB
+        run: |
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 8000; then
+              echo "SurrealDB is ready"
+              exit 0
+            fi
+            echo "Waiting for SurrealDB..."
+            sleep 1
+          done
+
+          docker compose logs surrealdb
+          exit 1
+
       - name: Run tests
         run: uv run pytest tests/ -v
 

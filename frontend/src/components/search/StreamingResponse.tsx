@@ -93,7 +93,7 @@ export function StreamingResponse({
 
   return (
     <div
-      className="space-y-4 mt-6 pr-2"
+      className="space-y-4 mt-6 min-w-0"
       role="region"
       aria-label={t.common.accessibility.askResponse}
       aria-live="polite"
@@ -157,7 +157,10 @@ export function StreamingResponse({
               <CardContent className="space-y-2 pt-0">
                 {answers.map((answer, i) => (
                   <div key={i} className="p-3 rounded-md bg-muted">
-                    <p className="text-sm">{answer}</p>
+                    <MarkdownContent
+                      content={answer}
+                      onReferenceClick={handleReferenceClick}
+                    />
                   </div>
                 ))}
               </CardContent>
@@ -175,13 +178,13 @@ export function StreamingResponse({
               {t.common.finalAnswer}
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <FinalAnswerContent
+          <CardContent className="min-w-0">
+            <MarkdownContent
               content={finalAnswer}
               onReferenceClick={handleReferenceClick}
             />
             {/* Action buttons at the bottom of the final answer */}
-            <div className="flex gap-2 mt-4 pt-4 border-t border-border/50">
+            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border/50">
               <button
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 onClick={handleCopyToClipboard}
@@ -218,8 +221,8 @@ export function StreamingResponse({
   )
 }
 
-// Helper component to render final answer with clickable references
-function FinalAnswerContent({
+// Helper component to render ASK answers with markdown and clickable references.
+function MarkdownContent({
   content,
   onReferenceClick
 }: {
@@ -233,12 +236,40 @@ function FinalAnswerContent({
   const LinkComponent = createReferenceLinkComponent(onReferenceClick)
 
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert break-words prose-a:break-all prose-p:leading-relaxed prose-headings:mt-4 prose-headings:mb-2">
+    <div className="text-sm leading-7 break-words min-w-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}
         components={{
           a: LinkComponent,
+          p: ({ children }) => <p className="my-3 whitespace-pre-wrap">{children}</p>,
+          h1: ({ children }) => <h1 className="mt-5 mb-3 text-xl font-semibold leading-tight">{children}</h1>,
+          h2: ({ children }) => <h2 className="mt-5 mb-3 text-lg font-semibold leading-tight">{children}</h2>,
+          h3: ({ children }) => <h3 className="mt-4 mb-2 text-base font-semibold leading-tight">{children}</h3>,
+          ul: ({ children }) => <ul className="my-3 list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="my-3 list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          blockquote: ({ children }) => (
+            <blockquote className="my-4 border-l-4 border-border pl-4 text-muted-foreground">
+              {children}
+            </blockquote>
+          ),
+          pre: ({ children }) => (
+            <pre className="my-4 max-w-full overflow-x-auto rounded-md bg-muted p-3 text-xs leading-6">
+              {children}
+            </pre>
+          ),
+          code: ({ children, className }) => {
+            const isBlock = className?.includes('language-')
+            if (isBlock) {
+              return <code className={className}>{children}</code>
+            }
+            return (
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                {children}
+              </code>
+            )
+          },
           table: ({ children }) => (
             <div className="my-4 overflow-x-auto">
               <table className="min-w-full border-collapse border border-border">{children}</table>
