@@ -39,20 +39,51 @@ def _sanitize_excel_table_newlines(content: str) -> str:
     This merges orphan continuation lines back into the preceding table row
     using <br> to preserve multi-line semantics.
     """
+    def _is_table_separator_line(line: str) -> bool:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            return False
+        body = stripped.replace("|", "").replace("-", "").replace(":", "").replace(" ", "")
+        return body == ""
+
     lines = content.split("\n")
     result = []
-    for line in lines:
+    expected_pipes = None
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
-        if (
-            result
-            and result[-1].lstrip().startswith("|")
-            and not stripped.startswith("|")
-            and stripped
-            and not stripped.startswith("#")
-        ):
-            result[-1] = result[-1] + "<br>" + line
-        else:
+
+        if not stripped.startswith("|"):
+            expected_pipes = None
             result.append(line)
+            i += 1
+            continue
+
+        if _is_table_separator_line(line):
+            expected_pipes = line.count("|")
+            result.append(line)
+            i += 1
+            continue
+
+        if expected_pipes is None:
+            expected_pipes = line.count("|")
+
+        merged = line
+        while merged.count("|") < expected_pipes and i + 1 < len(lines):
+            next_line = lines[i + 1]
+            next_stripped = next_line.strip()
+
+            if not next_stripped or next_stripped.startswith("#"):
+                break
+
+            merged += "<br>" + next_line
+            i += 1
+
+        result.append(merged)
+        i += 1
+
     return "\n".join(result)
 
 
