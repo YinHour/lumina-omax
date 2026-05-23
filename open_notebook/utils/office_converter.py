@@ -13,13 +13,16 @@ def get_libreoffice_command():
 
 def convert_to_modern_office_format(file_path: str) -> str:
     """
-    If the file is a legacy or modern Office format (.doc, .docx, .xls, .xlsx, .ppt, .pptx), 
-    convert it to PDF using LibreOffice so that engines like MinerU can process it,
-    and return the new path.
+    If the file is a document/presentation Office format (.doc, .docx, .ppt, .pptx),
+    convert it to PDF using LibreOffice so engines like MinerU can process it.
+
+    Spreadsheets are deliberately excluded. Converting .xls/.xlsx to PDF can split
+    wide experimental tables across pages and destroy the row/column structure that
+    AI extraction needs.
     """
     ext = file_path.lower().split('.')[-1]
     
-    if ext not in ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']:
+    if ext not in ['doc', 'docx', 'ppt', 'pptx']:
         return file_path
         
     outdir = os.path.dirname(file_path)

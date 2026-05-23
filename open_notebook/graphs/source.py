@@ -78,6 +78,12 @@ async def content_process(state: SourceState) -> dict:
                 logger.info(f"Using MinerU to extract content from {file_path}")
                 try:
                     with tempfile.TemporaryDirectory() as temp_dir:
+                        if file_path.lower().endswith(('.ppt', '.pptx', '.doc', '.docx')):
+                            from open_notebook.utils.office_converter import convert_to_modern_office_format
+
+                            file_path = convert_to_modern_office_format(file_path)
+                            state["file_path"] = file_path
+
                         # Run mineru CLI
                         env = os.environ.copy()
                         if "HF_ENDPOINT" not in env:
