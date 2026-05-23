@@ -31,6 +31,31 @@ class TransformationState(TypedDict):
     transformation: Transformation
 
 
+def _sanitize_excel_table_newlines(content: str) -> str:
+    """Fix broken markdown table rows caused by newlines in Excel cells.
+
+    content_core's openpyxl-based Excel extraction inserts raw \\n into
+    markdown table rows, which splits a single row into multiple lines.
+    This merges orphan continuation lines back into the preceding table row
+    using <br> to preserve multi-line semantics.
+    """
+    lines = content.split("\n")
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if (
+            result
+            and result[-1].lstrip().startswith("|")
+            and not stripped.startswith("|")
+            and stripped
+            and not stripped.startswith("#")
+        ):
+            result[-1] = result[-1] + "<br>" + line
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
 async def content_process(state: SourceState) -> dict:
     ContentSettings.clear_instance()  # Force reload from DB
     content_settings = await ContentSettings.get_instance()
@@ -184,6 +209,13 @@ async def content_process(state: SourceState) -> dict:
         # 让 CPU 密集型任务在背景线程中运行，不阻塞主事件循环
         processed_state = await asyncio.to_thread(_sync_extract, content_state, state.get("source_id"))
         logger.info(f"Content extraction completed for source_id={state.get('source_id')}")
+
+        file_path = content_state.get("file_path", "")
+        if file_path and file_path.lower().endswith(('.xls', '.xlsx')):
+            processed_state.content = _sanitize_excel_table_newlines(
+                processed_state.content or ""
+            )
+
         logger.debug(f"Extracted content length: {len(processed_state.content or '')} characters")
     except Exception as e:
         logger.error(f"Error during content extraction for source_id={state.get('source_id')}: {e}")

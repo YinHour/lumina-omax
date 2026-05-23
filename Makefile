@@ -153,7 +153,7 @@ worker-stop:
 	pkill -f "surreal-commands-worker" || true
 
 worker-restart: worker-stop
-	@sleep 2
+	@python -c "import time; time.sleep(2)"
 	@$(MAKE) worker-start
 
 # === Service Management ===
@@ -161,13 +161,13 @@ start-all:
 	@echo "🚀 Starting Open Notebook (Database + API + Worker + Frontend)..."
 	@echo "📊 Starting SurrealDB..."
 	@docker compose -f docker-compose.yml up -d surrealdb
-	@sleep 3
+	@python -c "import time; time.sleep(3)"
 	@echo "🔧 Starting API backend..."
 	@uv run run_api.py &
-	@sleep 3
+	@python -c "import time; time.sleep(3)"
 	@echo "⚙️ Starting background worker..."
 	@uv run --env-file .env surreal-commands-worker --import-modules commands &
-	@sleep 2
+	@python -c "import time; time.sleep(2)"
 	@echo "🌐 Starting Next.js frontend..."
 	@echo "✅ All services started!"
 	@echo "📱 Frontend: http://localhost:3000"
