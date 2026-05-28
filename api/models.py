@@ -296,6 +296,7 @@ class SettingsUpdate(BaseModel):
 class AssetModel(BaseModel):
     file_path: Optional[str] = None
     url: Optional[str] = None
+    original_filename: Optional[str] = None
 
 
 class SourceCreate(BaseModel):

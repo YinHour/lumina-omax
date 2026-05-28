@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown, Loader2 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -467,9 +468,16 @@ export default function SourcesPage() {
                   </td>
                   <td className="h-12 px-4">
                     <div className="flex flex-col overflow-hidden">
-                      <span className="font-medium truncate">
-                        {source.title || tUntitledSource}
-                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="font-medium truncate">
+                            {source.title || tUntitledSource}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="start" className="max-w-md break-all">
+                          {source.title || tUntitledSource}
+                        </TooltipContent>
+                      </Tooltip>
                       {source.asset?.url && (
                         <span className="text-xs text-muted-foreground truncate">
                           {source.asset.url}

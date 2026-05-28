@@ -106,4 +106,12 @@ export const sourcesApi = {
       responseType: 'blob',
     })
   },
+
+  checkDuplicates: async (filenames: string[]): Promise<string[]> => {
+    const response = await apiClient.post<{ duplicates: string[] }>(
+      '/sources/check-duplicates',
+      filenames
+    )
+    return response.data.duplicates
+  },
 }

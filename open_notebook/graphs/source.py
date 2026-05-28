@@ -278,7 +278,11 @@ async def save_source(state: SourceState) -> dict:
         raise ValueError(f"Source with ID {state['source_id']} not found")
 
     # Update the source with processed content
-    source.asset = Asset(url=content_state.url, file_path=content_state.file_path)
+    source.asset = Asset(
+        url=content_state.url,
+        file_path=content_state.file_path,
+        original_filename=getattr(content_state, "original_filename", None),
+    )
     source.full_text = content_state.content
 
     # Preserve user-set title; only overwrite placeholder or empty titles
