@@ -1074,6 +1074,7 @@ async def check_duplicate_filenames(filenames: List[str]):
         return {"duplicates": duplicates or []}
     except Exception as e:
         logger.error(f"Error checking duplicate filenames: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error checking duplicates")
         raise HTTPException(status_code=500, detail=f"Error checking duplicates: {str(e)}")
 
 
