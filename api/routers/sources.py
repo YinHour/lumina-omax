@@ -1057,17 +1057,21 @@ async def retry_source_processing(source_id: str):
 async def check_duplicate_filenames(filenames: List[str]):
     """Check which filenames already exist as source original_filename."""
     try:
-        # Query all source assets with original_filename matching the provided list
-        duplicates = []
-        for filename in filenames:
-            result = await repo_query(
-                "SELECT VALUE count FROM (SELECT count() FROM source WHERE asset.original_filename = $filename AND asset.original_filename IS NOT NULL GROUP ALL)",
-                {"filename": filename},
-            )
-            count = result[0] if result else 0
-            if count > 0:
-                duplicates.append(filename)
-        return {"duplicates": duplicates}
+        if not filenames:
+            return {"duplicates": []}
+
+        # Query all source assets with original_filename matching any of the provided filenames
+        duplicates = await repo_query(
+            """
+            SELECT VALUE DISTINCT asset.original_filename
+            FROM source
+            WHERE asset.original_filename IS NOT NULL
+              AND asset.original_filename IN $filenames
+            """,
+            {"filenames": filenames},
+        )
+
+        return {"duplicates": duplicates or []}
     except Exception as e:
         logger.error(f"Error checking duplicate filenames: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error checking duplicates: {str(e)}")
