@@ -5,6 +5,7 @@ import { SourceListResponse } from '@/lib/types/api'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -260,12 +261,16 @@ export function SourceCard({
 
             {/* Title */}
             <div className={cn('mb-1.5', !isCompleted && 'mb-1')}>
-              <h4
-                className="text-sm font-medium leading-tight line-clamp-2 break-all"
-                title={title}
-              >
-                {title}
-              </h4>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <h4 className="text-sm font-medium leading-tight line-clamp-2 break-all">
+                    {title}
+                  </h4>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="start" className="max-w-md break-all">
+                  {title}
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Processing message for active statuses */}

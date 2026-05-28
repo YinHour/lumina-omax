@@ -255,6 +255,7 @@ class Notebook(ObjectModel):
 class Asset(BaseModel):
     file_path: Optional[str] = None
     url: Optional[str] = None
+    original_filename: Optional[str] = None
 
 
 class SourceEmbedding(ObjectModel):

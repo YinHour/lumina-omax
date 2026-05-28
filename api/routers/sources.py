@@ -1,6 +1,7 @@
 import asyncio
 import os
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -380,7 +381,14 @@ async def create_source(
                 )
             content_state["file_path"] = final_file_path
             content_state["delete_source"] = source_data.delete_source
-            content_state["title"] = source_data.title or (upload_file.filename if upload_file else None)
+            original_filename = upload_file.filename if upload_file else None
+            content_state["original_filename"] = original_filename
+            default_title = source_data.title
+            if not default_title and original_filename:
+                ts = datetime.now().strftime("%y%m%d%H%M%S")
+                stem, ext = os.path.splitext(original_filename)
+                default_title = f"{stem}_{ts}{ext}"
+            content_state["title"] = default_title or (upload_file.filename if upload_file else None)
         elif source_data.type == "text":
             if not source_data.content:
                 raise HTTPException(
@@ -435,7 +443,11 @@ async def create_source(
             if source_data.type == "link":
                 source_asset = Asset(url=source_data.url)
             elif source_data.type == "upload":
-                source_asset = Asset(file_path=file_path or source_data.file_path)
+                original_filename = upload_file.filename if upload_file else None
+                source_asset = Asset(
+                    file_path=file_path or source_data.file_path,
+                    original_filename=original_filename,
+                )
             else:
                 source_asset = None
 
@@ -443,8 +455,14 @@ async def create_source(
             if source_data.notebooks and len(source_data.notebooks) > 0:
                 origin_notebook_id = source_data.notebooks[0]
 
+            default_title = source_data.title
+            if not default_title and upload_file and upload_file.filename:
+                ts = datetime.now().strftime("%y%m%d%H%M%S")
+                stem, ext = os.path.splitext(upload_file.filename)
+                default_title = f"{stem}_{ts}{ext}"
+
             source = Source(
-                title=source_data.title or (upload_file.filename if upload_file else "Processing..."),
+                title=default_title or (upload_file.filename if upload_file else "Processing..."),
                 topics=[],
                 asset=source_asset,
                 origin_notebook_id=origin_notebook_id,
@@ -679,8 +697,9 @@ async def _resolve_source_file(source_id: str) -> tuple[str, str]:
     if not os.path.exists(resolved_path):
         raise HTTPException(status_code=404, detail="File not found on server")
 
-    filename = os.path.basename(resolved_path)
-    return resolved_path, filename
+    # Use original_filename if available, otherwise fall back to basename
+    download_name = source.asset.original_filename or os.path.basename(resolved_path)
+    return resolved_path, download_name
 
 
 def _is_source_file_available(source: Source) -> Optional[bool]:
@@ -1032,6 +1051,26 @@ async def retry_source_processing(source_id: str):
         raise HTTPException(
             status_code=500, detail=f"Error retrying source processing: {str(e)}"
         )
+
+
+@router.post("/sources/check-duplicates")
+async def check_duplicate_filenames(filenames: List[str]):
+    """Check which filenames already exist as source original_filename."""
+    try:
+        # Query all source assets with original_filename matching the provided list
+        duplicates = []
+        for filename in filenames:
+            result = await repo_query(
+                "SELECT VALUE count FROM (SELECT count() FROM source WHERE asset.original_filename = $filename AND asset.original_filename IS NOT NULL GROUP ALL)",
+                {"filename": filename},
+            )
+            count = result[0] if result else 0
+            if count > 0:
+                duplicates.append(filename)
+        return {"duplicates": duplicates}
+    except Exception as e:
+        logger.error(f"Error checking duplicate filenames: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking duplicates: {str(e)}")
 
 
 @router.delete("/sources/{source_id}")

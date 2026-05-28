@@ -456,38 +456,22 @@ export function AddSourceDialog({
     // Duplicate check for file uploads
     if (data.type === 'upload' && !skipDuplicateCheck) {
       const duplicates: string[] = []
-      
-      const checkDuplicate = async (filename: string) => {
-        const lastDotIndex = filename.lastIndexOf('.')
-        const stem = lastDotIndex !== -1 ? filename.substring(0, lastDotIndex) : filename
-        const suffix = lastDotIndex !== -1 ? filename.substring(lastDotIndex) : ''
 
-        try {
-          const results = await sourcesApi.list({ title_contains: stem, limit: 50 })
-          if (!results || results.length === 0) return false
-
-          const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          const regex = new RegExp(`^${escapeRegExp(stem)}( \\(\\d+\\))?${escapeRegExp(suffix)}$`)
-
-          return results.some(source => source.title && regex.test(source.title))
-        } catch (e) {
-          console.error('Failed to check duplicate for', filename, e)
-          return false
+      try {
+        // Collect all filenames to check
+        let filenames: string[] = []
+        if (isBatchMode && parsedFiles.length > 0) {
+          filenames = parsedFiles.map(f => f.name)
+        } else if (data.file) {
+          const file = data.file instanceof FileList ? data.file[0] : data.file
+          if (file) filenames = [file.name]
         }
-      }
 
-      if (isBatchMode && parsedFiles.length > 0) {
-        // Check each file against the backend
-        for (const file of parsedFiles) {
-          if (await checkDuplicate(file.name)) {
-            duplicates.push(file.name)
-          }
+        if (filenames.length > 0) {
+          duplicates.push(...(await sourcesApi.checkDuplicates(filenames)))
         }
-      } else if (data.file) {
-        const file = data.file instanceof FileList ? data.file[0] : data.file
-        if (file && await checkDuplicate(file.name)) {
-          duplicates.push(file.name)
-        }
+      } catch (e) {
+        console.error('Failed to check duplicates:', e)
       }
 
       if (duplicates.length > 0) {
