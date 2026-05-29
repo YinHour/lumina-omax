@@ -252,6 +252,72 @@ async def content_process(state: SourceState) -> dict:
         logger.error(f"Error during content extraction for source_id={state.get('source_id')}: {e}")
         raise
 
+    # Describe extracted images with vision model
+    try:
+        source_id = state.get("source_id")
+        if source_id:
+            safe_source_id = str(source_id).split(':')[-1]
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            images_dir = os.path.join(project_root, "data", "uploads", "images", safe_source_id)
+
+            if os.path.isdir(images_dir):
+                image_files = sorted([
+                    f for f in os.listdir(images_dir)
+                    if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))
+                ])
+                if image_files:
+                    from open_notebook.ai.models import model_manager
+                    from esperanto import LanguageModel
+
+                    vision_model = await model_manager.get_vision_model()
+                    if vision_model and isinstance(vision_model, LanguageModel):
+                        import base64
+                        from langchain_core.messages import HumanMessage
+
+                        vision_lc = vision_model.to_langchain()
+                        descriptions = []
+                        mime_map = {'.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp', '.bmp': 'bmp'}
+
+                        for idx, img_file in enumerate(image_files):
+                            img_path = os.path.join(images_dir, img_file)
+                            try:
+                                with open(img_path, "rb") as f:
+                                    img_data = base64.b64encode(f.read()).decode("utf-8")
+                                ext = os.path.splitext(img_file)[1].lower()
+                                mime_type = mime_map.get(ext, 'jpeg')
+
+                                msg = HumanMessage(content=[
+                                    {
+                                        "type": "text",
+                                        "text": (
+                                            "Please describe this figure from a document concisely. "
+                                            "Include: 1) What type of visual it is (chart, diagram, photo, screenshot), "
+                                            "2) The key information or data presented, "
+                                            "3) Any text labels or captions visible."
+                                        )
+                                    },
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/{mime_type};base64,{img_data}"}
+                                    }
+                                ])
+
+                                response = await vision_lc.ainvoke([msg])
+                                desc = response.content if hasattr(response, 'content') else str(response)
+                                descriptions.append(f"### Figure: {img_file}\n{desc}\n")
+                                logger.info(f"Described image {idx+1}/{len(image_files)}: {img_file}")
+                            except Exception as img_e:
+                                logger.warning(f"Failed to describe image {img_file}: {img_e}")
+
+                        if descriptions:
+                            desc_section = "\n\n## Figure Descriptions\n\n" + "\n".join(descriptions)
+                            processed_state.content = (processed_state.content or "") + desc_section
+                            logger.info(f"Added {len(descriptions)} figure descriptions to source content")
+                    else:
+                        logger.debug("No vision model configured. Skipping image description.")
+    except Exception as e:
+        logger.warning(f"Image description failed (non-fatal): {e}")
+
     if not processed_state.content or not processed_state.content.strip():
         url = processed_state.url or ""
         if url and ("youtube.com" in url or "youtu.be" in url):
