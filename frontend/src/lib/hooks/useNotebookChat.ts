@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/hooks/use-toast'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
@@ -31,6 +31,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const [isSending, setIsSending] = useState(false)
   const [tokenCount, setTokenCount] = useState<number>(0)
   const [charCount, setCharCount] = useState<number>(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
   // Pending model override for when user changes model before a session exists
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
@@ -228,10 +229,15 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setMessages(prev => [...prev, userMessage])
     setIsSending(true)
 
+    let abortController: AbortController | null = null
     try {
       // Build context
       const context = await buildContext()
       
+      // Create abort controller for cancellation
+      abortController = new AbortController()
+      abortControllerRef.current = abortController
+
       // Start streaming request
       const response = await chatApi.sendMessage({
         session_id: sessionId,
@@ -251,6 +257,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       let buffer = ''
 
       while (true) {
+        if (!abortController || abortController.signal.aborted) break
+
         const { done, value } = await reader.read()
         if (done) {
           // Process any remaining data in buffer
@@ -339,6 +347,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
     } finally {
       setIsSending(false)
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null
+      }
     }
   }, [
     notebookId,
@@ -350,6 +361,14 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     queryClient,
     t
   ])
+
+  const cancelStreaming = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      setIsSending(false)
+    }
+  }, [])
 
   // Switch session
   const switchSession = useCallback((sessionId: string) => {
@@ -421,6 +440,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     deleteSession,
     switchSession,
     sendMessage,
+    cancelStreaming,
     setModelOverride,
     refetchSessions
   }

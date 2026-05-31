@@ -101,7 +101,7 @@ async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
         payload = state
         
         # Perform vector search
-        vector_results = await vector_search(state["term"], 10, True, True)
+        vector_results = await vector_search(state["term"], 30, True, True)
         
         # Check if Knowledge Graph is enabled
         enable_kg = os.environ.get("ENABLE_KNOWLEDGE_GRAPH", "false").lower() == "true"

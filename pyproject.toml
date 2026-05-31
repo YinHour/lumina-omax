@@ -105,3 +105,8 @@ ignore = [
 [[tool.mypy.overrides]]
 module = "pages.*"
 ignore_errors = true
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: integration tests requiring running API, SurrealDB, and AI model configuration",
+]

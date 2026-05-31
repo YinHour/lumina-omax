@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Settings, MessageCircleQuestion } from 'lucide-react'
+import { Search, ChevronDown, AlertCircle, Settings, MessageCircleQuestion, Square } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
@@ -370,20 +370,24 @@ export default function SearchPage() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                      <Button
-                        onClick={handleAsk}
-                        disabled={ask.isStreaming || !askQuestion.trim()}
-                        className="w-full sm:flex-1"
-                      >
-                        {ask.isStreaming ? (
-                          <>
-                            <LoadingSpinner size="sm" className="mr-2" />
-                            {t.searchPage.processing}
-                          </>
-                        ) : (
-                          t.searchPage.ask
-                        )}
-                      </Button>
+                      {ask.isStreaming ? (
+                        <Button
+                          onClick={() => ask.stopStreaming()}
+                          variant="destructive"
+                          className="w-full sm:flex-1"
+                        >
+                          <Square className="h-4 w-4 mr-2" />
+                          {t.chat.stopGenerating}
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={handleAsk}
+                          disabled={!askQuestion.trim()}
+                          className="w-full sm:flex-1"
+                        >
+                          {t.searchPage.ask}
+                        </Button>
+                      )}
                       
                       {(ask.finalAnswer || ask.answers.length > 0 || ask.strategy || askQuestion.length > 0) && (
                         <Button

@@ -28,6 +28,7 @@ function createChatMock() {
     charCount: 0,
     sessions: [],
     currentSessionId: null,
+    cancelStreaming: vi.fn(),
   } as unknown as ReturnType<typeof useNotebookChat>
 }
 

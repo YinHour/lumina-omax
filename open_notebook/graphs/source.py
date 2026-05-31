@@ -247,6 +247,64 @@ async def content_process(state: SourceState) -> dict:
                 processed_state.content or ""
             )
 
+            # Extract embedded images from Excel (not covered by MinerU path)
+            try:
+                import shutil
+                import tempfile
+                import pymupdf
+
+                source_id = state.get("source_id")
+                if source_id and file_path:
+                    safe_source_id = str(source_id).split(':')[-1]
+                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    images_dir = os.path.join(project_root, "data", "uploads", "images", safe_source_id)
+
+                    # Only extract if images dir doesn't have content yet
+                    if not os.path.isdir(images_dir) or not os.listdir(images_dir):
+                        with tempfile.TemporaryDirectory() as tmp_dir:
+                            from open_notebook.utils.office_converter import get_libreoffice_command
+                            libreoffice_cmd = get_libreoffice_command()
+                            subprocess.run([
+                                libreoffice_cmd, "--headless", "--invisible", "--nodefault",
+                                "--convert-to", "pdf",
+                                "--outdir", tmp_dir,
+                                file_path
+                            ], check=True, capture_output=True)
+
+                            excel_basename = os.path.splitext(os.path.basename(file_path))[0]
+                            pdf_path = os.path.join(tmp_dir, f"{excel_basename}.pdf")
+
+                            if os.path.exists(pdf_path):
+                                os.makedirs(images_dir, exist_ok=True)
+                                pdf_doc = pymupdf.open(pdf_path)
+                                img_idx = 0
+                                for page_num in range(len(pdf_doc)):
+                                    page = pdf_doc[page_num]
+                                    for img_info in page.get_images(full=True):
+                                        xref = img_info[0]
+                                        base_image = pdf_doc.extract_image(xref)
+                                        if base_image and base_image.get("image"):
+                                            ext = base_image.get("ext", "png")
+                                            img_name = f"excel_img_p{page_num+1}_{img_idx}.{ext}"
+                                            img_path = os.path.join(images_dir, img_name)
+                                            with open(img_path, "wb") as f_img:
+                                                f_img.write(base_image["image"])
+                                            img_idx += 1
+                                pdf_doc.close()
+                                if img_idx > 0:
+                                    logger.info(
+                                        f"Extracted {img_idx} images from Excel via LibreOffice PDF "
+                                        f"for source_id={source_id}"
+                                    )
+                                else:
+                                    logger.debug(f"No embedded images found in Excel for source_id={source_id}")
+                            else:
+                                logger.warning(
+                                    f"LibreOffice did not produce PDF for {file_path}"
+                                )
+            except Exception as img_e:
+                logger.warning(f"Excel image extraction failed (non-fatal): {img_e}")
+
         logger.debug(f"Extracted content length: {len(processed_state.content or '')} characters")
     except Exception as e:
         logger.error(f"Error during content extraction for source_id={state.get('source_id')}: {e}")
@@ -344,10 +402,12 @@ async def save_source(state: SourceState) -> dict:
         raise ValueError(f"Source with ID {state['source_id']} not found")
 
     # Update the source with processed content
+    raw_original_filename = getattr(content_state, "original_filename", None)
+    original_filename = raw_original_filename if isinstance(raw_original_filename, str) else None
     source.asset = Asset(
         url=content_state.url,
         file_path=content_state.file_path,
-        original_filename=getattr(content_state, "original_filename", None),
+        original_filename=original_filename,
     )
     source.full_text = content_state.content
 

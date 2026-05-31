@@ -453,6 +453,7 @@ export const enUS = {
     noDescription: "No description",
     startByCreating: "Start by creating your first notebook to organize your research.",
     messagesCount: "{count} messages",
+    stopGenerating: "Stop Generating",
     sessionCreated: "Chat session created",
     sessionUpdated: "Session updated",
     sessionDeleted: "Session deleted",
