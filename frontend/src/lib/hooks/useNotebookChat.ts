@@ -257,7 +257,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       let buffer = ''
 
       while (true) {
-        if (abortController.signal.aborted) break
+        if (!abortController || abortController.signal.aborted) break
 
         const { done, value } = await reader.read()
         if (done) {

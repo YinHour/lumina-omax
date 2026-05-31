@@ -1077,7 +1077,7 @@ async def check_duplicate_filenames(filenames: List[str]):
         return {"duplicates": duplicate_list}
     except Exception as e:
         logger.error(f"Error checking duplicate filenames: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error checking duplicates: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error checking duplicates")
 
 
 @router.delete("/sources/{source_id}")
