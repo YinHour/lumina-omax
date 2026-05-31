@@ -257,6 +257,57 @@
 
 ---
 
+## 11. 用户试用反馈修复 + CI/Review（新增 2026-05-29 ~ 2026-05-30）
+
+基于《Lumina™ AI 科研助手试用反馈 20260527》13 项反馈中 P0 优先级的修复，PR #10。
+
+### Chat 停止生成按钮（#1）
+- `frontend/src/components/source/ChatPanel.tsx:420-428` — isStreaming 时 Send 变为红色 Stop 按钮（Square 图标），调用 `onCancelStreaming`
+- `frontend/src/components/source/ChatPanel.tsx:327` — 拆出 floating spinner 只在无 `onCancelStreaming` 时显示
+- `frontend/src/lib/hooks/useNotebookChat.ts:34,244-246,259-260` — 新增 `AbortController` ref，流式循环检测 `signal.aborted`，新增 `cancelStreaming()` 回调
+- `frontend/src/lib/hooks/use-ask.ts:131-137` — 新增 `stopStreaming()`，仅 abort 不丢已生成内容
+- `frontend/src/app/(dashboard)/sources/[id]/page.tsx:74` — 传 `chat.cancelStreaming` 给 ChatPanel
+- `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx:113` — 传 `chat.cancelStreaming` 给 ChatPanel
+- `frontend/src/app/(dashboard)/search/page.tsx:373-381` — Ask 流式中渲染 Stop 按钮，调用 `ask.stopStreaming()`
+- `frontend/src/lib/locales/zh-CN/index.ts` `en-US/index.ts` — 新增 `chat.stopGenerating`
+- `frontend/src/components/source/ChatPanel.tsx` — Send/Stop 按钮补 `aria-label` 可访问性
+
+### Ask 准确率与容错增强（#11）
+- `open_notebook/graphs/ask.py:104` — `vector_search` 每搜索词结果数 10 → **30**，解决 160+ 来源只返回 10 的问题
+- `open_notebook/utils/error_classifier.py:69-80` — 新增 3 条分类规则：timeout / unsupported passthrough / bad request
+- `open_notebook/utils/error_classifier.py:46-50` — 超时规则前置于通用网络规则，避免 `"timed out"` 被误判为 `NetworkError`
+- `open_notebook/utils/error_classifier.py:108` — 未分类错误前缀优化，截断长度 200→300
+
+### Excel 内嵌图片提取（#13）
+- `open_notebook/graphs/source.py:250-303` — Excel 处理管道新增图片提取：LibreOffice headless 转 PDF → PyMuPDF 逐页扫描 → 存入 `data/uploads/images/{source_id}/` 供 Vision LLM
+- 文本仍走 openpyxl 保大宽表结构，图片单独提取，互不干扰
+- 全路径异常容灾（非致命）
+
+### save_source 类型安全与 check-duplicates 修复
+- `open_notebook/graphs/source.py:405-411` — `original_filename` 增加 `isinstance(str)` 校验，修复 MagicMock 污染
+- `api/routers/sources.py:1064-1074` — 修复 `SELECT VALUE DISTINCT` 语法错误（SurrealQL 不接受），改为 `SELECT VALUE` + Python `set()` 去重
+- `api/routers/sources.py:1077` — 清理双重 `raise` 死代码，错误消息不泄漏 DB 内部细节
+
+### 测试体系扩充
+- `tests/test_error_classifier.py` — 新增 25 条（截断/回归/新增/未分类/边界全覆盖）
+- `tests/test_sanitize_excel.py` — 新增 8 条（正常表/多行合并/标题隔离/分隔复位/空输入）
+- `frontend/src/components/source/ChatPanel.test.tsx` — 新增 5 条（Stop 渲染/点击回调/向后兼容/禁用状态）
+- `tests/test_integration_e2e.py` — 新增 32 条 L2/L4/L5 集成/E2E 测试（Hermes Agent 生成，标记 `@pytest.mark.e2e`，手动运行）
+
+### CI 与 E2E 隔离
+- `.github/workflows/test.yml:53` — CI 排除 e2e：`pytest -m "not e2e"`
+- `pyproject.toml` — 注册 `e2e` marker
+- `tests/test_integration_e2e.py:24` — `pytestmark = pytest.mark.e2e`
+- E2E 需 AI 模型配置 + 测试数据文件，不适合 CI
+
+### PR Review（Sourcery）修复
+- `api/routers/sources.py:1080` — 错误消息回归通用提示，完整错误仅写 log
+- `frontend/src/lib/hooks/useNotebookChat.ts:262` — `abortController` null guard 补全
+
+**决策**：P0 阻断性问题优先修复，E2E 与单元测试分离不阻塞 CI，PR Review 反馈及时收敛。
+
+---
+
 ## 文件索引（关键变更文件）
 
 | 文件 | 涉及主题 |
@@ -281,49 +332,11 @@
 | `migrations/` | #15 BM25、#16 password、#17 origin_notebook、#18 中文模板 |
 | `tests/test_error_classifier.py` | 新增：错误分类规则测试 |
 | `tests/test_sanitize_excel.py` | 新增：Excel 行合并修复测试 |
+| `tests/test_integration_e2e.py` | 新增：L2/L4/L5 集成/E2E 测试（手动运行） |
 | `frontend/src/components/source/ChatPanel.test.tsx` | 新增：Stop 按钮渲染测试 |
+| `.github/workflows/test.yml` | CI 排除 e2e 标记 |
+| `pyproject.toml` | 注册 e2e marker |
 
 ---
 
-## 11. 用户试用反馈修复（新增 2026-05-29）
-
-基于《Lumina™ AI 科研助手试用反馈 20260527》13 项反馈中 P0 优先级的修复。
-
-### Chat 停止生成按钮（#1）
-- `frontend/src/components/source/ChatPanel.tsx:420-428` — isStreaming 时 Send 变为红色 Stop 按钮（Square 图标），调用 `onCancelStreaming`
-- `frontend/src/components/source/ChatPanel.tsx:327` — 拆出 floating spinner 只在无 `onCancelStreaming` 时显示
-- `frontend/src/lib/hooks/useNotebookChat.ts:34,244-246,259-260` — 新增 `AbortController` ref，流式循环检测 `signal.aborted`，新增 `cancelStreaming()` 回调
-- `frontend/src/lib/hooks/use-ask.ts:131-137` — 新增 `stopStreaming()`，仅 abort 不丢已生成内容
-- `frontend/src/app/(dashboard)/sources/[id]/page.tsx:74` — 传 `chat.cancelStreaming` 给 ChatPanel
-- `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx:113` — 传 `chat.cancelStreaming` 给 ChatPanel
-- `frontend/src/app/(dashboard)/search/page.tsx:373-381` — Ask 流式中渲染 Stop 按钮，调用 `ask.stopStreaming()`
-- `frontend/src/lib/locales/zh-CN/index.ts` `en-US/index.ts` — 新增 `chat.stopGenerating`
-- `frontend/src/components/source/ChatPanel.tsx` — Send/Stop 按钮补 `aria-label` 可访问性
-
-### Ask 准确率与容错增强（#11）
-- `open_notebook/graphs/ask.py:104` — `vector_search` 每搜索词结果数 10 → **30**，解决 160+ 来源只返回 10 的问题
-- `open_notebook/utils/error_classifier.py:69-80` — 新增 3 条分类规则：
-  - `"timed out waiting" / "request timed out after" / "operation timed out"` → `ExternalServiceError`（AI 提供方超时）
-  - `"unsupported" / "not supported" / "invalid request" / "bad request"` → `ExternalServiceError`（透传原消息）
-- `open_notebook/utils/error_classifier.py:46-50` — 超时规则前置于通用网络规则，避免 `"timed out"` 被误判为 `NetworkError`
-- `open_notebook/utils/error_classifier.py:108` — 未分类错误前缀从 `"AI service error:"` 改为 `"AI provider returned an unexpected error:"`，截断长度从 200→300
-
-### Excel 内嵌图片提取（#13）
-- `open_notebook/graphs/source.py:250-303` — Excel (.xls/.xlsx) 处理管道新增图片提取链路：
-  1. LibreOffice headless 转 PDF（仅用于图片、文本仍走 openpyxl）
-  2. PyMuPDF 逐页扫描嵌入图片
-  3. 存入 `data/uploads/images/{source_id}/` 供 Vision LLM 描述
-- 已有图片目录跳过、LibreOffice 失败/PDF 未生成全路径异常容灾
-- `open_notebook/graphs/source.py:405-411` — `save_source` 中 `original_filename` 增加 `isinstance(str)` 类型清洗，修复 MagicMock 属性污染导致 CI 测试失败
-
-### 测试体系扩充
-- `tests/test_error_classifier.py` — 新增 25 条测试（`_truncate` 4 条、回归规则 8 条、新增规则 6 条、未分类 4 条、边界 3 条）
-- `tests/test_sanitize_excel.py` — 新增 8 条 `_sanitize_excel_table_newlines` 测试（正常/多行合并/标题隔离/分隔复位/空输入等）
-- `frontend/src/components/source/ChatPanel.test.tsx` — 新增 5 条 Stop 按钮渲染测试
-- `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.test.tsx` — mock 补充 `cancelStreaming`
-
-**决策**：P0 级反馈优先修复阻断性问题（停止按钮、答案准确性、图片不可见），同时补充测试防止回归。
-
----
-
-> 最后更新：2026-05-29 | 基于分支 `bugfix/user_feedback_0529`、`enhancement_0526_feedback`、`feat_picture_parse_0528` 及之前所有已合入 main 的变更。
+> 最后更新：2026-05-30 | 基于分支 `bugfix/user_feedback_0529`（已合入 main，PR #10）。前期变更基于 `enhancement_0526_feedback`、`feat_picture_parse_0528`。
