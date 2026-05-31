@@ -9,7 +9,11 @@ Lumina-Omax 综合集成测试 & E2E 功能验证
 前置条件:
   - SurrealDB 运行在 ws://127.0.0.1:8000/rpc
   - API 运行在 http://localhost:5055
+  - AI 模型已配置（API key、模型注册）
   - 测试数据: E:/tmp/lumexar/upload还原后用于测试/
+
+注意: 本文件中的测试标记为 @pytest.mark.e2e，
+CI 脚本已排除此标记，仅在本地有完整环境时手动运行。
 """
 
 import asyncio
@@ -20,6 +24,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+
+pytestmark = pytest.mark.e2e
 
 # ============================================================================
 # 配置

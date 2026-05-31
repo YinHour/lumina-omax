@@ -50,7 +50,7 @@ jobs:
           exit 1
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -v -m "not e2e"
 
   frontend:
     name: Frontend Tests
