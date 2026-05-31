@@ -42,9 +42,16 @@ _CLASSIFICATION_RULES: list[tuple[list[str], type[OpenNotebookError], str | None
         ConfigurationError,
         None,
     ),
+    # Timeout errors (must precede generic network rule — "timed out waiting" is
+    # more specific than "timed out" in the network category)
+    (
+        ["timed out waiting", "request timed out after", "operation timed out"],
+        ExternalServiceError,
+        "The AI provider took too long to respond. Please try again or use a smaller content selection.",
+    ),
     # Network errors
     (
-        ["connecterror", "timeoutexception", "connection refused", "connection error", "timed out", "timeout"],
+        ["connecterror", "connection refused", "connection error", "timed out", "timeout"],
         NetworkError,
         "Could not connect to the AI provider. Please check your network connection and provider URL.",
     ),
@@ -65,6 +72,18 @@ _CLASSIFICATION_RULES: list[tuple[list[str], type[OpenNotebookError], str | None
         ["500", "502", "503", "service unavailable", "overloaded", "internal server error"],
         ExternalServiceError,
         "The AI provider is temporarily unavailable. Please try again in a few minutes.",
+    ),
+    # Timeout errors (separate from network timeouts - these are request timeouts)
+    (
+        ["timed out waiting", "request timed out after", "operation timed out"],
+        ExternalServiceError,
+        "The AI provider took too long to respond. Please try again or use a smaller content selection.",
+    ),
+    # Generic API errors that indicate the request was rejected by the provider
+    (
+        ["unsupported", "not supported", "invalid request", "bad request", "400"],
+        ExternalServiceError,
+        None,  # Pass through the original message for unsupported features
     ),
 ]
 
@@ -93,7 +112,7 @@ def classify_error(exception: BaseException) -> tuple[type[OpenNotebookError], s
     logger.warning(
         f"Unclassified LLM error ({type(exception).__name__}): {exception}"
     )
-    return ExternalServiceError, f"AI service error: {_truncate(str(exception))}"
+    return ExternalServiceError, f"AI provider returned an unexpected error: {_truncate(str(exception), 300)}"
 
 
 def _truncate(text: str, max_length: int = 200) -> str:

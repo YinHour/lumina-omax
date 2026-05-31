@@ -71,6 +71,7 @@ export default function SourceDetailPage({ params }: { params: Promise<{ id: str
             onUpdateSession={(sessionId, title) => chat.updateSession(sessionId, { title })}
             onDeleteSession={chat.deleteSession}
             loadingSessions={chat.loadingSessions}
+            onCancelStreaming={chat.cancelStreaming}
           />
         </div>
       </div>

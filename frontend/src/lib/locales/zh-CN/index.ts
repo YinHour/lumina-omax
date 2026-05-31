@@ -454,6 +454,7 @@ export const zhCN = {
     noDescription: "暂无描述",
     startByCreating: "从创建您的第一个笔记本开始，组织您的研究。",
     messagesCount: "{count} 条消息",
+    stopGenerating: "停止生成",
     sessionCreated: "聊天会话已创建",
     sessionUpdated: "会话已更新",
     sessionDeleted: "会话已删除",

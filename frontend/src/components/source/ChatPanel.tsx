@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Globe } from 'lucide-react'
+import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -59,6 +59,8 @@ interface ChatPanelProps {
   notebookContextStats?: NotebookContextStats
   // Notebook ID for saving notes
   notebookId?: string
+  // Cancel streaming
+  onCancelStreaming?: () => void
 }
 
 export function ChatPanel({
@@ -78,7 +80,8 @@ export function ChatPanel({
   title,
   contextType = 'source',
   notebookContextStats,
-  notebookId
+  notebookId,
+  onCancelStreaming
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -324,7 +327,7 @@ export function ChatPanel({
                 </div>
               ))
             )}
-            {isStreaming && (
+            {isStreaming && !onCancelStreaming && (
               <div className="flex gap-3 justify-start">
                 <div className="flex-shrink-0">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -415,12 +418,15 @@ export function ChatPanel({
               rows={1}
             />
             <Button
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming}
+              onClick={isStreaming && onCancelStreaming ? onCancelStreaming : handleSend}
+              disabled={!isStreaming && !input.trim()}
               size="icon"
-              className="h-[40px] w-[40px] flex-shrink-0"
+              className={`h-[40px] w-[40px] flex-shrink-0 ${isStreaming && onCancelStreaming ? 'bg-destructive hover:bg-destructive/90' : ''}`}
+              aria-label={isStreaming && onCancelStreaming ? t.chat.stopGenerating : t.chat.sendPlaceholder}
             >
-              {isStreaming ? (
+              {isStreaming && onCancelStreaming ? (
+                <Square className="h-4 w-4" />
+              ) : isStreaming ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />

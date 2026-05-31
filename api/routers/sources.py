@@ -1063,7 +1063,7 @@ async def check_duplicate_filenames(filenames: List[str]):
         # Query all source assets with original_filename matching any of the provided filenames
         duplicates = await repo_query(
             """
-            SELECT VALUE DISTINCT asset.original_filename
+            SELECT VALUE asset.original_filename
             FROM source
             WHERE asset.original_filename IS NOT NULL
               AND asset.original_filename IN $filenames
@@ -1071,10 +1071,12 @@ async def check_duplicate_filenames(filenames: List[str]):
             {"filenames": filenames},
         )
 
-        return {"duplicates": duplicates or []}
+        # Deduplicate in Python (VALUE returns one row per match)
+        duplicate_list = list(set(duplicates)) if duplicates else []
+
+        return {"duplicates": duplicate_list}
     except Exception as e:
         logger.error(f"Error checking duplicate filenames: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error checking duplicates")
         raise HTTPException(status_code=500, detail=f"Error checking duplicates: {str(e)}")
 
 

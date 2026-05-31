@@ -279,7 +279,51 @@
 | `Makefile` | Windows sleep 兼容 |
 | `prompts/chat/system.jinja` | 领域专家 Prompt |
 | `migrations/` | #15 BM25、#16 password、#17 origin_notebook、#18 中文模板 |
+| `tests/test_error_classifier.py` | 新增：错误分类规则测试 |
+| `tests/test_sanitize_excel.py` | 新增：Excel 行合并修复测试 |
+| `frontend/src/components/source/ChatPanel.test.tsx` | 新增：Stop 按钮渲染测试 |
 
 ---
 
-> 最后更新：2026-05-29 | 基于分支 `enhancement_0526_feedback`、`feat_picture_parse_0528` 及之前所有已合入 main 的变更。
+## 11. 用户试用反馈修复（新增 2026-05-29）
+
+基于《Lumina™ AI 科研助手试用反馈 20260527》13 项反馈中 P0 优先级的修复。
+
+### Chat 停止生成按钮（#1）
+- `frontend/src/components/source/ChatPanel.tsx:420-428` — isStreaming 时 Send 变为红色 Stop 按钮（Square 图标），调用 `onCancelStreaming`
+- `frontend/src/components/source/ChatPanel.tsx:327` — 拆出 floating spinner 只在无 `onCancelStreaming` 时显示
+- `frontend/src/lib/hooks/useNotebookChat.ts:34,244-246,259-260` — 新增 `AbortController` ref，流式循环检测 `signal.aborted`，新增 `cancelStreaming()` 回调
+- `frontend/src/lib/hooks/use-ask.ts:131-137` — 新增 `stopStreaming()`，仅 abort 不丢已生成内容
+- `frontend/src/app/(dashboard)/sources/[id]/page.tsx:74` — 传 `chat.cancelStreaming` 给 ChatPanel
+- `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx:113` — 传 `chat.cancelStreaming` 给 ChatPanel
+- `frontend/src/app/(dashboard)/search/page.tsx:373-381` — Ask 流式中渲染 Stop 按钮，调用 `ask.stopStreaming()`
+- `frontend/src/lib/locales/zh-CN/index.ts` `en-US/index.ts` — 新增 `chat.stopGenerating`
+- `frontend/src/components/source/ChatPanel.tsx` — Send/Stop 按钮补 `aria-label` 可访问性
+
+### Ask 准确率与容错增强（#11）
+- `open_notebook/graphs/ask.py:104` — `vector_search` 每搜索词结果数 10 → **30**，解决 160+ 来源只返回 10 的问题
+- `open_notebook/utils/error_classifier.py:69-80` — 新增 3 条分类规则：
+  - `"timed out waiting" / "request timed out after" / "operation timed out"` → `ExternalServiceError`（AI 提供方超时）
+  - `"unsupported" / "not supported" / "invalid request" / "bad request"` → `ExternalServiceError`（透传原消息）
+- `open_notebook/utils/error_classifier.py:46-50` — 超时规则前置于通用网络规则，避免 `"timed out"` 被误判为 `NetworkError`
+- `open_notebook/utils/error_classifier.py:108` — 未分类错误前缀从 `"AI service error:"` 改为 `"AI provider returned an unexpected error:"`，截断长度从 200→300
+
+### Excel 内嵌图片提取（#13）
+- `open_notebook/graphs/source.py:250-303` — Excel (.xls/.xlsx) 处理管道新增图片提取链路：
+  1. LibreOffice headless 转 PDF（仅用于图片、文本仍走 openpyxl）
+  2. PyMuPDF 逐页扫描嵌入图片
+  3. 存入 `data/uploads/images/{source_id}/` 供 Vision LLM 描述
+- 已有图片目录跳过、LibreOffice 失败/PDF 未生成全路径异常容灾
+- `open_notebook/graphs/source.py:405-411` — `save_source` 中 `original_filename` 增加 `isinstance(str)` 类型清洗，修复 MagicMock 属性污染导致 CI 测试失败
+
+### 测试体系扩充
+- `tests/test_error_classifier.py` — 新增 25 条测试（`_truncate` 4 条、回归规则 8 条、新增规则 6 条、未分类 4 条、边界 3 条）
+- `tests/test_sanitize_excel.py` — 新增 8 条 `_sanitize_excel_table_newlines` 测试（正常/多行合并/标题隔离/分隔复位/空输入等）
+- `frontend/src/components/source/ChatPanel.test.tsx` — 新增 5 条 Stop 按钮渲染测试
+- `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.test.tsx` — mock 补充 `cancelStreaming`
+
+**决策**：P0 级反馈优先修复阻断性问题（停止按钮、答案准确性、图片不可见），同时补充测试防止回归。
+
+---
+
+> 最后更新：2026-05-29 | 基于分支 `bugfix/user_feedback_0529`、`enhancement_0526_feedback`、`feat_picture_parse_0528` 及之前所有已合入 main 的变更。

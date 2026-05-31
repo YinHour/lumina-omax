@@ -136,6 +136,13 @@ export function useAsk() {
     error: store.error,
     sendAsk,
     reset: store.clearState,
-    clearState: store.clearState
+    clearState: store.clearState,
+    stopStreaming: () => {
+      const { abortController } = useAskStore.getState()
+      if (abortController) {
+        abortController.abort()
+      }
+      useAskStore.getState().setStreaming(false)
+    }
   }
 }
