@@ -61,6 +61,7 @@ export function UserApprovalDashboard() {
     setError(null)
     try {
       const apiUrl = await getApiUrl()
+      console.log('[UserApprovalDashboard] Fetching users, apiUrl:', apiUrl, 'token present:', !!token)
       const response = await fetch(`${apiUrl}/api/auth/users`, {
         method: 'GET',
         headers: {
@@ -70,7 +71,9 @@ export function UserApprovalDashboard() {
       })
 
       if (!response.ok) {
-        throw new Error(`获取成员列表失败: ${response.status}`)
+        const body = await response.text().catch(() => '(empty)')
+        console.error(`[UserApprovalDashboard] fetchUsers failed: ${response.status}`, body)
+        throw new Error(`获取成员列表失败: ${response.status} — ${body}`)
       }
 
       const data = await response.json()
