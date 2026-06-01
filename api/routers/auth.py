@@ -58,15 +58,63 @@ def create_access_token(data: dict, expires_delta: timedelta = timedelta(days=7)
 
 
 def get_current_user_from_state(request: Request) -> dict:
-    """Dependency to get the current user injected by the middleware."""
+    """Dependency to get the current user injected by the middleware or decoded from JWT."""
     user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user
+    if user:
+        return user
+
+    # Fallback: if middleware didn't set request.state.user (e.g., due to
+    # ASGI scope/state lifecycle), decode the JWT token directly.
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        # Check master password backdoor first
+        master_pwd = get_secret_from_env("OPEN_NOTEBOOK_PASSWORD")
+        if master_pwd and token == master_pwd:
+            return {
+                "id": "user:admin",
+                "username": "admin",
+                "display_name": "System Admin",
+                "role": "admin",
+                "status": "active",
+            }
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            status_check = payload.get("status")
+            if status_check == "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="账号等待管理员审批，请联系管理员",
+                )
+            if status_check == "rejected":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="您的账号注册申请已被拒绝",
+                )
+            if status_check != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="您的账号未激活",
+                )
+            return payload
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        except jwt.PyJWTError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or malformed authentication token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 def require_admin(user: dict = Depends(get_current_user_from_state)):
