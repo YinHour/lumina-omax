@@ -9,10 +9,11 @@ import os
 import sys
 from pathlib import Path
 
-# Ensure password auth is disabled for tests BEFORE any imports
-# The PasswordAuthMiddleware skips auth when this env var is not set
-# Set to empty string instead of deleting to prevent it from being reloaded
-os.environ["OPEN_NOTEBOOK_PASSWORD"] = ""
+# Configure test authentication environment
+# The new JWT middleware always requires auth on protected routes.
+# Set a known master password so tests can use the backdoor Bearer token.
+os.environ["OPEN_NOTEBOOK_PASSWORD"] = "test-master-password"
+os.environ["AUTH_JWT_SECRET"] = "test-jwt-secret-for-testing-only"
 
 # Load environment variables from .env file
 # This must be done BEFORE any imports that depend on environment variables
