@@ -76,6 +76,23 @@ TTS_BATCH_SIZE=2
 
 Lower = slower but more stable. Higher = faster but more load on provider.
 
+### Embedding Batch Size
+
+Control how many text chunks are embedded in a single batch:
+
+```env
+# Default: 10
+EMBEDDING_BATCH_SIZE=10
+```
+
+| Value | Effect |
+|-------|--------|
+| 5 | Lower memory usage, slower processing |
+| 10 | Balanced (default) |
+| 20+ | Higher throughput, more memory |
+
+Lower values help when using local embedding models with limited resources. A small delay is inserted between batches to prevent overwhelming the embedding service.
+
 ---
 
 ## Logging & Debugging
@@ -251,6 +268,29 @@ Restrict access to your Open Notebook:
 ## Web Scraping & Content Extraction
 
 Open Notebook uses multiple services for content extraction:
+
+### Content Processing Engine
+
+Choose which engine handles document extraction:
+
+```env
+# .env or docker.env
+# Options: mineru (default), docling, simple
+CCORE_DOCUMENT_ENGINE=mineru
+```
+
+| Engine | Best For |
+|--------|----------|
+| `mineru` | Chinese PDFs, complex layouts, strong table/formula recognition (default) |
+| `docling` | English PDFs, general documents with hierarchical structure |
+| `simple` | Plain text, Markdown, fastest processing |
+
+**MinerU-specific settings:**
+```env
+MINERU_TABLE_ENABLE=true          # Enhanced table recognition
+HF_ENDPOINT=https://hf-mirror.com  # Model download mirror (China)
+MINERU_MODEL_SOURCE=modelscope     # Alternative model source
+```
 
 ### Firecrawl
 

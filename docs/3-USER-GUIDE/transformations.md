@@ -33,9 +33,9 @@ Transformations apply the same analysis to multiple sources at once. Instead of 
 
 ## Built-in Transformations
 
-Open Notebook includes ready-to-use templates:
+Lumina·Omax includes ready-to-use templates, all localized in Chinese:
 
-### Summary
+### 摘要 (Summary)
 
 ```
 What it does: Creates a 200-300 word overview
@@ -43,7 +43,7 @@ Output: Key points, main arguments, conclusions
 Best for: Quick reference, getting the gist
 ```
 
-### Key Concepts
+### 关键概念 (Key Concepts)
 
 ```
 What it does: Extracts main ideas and terminology
@@ -51,7 +51,7 @@ Output: List of concepts with explanations
 Best for: Learning new topics, building vocabulary
 ```
 
-### Methodology
+### 方法论 (Methodology)
 
 ```
 What it does: Extracts research approach
@@ -59,7 +59,7 @@ Output: How the study was conducted
 Best for: Academic papers, research review
 ```
 
-### Takeaways
+### 要点 (Takeaways)
 
 ```
 What it does: Extracts actionable insights
@@ -67,7 +67,9 @@ Output: What you should do with this information
 Best for: Business documents, practical guides
 ```
 
-### Questions
+### 问题 (Questions)
+
+> **Note**: All built-in transformation templates have been localized to Chinese. All AI processing prompts also include instructions to output in Simplified Chinese. Custom transformations you create can use any language.
 
 ```
 What it does: Generates questions the source raises

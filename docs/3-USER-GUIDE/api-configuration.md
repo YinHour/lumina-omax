@@ -243,7 +243,28 @@ Google Cloud's enterprise AI platform:
 
 ---
 
-## Migrating from Environment Variables
+## Vision Model Configuration
+
+Lumina·Omax can automatically describe images embedded in documents (PDFs, PowerPoint, Excel) using a Vision-capable AI model.
+
+### What the Vision Model Does
+
+1. When documents are processed, embedded images are extracted
+2. Each image is sent to the Vision Model for AI-generated description
+3. Descriptions are injected into the document's searchable text (`## Figure Descriptions`)
+4. Both the original text and image descriptions are vector-embedded for semantic search
+
+This means you can **search for content that appears only in images** — charts, diagrams, photos, and screenshots become findable alongside regular text.
+
+### Configuring the Vision Model
+
+1. Go to **Settings → API Keys**
+2. Scroll to the **Advanced** section
+3. Find **Vision Model** in the dropdown
+4. Select a vision-capable model (e.g., `gpt-4o`, `claude-3.5-sonnet`)
+5. The selected model will be used for all image description tasks
+
+A Vision Model must be configured before the image description feature is active. Without one, images in documents are not described or searchable.
 
 If you have existing API keys in environment variables (from a previous version):
 

@@ -319,17 +319,27 @@ Citations are how you verify that the AI's answer is accurate.
 
 ### Understanding Citations
 
-```
-AI Response with Citation:
-"The paper reports a 95% accuracy rate [see page 12]"
+Lumina·Omax uses an inline citation format to reference your sources:
 
-What this means:
-✓ The claim "95% accuracy rate" is from page 12
-✓ You can verify by reading page 12
-✓ If page 12 doesn't say that, the AI hallucinated
+```
+AI Response with Citations:
+"The paper reports a 95% accuracy rate [1](https://...)"
+"...as discussed in the study [2](https://...)"
+
+## 参考文献
+[1] Paper Title, Page 12
+[2] Another Paper, Section 3.2
 ```
 
-### Requesting Better Citations
+| Element | Meaning |
+|---------|---------|
+| `[1](URL)` | Inline citation link pointing to specific source |
+| `## 参考文献` | Bibliography section at the end listing all referenced sources |
+| Numbered references | Sequential order; each number links to a source |
+
+Citations appear inline as clickable links. Click any numbered reference to navigate directly to the source material.
+
+### Verifying Citations
 
 ```
 If you get a response without citations:
@@ -534,6 +544,40 @@ For deep analysis: Sonnet/Opus worth the cost
 - You want the system to auto-search
 - You want one response, not dialogue
 - You want maximum tokens spent on search
+
+---
+
+## Streaming & Stop Generation
+
+Chat responses are delivered in **real-time streaming** (SSE), showing text as it's generated — like a typewriter effect. This gives immediate feedback and allows you to:
+
+- **Read as it writes** — No waiting for the full response before seeing something
+- **Stop mid-generation** — Click the red **Stop** button (appears during streaming) to cancel if the answer is going in the wrong direction or is too long
+- **Preserve partial content** — Stopping keeps what's already generated; you don't lose the text
+
+### Stop Button
+
+```
+During streaming:
+  [■ Stop] — Click to cancel current response
+              Partial output is preserved in chat
+
+When idle:
+  [↑ Send] — Click to send your message
+```
+
+---
+
+## Web Search (Tavily Integration)
+
+Enable **Web Search** in the Chat panel to let the AI search the internet for current information:
+
+1. Toggle the **Web Search** switch in the Chat panel header
+2. When enabled, the AI can go beyond your uploaded sources and retrieve real-time web results
+3. Web search results are wrapped and cited separately from your local sources
+4. Configure a Tavily API key in **Settings → Web Search** to enable this feature
+
+Web search is ideal for questions about recent events, current data, or topics not covered in your uploaded documents.
 
 ---
 

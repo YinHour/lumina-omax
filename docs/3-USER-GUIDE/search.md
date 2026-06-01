@@ -172,26 +172,33 @@ Ask is different from simple search. It automatically searches, synthesizes, and
 
 ### How Ask Works
 
+Ask delivers answers in **real-time streaming**, showing each stage as it progresses:
+
 ```
 Stage 1: QUESTION UNDERSTANDING
   "Compare the approaches in my papers"
   → System: "This asks for comparison"
 
-Stage 2: SEARCH STRATEGY
-  → System: "I should search for each approach separately"
+Stage 2: SEARCH STRATEGY (streaming)
+  → AI thinks through the strategy in real-time
+  → You see its reasoning unfold
 
 Stage 3: PARALLEL SEARCHES
   → Search 1: "Approach in paper A"
   → Search 2: "Approach in paper B"
-  (Multiple searches happen at once)
+  (Multiple searches happen at once, using both Vector Search + Knowledge Graph)
 
-Stage 4: ANALYSIS & SYNTHESIS
+Stage 4: ANALYSIS & SYNTHESIS (streaming)
   → Per-result analysis: "Based on paper A, the approach is..."
   → Per-result analysis: "Based on paper B, the approach is..."
-  → Final synthesis: "Comparing A and B: A differs from B in..."
+  → Final answer streams token-by-token (typewriter effect)
 
-Result: Comprehensive answer, not just search results
+Result: Comprehensive answer, with thinking process and final answer rendered separately
 ```
+
+The Ask workflow combines **Vector Search** (semantic similarity) with **Knowledge Graph** (graph-based entity relationships) in parallel — a **Hybrid RAG** architecture that finds both semantically similar content and structurally related concepts from your research corpus.
+
+You can **stop Ask mid-generation** by clicking the Stop button. Already-generated content is preserved.
 
 ### When to Use Ask vs. Simple Search
 

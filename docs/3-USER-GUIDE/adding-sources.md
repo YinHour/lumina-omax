@@ -106,6 +106,52 @@ The system automatically does four things:
 
 ---
 
+## Content Processing Engines
+
+Lumina·Omax supports multiple content extraction engines, optimized for different document types:
+
+| Engine | Best For | Characteristics |
+|--------|----------|-----------------|
+| **MinerU** (default) | Chinese PDFs, complex layouts | Best for Chinese-language documents, strong table/formula recognition |
+| **Docling** | English PDFs, general documents | Strong OCR, hierarchical structure extraction |
+| **Simple** | Plain text, Markdown | Fastest, no heavy dependencies |
+
+### Engine Selection
+
+The content processing engine is configured via environment variable:
+
+```bash
+# .env or docker.env
+CCORE_DOCUMENT_ENGINE=mineru   # Default for Chinese documents
+# CCORE_DOCUMENT_ENGINE=docling  # For English-centric workloads
+```
+
+Engines can also be changed per-notebook via **Settings → Processing**.
+
+### Image Description (Vision LLM)
+
+For documents containing images (PDFs, PowerPoint, Excel), Lumina·Omax automatically:
+
+1. Extracts embedded images from the document
+2. Sends each image to the configured **Vision Model** for AI description
+3. Injects descriptions as `## Figure Descriptions` into the source text
+4. Descriptions are included in vector embeddings, making image content searchable
+
+To enable this feature, configure a Vision Model in **Settings → API Keys → Advanced**.
+
+---
+
+## File Deduplication
+
+When uploading files, the system checks for duplicates based on **original filename**:
+
+- If a file with the same name already exists in the notebook, you'll be warned
+- Duplicate check runs before upload to save processing time
+- Files are stored with UUID names for internal consistency, but the original filename is preserved for display and deduplication
+- Downloaded files retain their original filenames
+
+---
+
 ## Step-by-Step for Different Types
 
 ### PDFs
