@@ -40,6 +40,7 @@ import {
   Plus,
   Wrench,
   Command,
+  HelpCircle,
 } from 'lucide-react'
 
 const getNavigation = (t: TranslationKeys) => [
@@ -62,6 +63,7 @@ const getNavigation = (t: TranslationKeys) => [
       { name: t.navigation.models, href: '/settings/api-keys', icon: Bot },
       { name: t.navigation.transformations, href: '/transformations', icon: Shuffle },
       { name: t.navigation.settings, href: '/settings', icon: Settings },
+      { name: t.navigation.help, href: '/help', icon: HelpCircle },
       { name: t.navigation.advanced, href: '/advanced', icon: Wrench },
     ],
   },

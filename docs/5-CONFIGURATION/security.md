@@ -1,6 +1,125 @@
 # Security Configuration
 
-Protect your Open Notebook deployment with password authentication and production hardening.
+Lumina·Omax uses a **multi-user JWT-based authentication system** with admin-driven registration approval. This page covers authentication setup, user management, and production hardening.
+
+---
+
+## Authentication Overview
+
+Lumina·Omax supports two authentication paths:
+
+| Path | Purpose | Credential |
+|------|---------|------------|
+| **JWT Login** (primary) | Regular users | Username + Password → JWT token |
+| **Master Password** (backdoor) | Emergency admin access | `OPEN_NOTEBOOK_PASSWORD` env var |
+
+### User Flow
+
+```
+Register (pending) → Admin approves → User logs in → JWT issued → All API calls authenticated
+                          ↓
+                    Admin can: reject, disable, change role, reset password
+```
+
+---
+
+## Configuration
+
+### Required Environment Variables
+
+```bash
+# JWT signing secret (REQUIRED for production)
+# Falls back to OPEN_NOTEBOOK_ENCRYPTION_KEY if not set
+AUTH_JWT_SECRET=your-jwt-secret-key
+
+# Master password for emergency admin backdoor access
+OPEN_NOTEBOOK_PASSWORD=your-master-password
+```
+
+> **Warning**: In non-development environments, the system will **refuse to start** if neither `AUTH_JWT_SECRET` nor `OPEN_NOTEBOOK_ENCRYPTION_KEY` is configured. The default JWT secret is only allowed in dev/local/test modes (controlled by `OPEN_NOTEBOOK_ENV`).
+
+### JWT Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `AUTH_JWT_SECRET` | (required) | HS256 signing key for JWT tokens |
+| JWT expiry | 7 days | Hard-coded, tokens expire after 7 days |
+| Algorithm | HS256 | HMAC-SHA256 |
+
+---
+
+## User Registration & Management
+
+### Self-Registration
+
+1. Users register via the login page **Register** tab
+2. New accounts are created with **pending** status
+3. Pending users cannot log in
+
+### Admin Approval (Administrator Only)
+
+Administrators manage users from **Settings → User Approval Dashboard**:
+
+| Action | Effect |
+|--------|--------|
+| **Approve** | User status → active, can log in |
+| **Reject** | User status → rejected, cannot log in |
+| **Disable** | Active user → rejected |
+| **Change Role** | Toggle between User ↔ Admin |
+| **Reset Password** | Set new password (secure modal with confirmation) |
+
+Only users with `role: admin` can access the User Approval Dashboard.
+
+### Rate Limiting
+
+To prevent brute-force attacks:
+
+| Endpoint | Limit |
+|----------|-------|
+| `POST /api/auth/login` | 10 requests per minute per IP |
+| `POST /api/auth/register` | 5 requests per 5 minutes per IP |
+
+---
+
+## API Authentication
+
+### JWT Token (Primary)
+
+All protected endpoints require a valid JWT token:
+
+```bash
+# Login to get a token
+curl -X POST http://localhost:5055/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "secure-pass-123"}'
+
+# Response: {"access_token": "eyJ...", "token_type": "bearer", "user": {...}}
+
+# Use token for subsequent requests
+curl -H "Authorization: Bearer eyJ..." \
+  http://localhost:5055/api/notebooks
+```
+
+### Master Password Backdoor
+
+For emergency access, the master password can be used directly:
+
+```bash
+TOKEN=$OPEN_NOTEBOOK_PASSWORD
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:5055/api/notebooks
+```
+
+### Unprotected Endpoints
+
+These endpoints bypass authentication:
+
+- `/api/auth/login` — User login
+- `/api/auth/register` — Self-registration
+- `/api/auth/status` — Check if auth is enabled
+- `/api/config` — Backend configuration
+- `/health` — System health check
+- `/docs` — API documentation
 
 ---
 
@@ -63,109 +182,55 @@ environment:
 
 ---
 
-## When to Use Password Protection
+## Security Features
 
-### Use it for:
-- Public cloud deployments (PikaPods, Railway, DigitalOcean)
-- Shared network environments
-- Any deployment accessible beyond localhost
-
-### You can skip it for:
-- Local development on your machine
-- Private, isolated networks
-- Single-user local setups
+| Feature | Status |
+|---------|--------|
+| Password hashing | PBKDF2-HMAC-SHA256 (600,000 iterations) |
+| Password comparison | Constant-time (`hmac.compare_digest`) |
+| JWT signing | HS256, 7-day expiry |
+| Rate limiting | Per-IP sliding window on login/register |
+| Token cookie sync | `SameSite=Lax`, cleared on logout |
+| Server-side logout | `POST /api/auth/logout` |
+| Error messages | Generic (no internal detail leakage) |
+| Frontend route guard | Next.js middleware with cookie check |
+| Admin actions | Confirmation dialog before approve/reject/disable |
 
 ---
 
-## Quick Setup
+## How Authentication Works
 
-### Docker Deployment
+### Frontend
+
+1. User submits login form → JWT token stored in Zustand persist (localStorage)
+2. `auth-token` cookie set for server-side middleware access
+3. All API requests include `Authorization: Bearer <token>` header
+4. 401 responses trigger automatic redirect to login
+5. Logout clears token, cookie, and Zustand state; calls server logout endpoint
+
+### Backend
+
+1. `PasswordAuthMiddleware` intercepts all protected routes
+2. Checks for `Authorization: Bearer <token>` header
+3. If token matches master password → super admin access (backdoor)
+4. Otherwise → JWT decode + validate user status (pending/rejected blocked)
+5. User info stored in `request.state.user` for downstream handlers
+
+---
+
+## Docker Deployment
 
 ```yaml
-# Add to your docker-compose.yml (requires surrealdb service, see installation guide)
 services:
-  open_notebook:
-    image: lfnovo/open_notebook:v1-latest
-    pull_policy: always
+  lumina-omax:
+    image: lumina-omax:latest
     environment:
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=your-secret-encryption-key
-      - OPEN_NOTEBOOK_PASSWORD=your_secure_password
-    # ... rest of config
+      - AUTH_JWT_SECRET=your-strong-jwt-secret
+      - OPEN_NOTEBOOK_PASSWORD=your-master-backdoor-password
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=your-encryption-key
+      - OPEN_NOTEBOOK_ENV=production
+    # ...
 ```
-
-Or using environment file:
-
-```bash
-# docker.env
-OPEN_NOTEBOOK_ENCRYPTION_KEY=your-secret-encryption-key
-OPEN_NOTEBOOK_PASSWORD=your_secure_password
-```
-
-> **Important**: The encryption key is **required** for credential storage. Without it, you cannot save AI provider credentials via the Settings UI. If you change or lose the encryption key, all stored credentials become unreadable.
-
-### Development Setup
-
-```bash
-# .env
-OPEN_NOTEBOOK_PASSWORD=your_secure_password
-```
-
----
-
-## Password Requirements
-
-### Good Passwords
-
-```bash
-# Strong: 20+ characters, mixed case, numbers, symbols
-OPEN_NOTEBOOK_PASSWORD=MySecure2024!Research#Tool
-OPEN_NOTEBOOK_PASSWORD=Notebook$Dev$2024$Strong!
-
-# Generated (recommended)
-OPEN_NOTEBOOK_PASSWORD=$(openssl rand -base64 24)
-```
-
-### Bad Passwords
-
-```bash
-# DON'T use these
-OPEN_NOTEBOOK_PASSWORD=password123
-OPEN_NOTEBOOK_PASSWORD=opennotebook
-OPEN_NOTEBOOK_PASSWORD=admin
-```
-
----
-
-## How It Works
-
-### Frontend Protection
-
-1. Login form appears on first visit
-2. Password stored in browser session
-3. Session persists until browser closes
-4. Clear browser data to log out
-
-### API Protection
-
-All API endpoints require authentication:
-
-```bash
-# Authenticated request
-curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
-
-# Unauthenticated (will fail)
-curl http://localhost:5055/api/notebooks
-# Returns: {"detail": "Missing authorization header"}
-```
-
-### Unprotected Endpoints
-
-These work without authentication:
-
-- `/health` - System health check
-- `/docs` - API documentation
-- `/openapi.json` - OpenAPI spec
 
 ---
 
@@ -174,22 +239,15 @@ These work without authentication:
 ### curl
 
 ```bash
-# List notebooks
-curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
-
-# Create notebook
-curl -X POST \
-  -H "Authorization: Bearer your_password" \
+# Login
+curl -X POST http://localhost:5055/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Notebook", "description": "Research notes"}' \
-  http://localhost:5055/api/notebooks
+  -d '{"username":"alice","password":"secure123"}'
 
-# Upload file
-curl -X POST \
-  -H "Authorization: Bearer your_password" \
-  -F "file=@document.pdf" \
-  http://localhost:5055/api/sources/upload
+# Use token
+TOKEN="eyJ..."
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:5055/api/notebooks
 ```
 
 ### Python
@@ -197,45 +255,15 @@ curl -X POST \
 ```python
 import requests
 
-class OpenNotebookClient:
-    def __init__(self, base_url: str, password: str):
-        self.base_url = base_url
-        self.headers = {"Authorization": f"Bearer {password}"}
+def login(base_url: str, username: str, password: str) -> str:
+    resp = requests.post(f"{base_url}/api/auth/login", json={
+        "username": username, "password": password
+    })
+    return resp.json()["access_token"]
 
-    def get_notebooks(self):
-        response = requests.get(
-            f"{self.base_url}/api/notebooks",
-            headers=self.headers
-        )
-        return response.json()
-
-    def create_notebook(self, name: str, description: str = None):
-        response = requests.post(
-            f"{self.base_url}/api/notebooks",
-            headers=self.headers,
-            json={"name": name, "description": description}
-        )
-        return response.json()
-
-# Usage
-client = OpenNotebookClient("http://localhost:5055", "your_password")
-notebooks = client.get_notebooks()
-```
-
-### JavaScript/TypeScript
-
-```javascript
-const API_URL = 'http://localhost:5055';
-const PASSWORD = 'your_password';
-
-async function getNotebooks() {
-  const response = await fetch(`${API_URL}/api/notebooks`, {
-    headers: {
-      'Authorization': `Bearer ${PASSWORD}`
-    }
-  });
-  return response.json();
-}
+token = login("http://localhost:5055", "alice", "secure123")
+headers = {"Authorization": f"Bearer {token}"}
+notebooks = requests.get("http://localhost:5055/api/notebooks", headers=headers).json()
 ```
 
 ---
@@ -291,68 +319,37 @@ See [Reverse Proxy Configuration](reverse-proxy.md) for complete nginx/Caddy/Tra
 
 ## Security Limitations
 
-Open Notebook's password protection provides **basic access control**, not enterprise-grade security:
-
 | Feature | Status |
 |---------|--------|
-| Password transmission | Plain text (use HTTPS!) |
-| Password storage | In memory |
-| User management | Single password for all |
-| Session timeout | None (until browser close) |
-| Rate limiting | None |
-| Audit logging | None |
-
-### Risk Mitigation
-
-1. **Always use HTTPS** - Encrypt traffic with TLS
-2. **Strong passwords** - 20+ characters, complex
-3. **Network security** - Firewall, VPN for sensitive deployments
-4. **Regular updates** - Keep containers and dependencies updated
-5. **Monitoring** - Check logs for suspicious activity
-6. **Backups** - Regular backups of data
-
----
-
-## Enterprise Considerations
-
-For deployments requiring advanced security:
-
-| Need | Solution |
-|------|----------|
-| SSO/OAuth | Implement OAuth2/SAML proxy |
-| Role-based access | Custom middleware |
-| Audit logging | Log aggregation service |
-| Rate limiting | API gateway or nginx |
-| Data encryption | Encrypt volumes at rest |
-| Network segmentation | Docker networks, VPC |
+| Multi-user authentication | ✅ JWT + password hashing |
+| Role-based access | ✅ Admin / User |
+| Rate limiting | ✅ Login & registration |
+| Password transmission | Requires HTTPS |
+| Token refresh | Not yet implemented |
+| Token revocation | Not yet implemented |
+| Session management | Token-based (7-day expiry) |
+| Audit logging | Not yet implemented |
+| 2FA / MFA | Not yet implemented |
 
 ---
 
 ## Troubleshooting
 
-### Password Not Working
+### Login Failed
 
 ```bash
-# Check env var is set
-docker exec open-notebook env | grep OPEN_NOTEBOOK_PASSWORD
-
-# Check logs
-docker logs open-notebook | grep -i auth
-
-# Test API directly
-curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/health
+# Check user status
+# Pending users cannot log in — needs admin approval
+# Rejected users cannot log in — contact administrator
 ```
 
 ### 401 Unauthorized Errors
 
 ```bash
-# Check header format
-curl -v -H "Authorization: Bearer your_password" \
+# Verify JWT token is valid and not expired
+# Tokens expire after 7 days — re-login required
+curl -v -H "Authorization: Bearer $TOKEN" \
   http://localhost:5055/api/notebooks
-
-# Verify password matches
-echo "Password length: $(echo -n $OPEN_NOTEBOOK_PASSWORD | wc -c)"
 ```
 
 ### Cannot Access After Setting Password
@@ -360,22 +357,24 @@ echo "Password length: $(echo -n $OPEN_NOTEBOOK_PASSWORD | wc -c)"
 1. Clear browser cache and cookies
 2. Try incognito/private mode
 3. Check browser console for errors
-4. Verify password is correct in environment
+4. Verify password is correct
 
-### Security Testing
+### Registration Not Working
 
-```bash
-# Without password (should fail)
-curl http://localhost:5055/api/notebooks
-# Expected: {"detail": "Missing authorization header"}
+1. Username must be 3-50 characters
+2. Password must be at least 6 characters
+3. Username "admin" is reserved
+4. Duplicate usernames are rejected
+5. Rate limit: 5 registrations per 5 minutes per IP
 
-# With correct password (should succeed)
-curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+### JWT Secret Not Configured
 
-# Health check (should work without password)
-curl http://localhost:5055/health
+If the system fails to start with:
 ```
+RuntimeError: JWT secret is not configured.
+```
+
+Set `AUTH_JWT_SECRET` or `OPEN_NOTEBOOK_ENCRYPTION_KEY`, or set `OPEN_NOTEBOOK_ENV=dev` for development.
 
 ---
 
