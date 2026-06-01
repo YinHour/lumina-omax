@@ -1,0 +1,13 @@
+DEFINE TABLE IF NOT EXISTS user SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS username ON TABLE user TYPE string;
+DEFINE FIELD IF NOT EXISTS password_hash ON TABLE user TYPE string;
+DEFINE FIELD IF NOT EXISTS display_name ON TABLE user TYPE string;
+DEFINE FIELD IF NOT EXISTS status ON TABLE user TYPE string DEFAULT "pending";
+DEFINE FIELD IF NOT EXISTS role ON TABLE user TYPE string DEFAULT "user";
+DEFINE FIELD IF NOT EXISTS created ON TABLE user TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated ON TABLE user TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS username_idx ON TABLE user COLUMNS username UNIQUE;
+
+DEFINE FIELD IF NOT EXISTS uploaded_by ON TABLE source TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS uploader_name ON TABLE source TYPE option<string>;

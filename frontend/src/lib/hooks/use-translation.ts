@@ -113,7 +113,7 @@ export function useTranslation() {
             return result;
           }
 
-          if ((result as any) === currentPath || result === undefined || result === null) {
+          if (String(result) === currentPath || result === undefined || result === null) {
             // Return the unresolved path so React renders it correctly
             // as a plain string instead of a Proxy object or function
             return currentPath;

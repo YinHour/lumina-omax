@@ -3,7 +3,7 @@ import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 import { searchApi } from '@/lib/api/search'
-import { SearchRequest, SearchResponse } from '@/lib/types/search'
+import { SearchRequest } from '@/lib/types/search'
 
 export function useSearch() {
   const { t } = useTranslation()

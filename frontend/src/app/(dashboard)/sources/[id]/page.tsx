@@ -1,7 +1,7 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { use } from 'react'
+import { useRouter } from 'next/navigation'
 import { useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'

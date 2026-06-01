@@ -308,6 +308,82 @@
 
 ---
 
+## 12. 多用户认证系统（新增 2026-06-01）
+
+基于企业内部多用户使用场景，实现完整的账号密码登录、注册审批、角色管理和 Landing Page 品牌展示。
+
+### 用户注册与管理员审批
+- `api/routers/auth.py:94-142` — `POST /auth/register`，用户自助注册，默认 `status="pending"`、`role="user"`
+- `api/routers/auth.py:207-217` — 登录时校验 `pending`（等待审批）和 `rejected`（已拒绝）状态
+- `open_notebook/domain/user.py` — 新增 `User` 域名模型，PBKDF2-HMAC-SHA256 密码哈希（100,000 轮迭代 + 16 字节随机盐）
+- `migrations/25.surrealql` — 新建 `user` 表（`username`/`password_hash`/`display_name`/`status`/`role`），`username` 唯一索引；`source` 表新增 `uploaded_by`/`uploader_name` 字段
+
+### JWT 认证与安全
+- `open_notebook/utils/jwt_config.py` — **新增公共模块**：JWT 密钥从 `AUTH_JWT_SECRET` 环境变量读取，逐级回退至 `OPEN_NOTEBOOK_ENCRYPTION_KEY` → 默认值；统一 `api/auth.py` 和 `api/routers/auth.py` 两处重复代码
+- `api/routers/auth.py:53-57` — JWT HS256 签发，7 天过期，负载包含 `id`/`username`/`display_name`/`role`/`status`/`exp`
+- `api/auth.py:20-121` — `PasswordAuthMiddleware` 升级为双轨鉴权：1) 超级管理员密码直接放行（后门），2) JWT 解码 + 用户状态校验
+- `api/auth.py:81-117` — 中间件层拦截 `pending`/`rejected` 用户请求（403），Token 过期返回 401
+
+### 超级管理员后门保留
+- `api/routers/auth.py:154-191` — 登录时输入 `admin` + `OPEN_NOTEBOOK_PASSWORD` 可直接获取超级管理员 JWT
+- `api/auth.py:70-79` — Bearer Token 直接匹配 Master Password 时以 `System Admin` 身份放行所有请求
+- `frontend/src/lib/stores/auth-store.ts:85-93` — 登录页仅输入密码（无用户名）时默认以 `admin` 身份调用后门登录
+
+### 管理员用户管理
+- `frontend/src/app/(dashboard)/settings/components/UserApprovalDashboard.tsx` — **全新组件**（261 行），仅 `role="admin"` 可见
+  - 用户列表按 `pending`/`active`/`rejected` 筛选，含注册时间、角色标识
+  - **状态操作**：批准激活 / 拒绝申请 / 禁用账号，操作前弹出 `ConfirmDialog` 确认
+  - **角色切换**：点击角色标签可在 `admin` ↔ `user` 间切换，保护 `admin` 账户不可降级
+  - **密码重置**：`Key` 按钮弹窗输入新密码（≥6 位），调用 `PUT /auth/users/{id}/password`
+- `api/routers/auth.py:246-269` — `GET /auth/users`（Admin only）用户列表
+- `api/routers/auth.py:272-309` — `PUT /auth/users/{id}/status` 审批/拒绝/禁用
+- `api/routers/auth.py:311-349` — `PUT /auth/users/{id}/role` 角色修改（保护 admin 账户）
+- `api/routers/auth.py:351-383` — `PUT /auth/users/{id}/password` 管理员重置密码
+
+### 速率限制（Rate Limiting）
+- `api/rate_limiter.py` — **新增模块**：滑动窗口限流器，基于客户端 IP 识别
+- `/auth/login` — 10 次/分钟；`/auth/register` — 5 次/5 分钟
+- 支持 `X-Forwarded-For` 反向代理地址透传
+
+### 登出与 Cookie 同步
+- `api/routers/auth.py:385-393` — `POST /auth/logout`，服务端登出端点（为未来 Token 黑名单预留）
+- `frontend/src/lib/stores/auth-store.ts:208-229` — 登出时调用 `/auth/logout` + 清除 `auth-token` Cookie + 清空 Zustand 状态
+
+### 服务端路由守卫（Middleware）
+- `frontend/src/middleware.ts` — **新增文件**（替代废弃的 `src/proxy.ts`）
+  - 检查 `auth-token` Cookie，无 Cookie 时重定向至 `/login?redirect=原路径`
+  - 登录成功后 Cookie 与 localStorage 双写（`SameSite=Lax`，7 天过期）
+  - 公开路径排除：`/login`、`/_next`、静态资源
+- `frontend/src/app/(auth)/login/page.tsx` — 包裹 `Suspense` 边界支持 `useSearchParams`
+- `frontend/src/components/auth/LoginForm.tsx:32-38` — 读取 `redirect` URL 参数存入 `sessionStorage`
+
+### 上传者溯源
+- `api/routers/sources.py:472-473,560-561` — `create_source` 写入 `uploaded_by=current_user["id"]`、`uploader_name=display_name 或 username`
+- `frontend/src/app/(dashboard)/sources/page.tsx:489` — 源列表"上传人"列显示 `uploader_name`，null 时回退 `"System Admin"`
+- `open_notebook/domain/notebook.py:320-321` — `Source` 类新增 `uploaded_by`/`uploader_name` 可选字段
+- `api/models.py:376,399` / `frontend/src/lib/types/api.ts:48` — API 层和 TS 类型同步新增 `uploader_name`
+
+### Landing Page 品牌重塑
+- `frontend/src/components/auth/LoginForm.tsx:216-316` — 登录页左栏（Landing Page）更新：
+  - **品牌**：Logo 图片替换为 `Lumiton·Omax图标.png`，标题 "Lumiton·Omax | 知涌"，副标题 "Oilfield Chemistry R&D Platform"
+  - **核心叙事**：Hero 描述对齐方法论文档——"将历史经验、实验数据、现场反馈和产品机理假设组织成可追踪、可复盘、可预测的研发决策系统"
+  - **四张特性卡**：7步研发闭环（产品代号→配方→工况→性能→归因链路）、原料与配方映射（分子理化特性→水泥矿物相变）、失败用例沉淀（自动结构化不可复用经验）、机理与预测并行（回答区分"已有证据""合理推断""需验证假设"）
+  - **研发指标**：+40% 实验复用率 / -30% 现场失效风险 / 1/2 试错周期
+  - **AI 能力栏**：50+ 文件格式 / 多源语义向量检索 / 8+ AI 模型供应商
+  - **素材来源**：`task/suggestions/lumina_omax_rd_method_and_enablement.md`（油井水泥外加剂研发方法与客户引导方案）
+- `frontend/public/logo.png` — 替换为 Lumiton·Omax 品牌图标（1.92MB，SHA256 与设计稿一致）
+
+### 前端代码质量治理
+- 全量 ESLint + TypeScript 零错误零警告（涉及 25 个文件）
+- `any` 类型替换：`SearchResponse`/`SearchResult`/`Record<string, unknown>`/`instanceof Error` 类型守卫
+- 移除 14 个文件的未用 import、6 处 `catch (e)` 裸变量、2 处 `let`→`const`
+- Hook 依赖补全：`useCallback` 包裹、`useMemo` 依赖对齐
+- `frontend/src/components/auth/LoginForm.tsx:217` — `<img>` → `next/image` 的 `<Image />`
+
+**决策**：选择 PBKDF2 而非 bcrypt/argon2 以降低依赖复杂度。JWT 无状态设计，暂不实现 Token 黑名单。数据隔离保持现有共享模式，仅增加身份标识和操作溯源。
+
+---
+
 ## 文件索引（关键变更文件）
 
 | 文件 | 涉及主题 |
@@ -316,20 +392,33 @@
 | `open_notebook/ai/models.py` | `default_vision_model`、`get_vision_model()` |
 | `open_notebook/utils/office_converter.py` | Office → PDF 转换、Excel 排除 |
 | `open_notebook/utils/context_builder.py` | Notes 优先级反转、截断阈值 |
-| `open_notebook/domain/notebook.py` | `original_filename`、`origin_notebook_id` |
+| `open_notebook/utils/jwt_config.py` | JWT 密钥公共模块（§12 新增） |
+| `open_notebook/domain/notebook.py` | `original_filename`、`origin_notebook_id`、`uploaded_by`/`uploader_name`（§12） |
+| `open_notebook/domain/user.py` | 用户域名模型，PBKDF2 密码哈希（§12 新增） |
 | `open_notebook/domain/content_settings.py` | Tavily、MinerU 引擎选项 |
 | `open_notebook/database/async_migrate.py` | 空迁移处理 |
-| `api/routers/sources.py` | 上传解阻塞、`check-duplicates`、下载名还原 |
+| `api/auth.py` | 密码中间件升级双轨鉴权（§12） |
+| `api/routers/auth.py` | 注册/登录/用户管理/角色/密码重置/登出（§12） |
+| `api/routers/sources.py` | 上传解阻塞、`check-duplicates`、下载名还原、上传者溯源（§12） |
 | `api/routers/models.py` | Vision model GET/PUT |
-| `api/models.py` | `DefaultModelsResponse` 扩展 |
+| `api/models.py` | `DefaultModelsResponse` 扩展、`uploader_name`（§12） |
+| `api/rate_limiter.py` | 滑动窗口登录限流（§12 新增） |
+| `frontend/src/middleware.ts` | 服务端路由守卫，Cookie 鉴权（§12 新增） |
+| `frontend/src/lib/stores/auth-store.ts` | Zustand 认证状态管理，双轨登录/注册/登出（§12） |
+| `frontend/src/lib/hooks/use-auth.ts` | React 认证 Hook（§12） |
+| `frontend/src/components/auth/LoginForm.tsx` | Landing Page + 登录/注册表单（§12） |
+| `frontend/src/app/(auth)/login/page.tsx` | 登录页 Suspense 包裹（§12） |
+| `frontend/src/app/(dashboard)/settings/components/UserApprovalDashboard.tsx` | 管理员用户审批面板（§12 新增） |
+| `frontend/src/lib/api/client.ts` | Axios 拦截器 Bearer Token 注入（§12） |
+| `frontend/src/app/(dashboard)/sources/page.tsx` | 分页、Tooltip、上传人列（§12） |
+| `frontend/src/lib/types/api.ts` | `uploader_name` 类型（§12） |
 | `frontend/src/components/sources/AddSourceDialog.tsx` | 文件重复检测 |
 | `frontend/src/components/sources/SourceCard.tsx` | Tooltip、origin_notebook badge |
-| `frontend/src/app/(dashboard)/sources/page.tsx` | 分页、Tooltip |
 | `frontend/src/app/(dashboard)/settings/api-keys/page.tsx` | Vision Model 选择器 |
 | `frontend/src/lib/locales/zh-CN/index.ts` | Vision 中文标签 |
 | `Makefile` | Windows sleep 兼容 |
 | `prompts/chat/system.jinja` | 领域专家 Prompt |
-| `migrations/` | #15 BM25、#16 password、#17 origin_notebook、#18 中文模板 |
+| `migrations/` | #15 BM25、#16 password、#17 origin_notebook、#18 中文模板、#25 用户表+source 上传人字段（§12） |
 | `tests/test_error_classifier.py` | 新增：错误分类规则测试 |
 | `tests/test_sanitize_excel.py` | 新增：Excel 行合并修复测试 |
 | `tests/test_integration_e2e.py` | 新增：L2/L4/L5 集成/E2E 测试（手动运行） |
@@ -339,4 +428,4 @@
 
 ---
 
-> 最后更新：2026-05-30 | 基于分支 `bugfix/user_feedback_0529`（已合入 main，PR #10）。前期变更基于 `enhancement_0526_feedback`、`feat_picture_parse_0528`。
+> 最后更新：2026-06-01 | 新增 §12 多用户认证系统。前期变更基于分支 `bugfix/user_feedback_0529`（已合入 main，PR #10），以及 `enhancement_0526_feedback`、`feat_picture_parse_0528`。

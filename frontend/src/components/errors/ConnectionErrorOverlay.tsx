@@ -8,7 +8,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { Database, Server, ChevronDown, ExternalLink } from 'lucide-react'
+import { Database, Server, ChevronDown } from 'lucide-react'
 import { ConnectionError } from '@/lib/types/config'
 import { useTranslation } from '@/lib/hooks/use-translation'
 

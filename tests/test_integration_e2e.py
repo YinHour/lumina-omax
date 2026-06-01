@@ -417,8 +417,8 @@ class TestSSE:
 
 class TestErrorClassifier:
     def test_timeout_classified(self):
-        from open_notebook.utils.error_classifier import classify_error
         from open_notebook.exceptions import ExternalServiceError
+        from open_notebook.utils.error_classifier import classify_error
         exc_cls, msg = classify_error("The request timed out waiting for response")
         assert exc_cls is ExternalServiceError, \
             f"期望 ExternalServiceError, 实际: {exc_cls.__name__}, msg: {msg}"
@@ -429,8 +429,8 @@ class TestErrorClassifier:
         assert result is not None
 
     def test_unexpected_prefix(self):
-        from open_notebook.utils.error_classifier import classify_error
         from open_notebook.exceptions import ExternalServiceError
+        from open_notebook.utils.error_classifier import classify_error
         exc_cls, msg = classify_error("xyz_unknown_error_12345")
         assert exc_cls is ExternalServiceError
         assert "unexpected" in msg.lower() or "AI" in msg
@@ -520,7 +520,7 @@ class TestModelAdapter:
 
     def test_embedding_batch_size(self):
         """Embedding 批处理大小（二开修改为 10）"""
-        from open_notebook.utils.chunking import CHUNK_SIZE, CHUNK_OVERLAP
+        from open_notebook.utils.chunking import CHUNK_OVERLAP, CHUNK_SIZE
         assert CHUNK_SIZE >= 500  # 基准
         # EMBEDDING_BATCH_SIZE 不在 chunking，在环境变量
         batch = os.environ.get("EMBEDDING_BATCH_SIZE", "10")

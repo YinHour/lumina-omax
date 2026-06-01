@@ -1,5 +1,6 @@
-import urllib.request
 import json
+import urllib.request
+
 req = urllib.request.Request("http://localhost:5055/api/v1/sources")
 try:
     with urllib.request.urlopen(req) as response:

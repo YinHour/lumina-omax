@@ -38,7 +38,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       try {
         const saved = localStorage.getItem('chat-model-override')
         return saved ? JSON.parse(saved) : null
-      } catch (e) {
+      } catch {
         return null
       }
     }
@@ -287,7 +287,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
                       )
                     }
                   }
-                } catch(e) {}
+                } catch {}
               }
             }
           }

@@ -2,7 +2,7 @@ import asyncio
 import os
 import re
 import unicodedata
-from typing import Annotated, List, Optional, Any
+from typing import Annotated, Any, List, Optional
 
 from ai_prompter import Prompter
 from langchain_core.output_parsers.pydantic import PydanticOutputParser
@@ -14,13 +14,14 @@ from typing_extensions import TypedDict
 
 from open_notebook.ai.models import model_manager
 from open_notebook.ai.provision import provision_langchain_model
-from open_notebook.database.repository import repo_query, ensure_record_id
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Source
 from open_notebook.exceptions import OpenNotebookError
+from open_notebook.utils import clean_thinking_content
+from open_notebook.utils.chunking import ContentType, chunk_text, detect_content_type
 from open_notebook.utils.error_classifier import classify_error
 from open_notebook.utils.text_utils import extract_text_content
-from open_notebook.utils import clean_thinking_content
-from open_notebook.utils.chunking import chunk_text, ContentType, detect_content_type
+
 
 def slugify(value: str) -> str:
     """Create a URL-safe, DB-safe slug from a string."""

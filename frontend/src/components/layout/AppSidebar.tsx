@@ -30,7 +30,6 @@ import { Separator } from '@/components/ui/separator'
 import {
   Book,
   Search,
-  Mic,
   Bot,
   Shuffle,
   Settings,

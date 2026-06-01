@@ -211,6 +211,7 @@ export function useTestCredential() {
     testResults,
     clearResult: (credentialId: string) => {
       setTestResults(prev => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { [credentialId]: _removed, ...rest } = prev
         return rest
       })

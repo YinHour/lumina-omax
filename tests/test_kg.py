@@ -1,13 +1,15 @@
 import asyncio
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
+import pytest
 
 from open_notebook.database.repository import db_connection
 from open_notebook.domain.notebook import Source
 from open_notebook.graphs.knowledge_graph import graph as kg_graph
 from open_notebook.utils.logger_config import setup_logging
-import pytest
 
 setup_logging()
 

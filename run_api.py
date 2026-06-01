@@ -11,6 +11,7 @@ import uvicorn
 from loguru import logger
 
 from open_notebook.utils.logger_config import setup_logging
+
 setup_logging()
 
 # Add the current directory to Python path so imports work

@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Search, ChevronDown, AlertCircle, Settings, MessageCircleQuestion, Square } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
+import { SearchResponse, SearchResult } from '@/lib/types/search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
@@ -77,7 +78,7 @@ export default function SearchPage() {
   })
   
   // Persisted search results
-  const [persistedSearchResults, setPersistedSearchResults] = useState<any>(null)
+  const [persistedSearchResults, setPersistedSearchResults] = useState<SearchResponse | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -114,7 +115,7 @@ export default function SearchPage() {
       try {
         const saved = localStorage.getItem('ask-custom-models')
         return saved ? JSON.parse(saved) : null
-      } catch (e) {
+      } catch {
         return null
       }
     }
@@ -148,11 +149,11 @@ export default function SearchPage() {
         if (savedResults) {
           setPersistedSearchResults(JSON.parse(savedResults))
         }
-      } catch (e) {
-        console.error('Failed to parse saved search results', e)
+      } catch {
+        console.error('Failed to parse saved search results')
       }
     }
-  }, [])
+  }, [searchMutation.data, searchMutation.isPending])
 
   // Clear persisted results when a new search starts
   useEffect(() => {
@@ -581,7 +582,7 @@ export default function SearchPage() {
                       </Card>
                     ) : (
                       <div className="space-y-2">
-                        {activeSearchData.results.map((result: any, index: number) => {
+                        {activeSearchData.results.map((result: SearchResult, index: number) => {
                           // Parse type from parent_id (format: "source:id" or "note:id" or "source_insight:id")
                           // Handle null parent_id gracefully (orphaned records)
                           if (!result.parent_id) {
@@ -615,7 +616,7 @@ export default function SearchPage() {
                                     {t.searchPage.matches.replace('{count}', result.matches.length.toString())}
                                   </CollapsibleTrigger>
                                   <CollapsibleContent className="mt-2 space-y-1">
-                                    {result.matches.map((match: any, i: number) => (
+                                    {result.matches.map((match: string, i: number) => (
                                       <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
                                         {match}
                                       </div>

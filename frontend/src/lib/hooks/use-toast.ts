@@ -34,11 +34,13 @@ const createDurationToast = () => {
   const handler: Record<string, unknown> = {}
 
   const wrap = (method: 'success' | 'error' | 'info' | 'warning' | 'message' | 'loading' | 'custom') => {
-    handler[method] = (message: string | ReactNode, options?: any) => {
+    handler[method] = (message: string | ReactNode, options?: Record<string, unknown>) => {
       const mergedOptions = { ...(options || {}), duration: 3000 }
       if (method === 'message' || method === 'custom') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return (sonnerToast as any)(message, mergedOptions)
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (sonnerToast as any)[method](message, mergedOptions)
     }
   }

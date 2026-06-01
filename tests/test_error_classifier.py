@@ -9,7 +9,7 @@ from open_notebook.exceptions import (
     NetworkError,
     RateLimitError,
 )
-from open_notebook.utils.error_classifier import classify_error, _truncate
+from open_notebook.utils.error_classifier import _truncate, classify_error
 
 
 # ---------------------------------------------------------------------------

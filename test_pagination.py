@@ -1,5 +1,7 @@
 import asyncio
+
 from open_notebook.database.repository import repo_query
+
 
 async def main():
     # Insert multiple sources with the same updated time

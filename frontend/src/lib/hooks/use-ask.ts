@@ -105,14 +105,13 @@ export function useAsk() {
       // Ensure streaming is stopped
       useAskStore.getState().setStreaming(false)
 
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         console.log('Ask request aborted')
         return
       }
 
-      const err = error as { message?: string }
-      const errorMessage = err.message || 'An unexpected error occurred'
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred'
       console.error('Ask error:', error)
 
       useAskStore.getState().setError(errorMessage)
