@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '@/lib/stores/auth-store'
-import { getApiUrl } from '@/lib/config'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -60,9 +59,8 @@ export function UserApprovalDashboard() {
     setIsLoading(true)
     setError(null)
     try {
-      const apiUrl = await getApiUrl()
-      console.log('[UserApprovalDashboard] Fetching users, apiUrl:', apiUrl, 'token present:', !!token)
-      const response = await fetch(`${apiUrl}/api/auth/users`, {
+      console.log('[UserApprovalDashboard] Fetching users, token present:', !!token)
+      const response = await fetch(`/api/auth/users`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -95,8 +93,7 @@ export function UserApprovalDashboard() {
     const { userId, status: targetStatus } = confirmAction
     setConfirmAction(null)
     try {
-      const apiUrl = await getApiUrl()
-      const response = await fetch(`${apiUrl}/api/auth/users/${userId}/status`, {
+      const response = await fetch(`/api/auth/users/${userId}/status`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -123,8 +120,7 @@ export function UserApprovalDashboard() {
 
   const handleUpdateRole = async (userId: string, targetRole: 'admin' | 'user') => {
     try {
-      const apiUrl = await getApiUrl()
-      const response = await fetch(`${apiUrl}/api/auth/users/${userId}/role`, {
+      const response = await fetch(`/api/auth/users/${userId}/role`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -152,8 +148,7 @@ export function UserApprovalDashboard() {
       return
     }
     try {
-      const apiUrl = await getApiUrl()
-      const response = await fetch(`${apiUrl}/api/auth/users/${userId}/password`, {
+      const response = await fetch(`/api/auth/users/${userId}/password`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
