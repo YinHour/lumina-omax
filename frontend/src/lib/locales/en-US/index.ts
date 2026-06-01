@@ -215,6 +215,7 @@ export const enUS = {
     transformation: "Transformation",
     settings: "Settings",
     advanced: "Advanced",
+    help: "Help",
     nav: "Navigation",
     language: "Toggle language",
     theme: "Theme",

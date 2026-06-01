@@ -10,7 +10,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Allow public paths without auth
-  const publicPaths = ['/login', '/_next', '/favicon.ico', '/logo.png', '/logo.svg']
+  const publicPaths = ['/help', '/login', '/_next', '/favicon.ico', '/logo.png', '/logo.svg']
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.next()
   }
