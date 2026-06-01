@@ -273,7 +273,7 @@ Access via navigation bar → Settings:
 | **Embedding** | Auto-embed settings |
 | **Files** | Auto-delete uploads after processing |
 | **YouTube** | Preferred transcript languages |
-| **User Management** | (Admin only) Approve/reject registrations, manage roles, reset passwords |
+| **User Approval Dashboard** | (Admin only) Approve/reject registrations, manage roles, reset passwords |
 
 ### User Approval Dashboard (Admin Only)
 

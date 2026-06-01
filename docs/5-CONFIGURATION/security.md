@@ -105,7 +105,8 @@ curl -H "Authorization: Bearer eyJ..." \
 For emergency access, the master password can be used directly:
 
 ```bash
-curl -H "Authorization: Bearer your_master_password" \
+TOKEN=$OPEN_NOTEBOOK_PASSWORD
+curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:5055/api/notebooks
 ```
 
