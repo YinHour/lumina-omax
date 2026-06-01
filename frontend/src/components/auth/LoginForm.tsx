@@ -168,13 +168,12 @@ export function LoginForm() {
   // Handle Login submission
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!password.trim()) return
     const loginUser = username.trim() || 'admin'
-    if (password.trim()) {
-      try {
-        await login(loginUser, password)
-      } catch (error) {
-        console.error('Unhandled error during login:', error)
-      }
+    try {
+      await login(loginUser, password)
+    } catch (error) {
+      console.error('Unhandled error during login:', error)
     }
   }
 
@@ -414,7 +413,7 @@ export function LoginForm() {
                   </Button>
 
                   <div className="text-[11px] text-center text-muted-foreground mt-2 border-t pt-3 bg-muted/20 p-2 rounded border">
-                    🔒 超级管理员可使用部署密码直接绕过验证登录
+                    Lumiton·Omax 科研数据中台
                   </div>
                 </form>
               </TabsContent>

@@ -1,8 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from loguru import logger
 from pydantic import BaseModel, Field
 
 from api.rate_limiter import login_limiter, register_limiter
@@ -51,7 +52,7 @@ class LoginResponse(BaseModel):
 
 def create_access_token(data: dict, expires_delta: timedelta = timedelta(days=7)):
     to_encode = data.copy()
-    expire = datetime.utcnow() + expires_delta
+    expire = datetime.now(timezone.utc) + expires_delta
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -136,9 +137,10 @@ async def register_user(req: UserRegisterRequest, request: Request):
             role=user.role,
         )
     except Exception as e:
+        logger.error(f"Failed to register user: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to register user: {str(e)}",
+            detail="Registration failed. Please try again later.",
         )
 
 
@@ -264,9 +266,10 @@ async def list_users(
             if (user_username := getattr(u, "username", "")) != "admin"
         ]
     except Exception as e:
+        logger.error(f"Failed to fetch users: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch users: {str(e)}",
+            detail="Failed to fetch user list. Please try again later.",
         )
 
 
@@ -298,9 +301,10 @@ async def update_user_status(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to update user status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update user status: {str(e)}",
+            detail="Failed to update user. Please try again later.",
         )
 
 
@@ -339,9 +343,10 @@ async def update_user_role(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to update user role: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update user role: {str(e)}",
+            detail="Failed to update user. Please try again later.",
         )
 
 
@@ -377,9 +382,10 @@ async def reset_user_password(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to reset password: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to reset password: {str(e)}",
+            detail="Failed to reset password. Please try again later.",
         )
 
 

@@ -1,6 +1,7 @@
 import hashlib
+import hmac
 import os
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import ClassVar, Optional
 
 from pydantic import Field, field_validator
 
@@ -12,7 +13,7 @@ from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 def hash_password(password: str) -> str:
     """Hash password securely using PBKDF2 with SHA256 and a random salt."""
     salt = os.urandom(16)
-    pw_hash = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
+    pw_hash = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 600000)
     return salt.hex() + ":" + pw_hash.hex()
 
 
@@ -21,8 +22,8 @@ def verify_password(password: str, hashed: str) -> bool:
     try:
         salt_hex, hash_hex = hashed.split(":")
         salt = bytes.fromhex(salt_hex)
-        pw_hash = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
-        return pw_hash.hex() == hash_hex
+        pw_hash = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 600000)
+        return hmac.compare_digest(pw_hash.hex(), hash_hex)
     except Exception:
         return False
 
