@@ -315,7 +315,7 @@
 ### 用户注册与管理员审批
 - `api/routers/auth.py:94-142` — `POST /auth/register`，用户自助注册，默认 `status="pending"`、`role="user"`
 - `api/routers/auth.py:207-217` — 登录时校验 `pending`（等待审批）和 `rejected`（已拒绝）状态
-- `open_notebook/domain/user.py` — 新增 `User` 域名模型，PBKDF2-HMAC-SHA256 密码哈希（100,000 轮迭代 + 16 字节随机盐）
+- `open_notebook/domain/user.py` — 新增 `User` 领域模型，PBKDF2-HMAC-SHA256 密码哈希（100,000 轮迭代 + 16 字节随机盐）
 - `migrations/25.surrealql` — 新建 `user` 表（`username`/`password_hash`/`display_name`/`status`/`role`），`username` 唯一索引；`source` 表新增 `uploaded_by`/`uploader_name` 字段
 
 ### JWT 认证与安全
@@ -394,7 +394,7 @@
 | `open_notebook/utils/context_builder.py` | Notes 优先级反转、截断阈值 |
 | `open_notebook/utils/jwt_config.py` | JWT 密钥公共模块（§12 新增） |
 | `open_notebook/domain/notebook.py` | `original_filename`、`origin_notebook_id`、`uploaded_by`/`uploader_name`（§12） |
-| `open_notebook/domain/user.py` | 用户域名模型，PBKDF2 密码哈希（§12 新增） |
+| `open_notebook/domain/user.py` | 用户领域模型，PBKDF2 密码哈希（§12 新增） |
 | `open_notebook/domain/content_settings.py` | Tavily、MinerU 引擎选项 |
 | `open_notebook/database/async_migrate.py` | 空迁移处理 |
 | `api/auth.py` | 密码中间件升级双轨鉴权（§12） |

@@ -6,6 +6,8 @@ import { getApiUrl } from '@/lib/config'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { 
   Users, 
   RefreshCw, 
@@ -20,6 +22,16 @@ import {
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface UserItem {
   id: string
@@ -37,6 +49,12 @@ export function UserApprovalDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'pending' | 'active' | 'rejected'>('all')
   const [confirmAction, setConfirmAction] = useState<{ userId: string; status: 'active' | 'rejected' } | null>(null)
+  const [resetPwdOpen, setResetPwdOpen] = useState(false)
+  const [resetPwdUserId, setResetPwdUserId] = useState<string | null>(null)
+  const [resetPwd, setResetPwd] = useState('')
+  const [resetPwdConfirm, setResetPwdConfirm] = useState('')
+  const [resetPwdError, setResetPwdError] = useState<string | null>(null)
+  const [resetPwdSubmitting, setResetPwdSubmitting] = useState(false)
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true)
@@ -125,12 +143,9 @@ export function UserApprovalDashboard() {
     }
   }
 
-  const handleResetPassword = async (userId: string) => {
-    const newPassword = prompt('请输入该成员的新密码（至少6位）：')
+  const handleResetPassword = async (userId: string, newPassword: string) => {
     if (!newPassword || newPassword.length < 6) {
-      if (newPassword !== null) {
-        toast.error('密码长度不能少于6位')
-      }
+      setResetPwdError('密码长度不能少于6位')
       return
     }
     try {
@@ -148,10 +163,38 @@ export function UserApprovalDashboard() {
         throw new Error(`重置密码失败: ${response.status}`)
       }
 
-      toast.success('密码已成功重置')
+      return true
     } catch (err: unknown) {
       console.error('Error resetting password:', err)
       toast.error(err instanceof Error ? err.message : '操作失败')
+      return false
+    }
+  }
+
+  const executeResetPassword = async () => {
+    if (!resetPwdUserId) return
+    setResetPwdSubmitting(true)
+    setResetPwdError(null)
+
+    if (resetPwd.length < 6) {
+      setResetPwdError('密码长度不能少于6位')
+      setResetPwdSubmitting(false)
+      return
+    }
+    if (resetPwd !== resetPwdConfirm) {
+      setResetPwdError('两次输入的密码不一致')
+      setResetPwdSubmitting(false)
+      return
+    }
+
+    const success = await handleResetPassword(resetPwdUserId, resetPwd)
+    setResetPwdSubmitting(false)
+    if (success) {
+      toast.success('密码已成功重置')
+      setResetPwdOpen(false)
+      setResetPwdUserId(null)
+      setResetPwd('')
+      setResetPwdConfirm('')
     }
   }
 
@@ -332,7 +375,13 @@ export function UserApprovalDashboard() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleResetPassword(item.id)}
+                        onClick={() => {
+                          setResetPwdUserId(item.id)
+                          setResetPwd('')
+                          setResetPwdConfirm('')
+                          setResetPwdError(null)
+                          setResetPwdOpen(true)
+                        }}
                         className="h-8 px-2 text-xs font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1"
                         title="重置密码"
                       >
@@ -360,6 +409,52 @@ export function UserApprovalDashboard() {
       confirmVariant={confirmAction?.status === 'active' ? 'default' : 'destructive'}
       onConfirm={executeStatusUpdate}
     />
+
+    <AlertDialog open={resetPwdOpen} onOpenChange={(open) => {
+      if (!open) { setResetPwdOpen(false); setResetPwdUserId(null); setResetPwd(''); setResetPwdConfirm(''); setResetPwdError(null) }
+    }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>重置密码</AlertDialogTitle>
+          <AlertDialogDescription>请为该成员设置一个新密码，并确认输入无误。</AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label htmlFor="reset-new-password" className="text-sm font-medium">新密码</Label>
+            <Input
+              id="reset-new-password"
+              type="password"
+              value={resetPwd}
+              onChange={(e) => { setResetPwd(e.target.value); setResetPwdError(null) }}
+              placeholder="请输入至少 6 位的新密码"
+              disabled={resetPwdSubmitting}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="reset-confirm-password" className="text-sm font-medium">确认新密码</Label>
+            <Input
+              id="reset-confirm-password"
+              type="password"
+              value={resetPwdConfirm}
+              onChange={(e) => { setResetPwdConfirm(e.target.value); setResetPwdError(null) }}
+              placeholder="请再次输入新密码"
+              disabled={resetPwdSubmitting}
+              className="mt-1"
+            />
+          </div>
+          {resetPwdError && (
+            <p className="text-xs text-red-500">{resetPwdError}</p>
+          )}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={resetPwdSubmitting}>取消</AlertDialogCancel>
+          <AlertDialogAction onClick={executeResetPassword} disabled={resetPwdSubmitting}>
+            {resetPwdSubmitting ? '重置中...' : '确认重置'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   )
 }

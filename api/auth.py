@@ -13,11 +13,17 @@ from open_notebook.utils.jwt_config import JWT_ALGORITHM, JWT_SECRET
 
 class PasswordAuthMiddleware(BaseHTTPMiddleware):
     """
-    Middleware to check authentication for all API requests.
-    Supports standard JWT tokens, as well as the master password as a backdoor.
-    Always active if OPEN_NOTEBOOK_PASSWORD is set.
+    Authentication middleware enforcing JWT-based auth on all protected API routes.
+    
+    Two authentication paths are supported:
+    1. JWT tokens (primary) — issued via /auth/login, validated using secrets from
+       open_notebook.utils.jwt_config.
+    2. Master password backdoor — if OPEN_NOTEBOOK_PASSWORD is configured, the raw
+       password can be used as a Bearer token to gain super-admin access.
+    
+    Routes listed in excluded_paths bypass authentication entirely.
     """
-
+    
     def __init__(self, app, excluded_paths: Optional[list] = None):
         super().__init__(app)
         self.password = get_secret_from_env("OPEN_NOTEBOOK_PASSWORD")
