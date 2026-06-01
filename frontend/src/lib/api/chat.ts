@@ -5,7 +5,6 @@ import {
   CreateNotebookChatSessionRequest,
   UpdateNotebookChatSessionRequest,
   SendNotebookChatMessageRequest,
-  NotebookChatMessage,
   BuildContextRequest,
   BuildContextResponse,
 } from '@/lib/types/api'

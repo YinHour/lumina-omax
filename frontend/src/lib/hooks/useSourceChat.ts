@@ -180,7 +180,7 @@ export function useSourceChat(sourceId: string) {
                   } else if (data.type === 'context_indicators') {
                     setContextIndicators(data.data)
                   }
-                } catch(e) {}
+                } catch {}
               }
             }
           }

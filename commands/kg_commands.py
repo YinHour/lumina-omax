@@ -4,9 +4,10 @@ from typing import Optional
 from loguru import logger
 from surreal_commands import CommandInput, CommandOutput, command
 
-from open_notebook.database.repository import ensure_record_id, repo_query, repo_insert
+from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query
 from open_notebook.domain.notebook import Source
 from open_notebook.exceptions import ConfigurationError
+
 
 class ExtractKGInput(CommandInput):
     source_id: str

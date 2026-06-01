@@ -7,7 +7,6 @@ import { SourceListResponse } from '@/lib/types/api'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AppShell } from '@/components/layout/AppShell'
-import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -17,7 +16,6 @@ import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
 import { toast } from '@/lib/hooks/use-toast'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
@@ -87,8 +85,6 @@ export default function SourcesPage() {
 
   // Polling for status updates
   useEffect(() => {
-    let interval: NodeJS.Timeout
-
     const pollSources = async () => {
       // Avoid polling if already loading
       if (loading) return
@@ -108,7 +104,7 @@ export default function SourcesPage() {
       }
     }
 
-    interval = setInterval(pollSources, 5000)
+    const interval = setInterval(pollSources, 5000)
     return () => clearInterval(interval)
   }, [page, sortBy, sortOrder, loading])
 
@@ -357,8 +353,9 @@ export default function SourcesPage() {
               <col className="w-[50px]" />
               <col className="w-[120px]" />
               <col className="w-auto" />
-              <col className="w-[140px]" />
-              <col className="w-[100px]" />
+              <col className="w-[120px]" />
+              <col className="w-[150px]" />
+              <col className="w-[80px]" />
               <col className="w-[100px]" />
               <col className="w-[100px]" />
               <col className="w-[100px]" />
@@ -370,8 +367,11 @@ export default function SourcesPage() {
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                   {t.common.type}
                 </th>
-                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                   {t.common.title}
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  {language.startsWith('zh') ? "上传人" : "Uploader"}
                 </th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">
                   <Button
@@ -484,6 +484,9 @@ export default function SourcesPage() {
                         </span>
                       )}
                     </div>
+                  </td>
+                  <td className="h-12 px-4 text-muted-foreground text-sm">
+                    {source.uploader_name || "System Admin"}
                   </td>
                   <td className="h-12 px-4 text-muted-foreground text-sm hidden sm:table-cell">
                     {format(new Date(source.created), 'yyyy-MM-dd HH:mm:ss')}

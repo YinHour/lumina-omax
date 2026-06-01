@@ -45,6 +45,7 @@ export interface SourceListResponse {
   origin_notebook_id?: string | null
   origin_notebook_name?: string | null
   imported_at?: string | null
+  uploader_name?: string | null
 }
 
 export interface SourceDetailResponse extends SourceListResponse {

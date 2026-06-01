@@ -22,10 +22,12 @@ async def tavily_search(query: str) -> str:
     
     When using the results, follow the system prompt: inline citations as numbered markdown links [1](URL), [2](URL) in citation order, plus one numbered "## Web References" or "## 参考文献" section at the end — do not duplicate "References" and "引用".
     """
-    from open_notebook.domain.content_settings import ContentSettings
+    import json
+
     from langchain_community.tools.tavily_search import TavilySearchResults
     from langchain_community.utilities.tavily_search import TavilySearchAPIWrapper
-    import json
+
+    from open_notebook.domain.content_settings import ContentSettings
     
     settings = await ContentSettings.get_instance()
     api_key = settings.tavily_api_key

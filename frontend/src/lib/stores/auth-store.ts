@@ -5,6 +5,7 @@ import { getApiUrl } from '@/lib/config'
 interface AuthState {
   isAuthenticated: boolean
   token: string | null
+  user: { id: string; username: string; display_name: string; role: string; status: string } | null
   isLoading: boolean
   error: string | null
   lastAuthCheck: number | null
@@ -13,7 +14,8 @@ interface AuthState {
   authRequired: boolean | null
   setHasHydrated: (state: boolean) => void
   checkAuthRequired: () => Promise<boolean>
-  login: (password: string) => Promise<boolean>
+  login: (usernameOrPassword: string, password?: string) => Promise<boolean>
+  register: (username: string, password: string, displayName: string) => Promise<{ success: boolean; message?: string }>
   logout: () => void
   checkAuth: () => Promise<boolean>
 }
@@ -23,6 +25,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       isAuthenticated: false,
       token: null,
+      user: null,
       isLoading: false,
       error: null,
       lastAuthCheck: null,
@@ -74,24 +77,39 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      login: async (password: string) => {
+      login: async (usernameOrPassword: string, password?: string) => {
         set({ isLoading: true, error: null })
         try {
           const apiUrl = await getApiUrl()
 
-          // Test auth with notebooks endpoint
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
-            method: 'GET',
+          // If no second parameter, treat it as legacy / backdoor-only password
+          const body: Record<string, string> = {}
+          if (password === undefined) {
+            body.username = 'admin'
+            body.password = usernameOrPassword
+          } else {
+            body.username = usernameOrPassword
+            body.password = password
+          }
+
+          const response = await fetch(`${apiUrl}/api/auth/login`, {
+            method: 'POST',
             headers: {
-              'Authorization': `Bearer ${password}`,
               'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify(body)
           })
           
           if (response.ok) {
+            const data = await response.json()
+            // Set auth-token cookie for server-side middleware access
+            if (typeof document !== 'undefined') {
+              document.cookie = `auth-token=${data.access_token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
+            }
             set({ 
               isAuthenticated: true, 
-              token: password, 
+              token: data.access_token, 
+              user: data.user,
               isLoading: false,
               lastAuthCheck: Date.now(),
               error: null
@@ -99,21 +117,25 @@ export const useAuthStore = create<AuthState>()(
             return true
           } else {
             let errorMessage = 'Authentication failed'
-            if (response.status === 401) {
-              errorMessage = 'Invalid password. Please try again.'
-            } else if (response.status === 403) {
+            try {
+              const errData = await response.json()
+              errorMessage = errData.detail || errorMessage
+            } catch {}
+            
+            if (response.status === 401 && errorMessage === 'Authentication failed') {
+              errorMessage = 'Invalid username or password. Please try again.'
+            } else if (response.status === 403 && errorMessage === 'Authentication failed') {
               errorMessage = 'Access denied. Please check your credentials.'
             } else if (response.status >= 500) {
               errorMessage = 'Server error. Please try again later.'
-            } else {
-              errorMessage = `Authentication failed (${response.status})`
             }
             
             set({ 
               error: errorMessage,
               isLoading: false,
               isAuthenticated: false,
-              token: null
+              token: null,
+              user: null
             })
             return false
           }
@@ -133,16 +155,80 @@ export const useAuthStore = create<AuthState>()(
             error: errorMessage,
             isLoading: false,
             isAuthenticated: false,
-            token: null
+            token: null,
+            user: null
           })
           return false
         }
       },
+
+      register: async (username: string, password: string, displayName: string) => {
+        set({ isLoading: true, error: null })
+        try {
+          const apiUrl = await getApiUrl()
+
+          const response = await fetch(`${apiUrl}/api/auth/register`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              username,
+              password,
+              display_name: displayName
+            })
+          })
+
+          if (response.ok) {
+            set({ isLoading: false, error: null })
+            return { success: true }
+          } else {
+            let errorMessage = 'Registration failed'
+            try {
+              const errData = await response.json()
+              errorMessage = errData.detail || errorMessage
+            } catch {}
+
+            set({ isLoading: false })
+            return { success: false, message: errorMessage }
+          }
+        } catch (error) {
+          console.error('Network error during registration:', error)
+          let errorMessage = 'Registration failed'
+          if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+            errorMessage = 'Unable to connect to server. Please check if the API is running.'
+          } else if (error instanceof Error) {
+            errorMessage = `Network error: ${error.message}`
+          }
+          set({ isLoading: false })
+          return { success: false, message: errorMessage }
+        }
+      },
       
-      logout: () => {
+      logout: async () => {
+        // Best-effort: notify server to log out
+        try {
+          const apiUrl = await getApiUrl()
+          const token = get().token
+          await fetch(`${apiUrl}/api/auth/logout`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+        } catch {
+          // Ignore network errors during logout
+        }
+
+        // Clear auth-token cookie
+        if (typeof document !== 'undefined') {
+          document.cookie = 'auth-token=; path=/; max-age=0'
+        }
         set({ 
           isAuthenticated: false, 
           token: null, 
+          user: null,
           error: null 
         })
       },
@@ -212,7 +298,8 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       partialize: (state) => ({
         token: state.token,
-        isAuthenticated: state.isAuthenticated
+        isAuthenticated: state.isAuthenticated,
+        user: state.user
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true)

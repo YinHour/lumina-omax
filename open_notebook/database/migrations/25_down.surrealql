@@ -1,0 +1,3 @@
+REMOVE FIELD uploaded_by ON TABLE source;
+REMOVE FIELD uploader_name ON TABLE source;
+REMOVE TABLE user;

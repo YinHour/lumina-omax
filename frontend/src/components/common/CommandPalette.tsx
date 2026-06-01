@@ -16,7 +16,6 @@ import {
 import {
   Book,
   Search,
-  Mic,
   Bot,
   Shuffle,
   Settings,

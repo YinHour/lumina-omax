@@ -1,6 +1,7 @@
 """Unit tests for _sanitize_excel_table_newlines in open_notebook/graphs/source.py."""
 
 import pytest
+
 from open_notebook.graphs.source import _sanitize_excel_table_newlines
 
 

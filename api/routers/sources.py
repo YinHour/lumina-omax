@@ -30,6 +30,7 @@ from api.models import (
     SourceStatusResponse,
     SourceUpdate,
 )
+from api.routers.auth import get_current_user_from_state
 from commands.source_commands import SourceProcessingInput
 from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, repo_query
@@ -239,7 +240,7 @@ async def get_sources(
 
         # Query sources - include command field with FETCH
         query = f"""
-            SELECT id, asset, created, title, updated, topics, command,
+            SELECT id, asset, created, title, updated, topics, command, uploader_name,
             {origin_notebook_id_field}
             {origin_notebook_name_field}
             {imported_at_field}
@@ -312,6 +313,7 @@ async def get_sources(
                     origin_notebook_id=str(row.get("resolved_origin_notebook_id")) if row.get("resolved_origin_notebook_id") else None,
                     origin_notebook_name=row.get("origin_notebook_name"),
                     imported_at=str(row["imported_at"]) if row.get("imported_at") else None,
+                    uploader_name=row.get("uploader_name"),
                 )
             )
 
@@ -328,6 +330,7 @@ async def create_source(
     form_data: tuple[SourceCreate, Optional[UploadFile]] = Depends(
         parse_source_form_data
     ),
+    current_user: dict = Depends(get_current_user_from_state),
 ):
     """Create a new source with support for both JSON and multipart form data."""
     source_data, upload_file = form_data
@@ -466,6 +469,8 @@ async def create_source(
                 topics=[],
                 asset=source_asset,
                 origin_notebook_id=origin_notebook_id,
+                uploaded_by=current_user["id"],
+                uploader_name=current_user.get("display_name") or current_user["username"],
             )
             await source.save()
 
@@ -515,6 +520,7 @@ async def create_source(
                     command_id=command_id,
                     status="new",
                     processing_info={"async": True, "queued": True},
+                    uploader_name=source.uploader_name,
                 )
 
             except Exception as e:
@@ -551,6 +557,8 @@ async def create_source(
                     title=source_data.title or (upload_file.filename if upload_file else "Processing..."),
                     topics=[],
                     origin_notebook_id=origin_notebook_id,
+                    uploaded_by=current_user["id"],
+                    uploader_name=current_user.get("display_name") or current_user["username"],
                 )
                 await source.save()
 
@@ -628,6 +636,7 @@ async def create_source(
                     kg_extracted=kg_extracted,
                     created=str(processed_source.created),
                     updated=str(processed_source.updated),
+                    uploader_name=processed_source.uploader_name,
                     # No command_id or status for sync processing (legacy behavior)
                 )
 
@@ -669,11 +678,14 @@ async def create_source(
 
 
 @router.post("/sources/json", response_model=SourceResponse)
-async def create_source_json(source_data: SourceCreate):
+async def create_source_json(
+    source_data: SourceCreate,
+    current_user: dict = Depends(get_current_user_from_state),
+):
     """Create a new source using JSON payload (legacy endpoint for backward compatibility)."""
     # Convert to form data format and call main endpoint
     form_data = (source_data, None)
-    return await create_source(form_data)
+    return await create_source(form_data, current_user=current_user)
 
 
 async def _resolve_source_file(source_id: str) -> tuple[str, str]:
@@ -782,6 +794,7 @@ async def get_source(source_id: str):
             notebook_count=len(notebook_ids),
             origin_notebook_id=source.origin_notebook_id,
             origin_notebook_name=origin_notebook_name,
+            uploader_name=source.uploader_name,
         )
     except HTTPException:
         raise

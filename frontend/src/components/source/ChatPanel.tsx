@@ -91,7 +91,7 @@ export function ChatPanel({
       try {
         const saved = localStorage.getItem('chat-web-search-enabled')
         return saved ? JSON.parse(saved) : false
-      } catch (e) {
+      } catch {
         return false
       }
     }

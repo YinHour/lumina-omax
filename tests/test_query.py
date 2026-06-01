@@ -1,10 +1,14 @@
-import sys
 import os
+import sys
+
 sys.path.append(os.path.dirname(__file__))
 import asyncio
+
 from dotenv import load_dotenv
+
 load_dotenv()
 from open_notebook.database.repository import repo_query
+
 
 async def main():
     res = await repo_query("""

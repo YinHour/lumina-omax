@@ -42,7 +42,7 @@ export const notebooksApi = {
   },
 
   delete: async (id: string, deleteExclusiveSources: boolean = false, password?: string) => {
-    const config: any = {
+    const config: Record<string, unknown> = {
       params: { delete_exclusive_sources: deleteExclusiveSources },
     }
     if (password) {

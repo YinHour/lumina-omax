@@ -68,7 +68,7 @@ export function NotebookDeleteDialog({
       if (redirectAfterDelete) {
         router.push('/notebooks')
       }
-    } catch (error) {
+    } catch {
       // Error is handled by the mutation onError, but we catch it here to prevent dialog from closing
     }
   }

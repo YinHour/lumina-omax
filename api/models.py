@@ -373,6 +373,7 @@ class SourceResponse(BaseModel):
     notebook_count: int = 0
     origin_notebook_id: Optional[str] = None
     origin_notebook_name: Optional[str] = None
+    uploader_name: Optional[str] = None
 
 
 class SourceListResponse(BaseModel):
@@ -395,6 +396,7 @@ class SourceListResponse(BaseModel):
     origin_notebook_id: Optional[str] = None
     origin_notebook_name: Optional[str] = None
     imported_at: Optional[str] = None
+    uploader_name: Optional[str] = None
 
 
 # Context API models

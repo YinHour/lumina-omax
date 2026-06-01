@@ -123,6 +123,7 @@ async def content_process(state: SourceState) -> dict:
         import os
         import subprocess
         import tempfile
+
         from content_core.common import ProcessSourceState
         
         def _sync_extract(state, source_id):
@@ -135,7 +136,9 @@ async def content_process(state: SourceState) -> dict:
                 try:
                     with tempfile.TemporaryDirectory() as temp_dir:
                         if file_path.lower().endswith(('.ppt', '.pptx', '.doc', '.docx')):
-                            from open_notebook.utils.office_converter import convert_to_modern_office_format
+                            from open_notebook.utils.office_converter import (
+                                convert_to_modern_office_format,
+                            )
 
                             file_path = convert_to_modern_office_format(file_path)
                             state["file_path"] = file_path
@@ -181,8 +184,8 @@ async def content_process(state: SourceState) -> dict:
                                     break
                             
                             # Copy images to persistent storage
-                            import shutil
                             import re
+                            import shutil
                             
                             images_dir = os.path.join(target_dir, "images")
                             if os.path.exists(images_dir) and source_id:
@@ -251,6 +254,7 @@ async def content_process(state: SourceState) -> dict:
             try:
                 import shutil
                 import tempfile
+
                 import pymupdf
 
                 source_id = state.get("source_id")
@@ -262,7 +266,9 @@ async def content_process(state: SourceState) -> dict:
                     # Only extract if images dir doesn't have content yet
                     if not os.path.isdir(images_dir) or not os.listdir(images_dir):
                         with tempfile.TemporaryDirectory() as tmp_dir:
-                            from open_notebook.utils.office_converter import get_libreoffice_command
+                            from open_notebook.utils.office_converter import (
+                                get_libreoffice_command,
+                            )
                             libreoffice_cmd = get_libreoffice_command()
                             subprocess.run([
                                 libreoffice_cmd, "--headless", "--invisible", "--nodefault",
@@ -324,12 +330,14 @@ async def content_process(state: SourceState) -> dict:
                     if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))
                 ])
                 if image_files:
-                    from open_notebook.ai.models import model_manager
                     from esperanto import LanguageModel
+
+                    from open_notebook.ai.models import model_manager
 
                     vision_model = await model_manager.get_vision_model()
                     if vision_model and isinstance(vision_model, LanguageModel):
                         import base64
+
                         from langchain_core.messages import HumanMessage
 
                         vision_lc = vision_model.to_langchain()

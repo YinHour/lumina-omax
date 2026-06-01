@@ -19,6 +19,12 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def auth_headers():
+    """Provide master-password backdoor auth headers for test requests."""
+    return {"Authorization": "Bearer test-master-password"}
+
+
 @pytest.fixture(autouse=True)
 def mock_default_models():
     """Keep source creation tests focused on asset persistence, not model setup."""
@@ -42,7 +48,7 @@ class TestAsyncSourceAssetPersistence:
     @patch("api.routers.sources.Source.add_to_notebook", new_callable=AsyncMock)
     @patch("api.routers.sources.Notebook.get", new_callable=AsyncMock)
     async def test_async_link_source_persists_url_asset(
-        self, mock_nb_get, mock_add_nb, mock_submit, client
+        self, mock_nb_get, mock_add_nb, mock_submit, client, auth_headers
     ):
         """POST /sources with type=link and async_processing=true persists Asset(url=...)."""
         mock_nb_get.return_value = MagicMock()
@@ -64,6 +70,7 @@ class TestAsyncSourceAssetPersistence:
                     "notebooks": '["notebook:1"]',
                     "async_processing": "true",
                 },
+                headers=auth_headers,
             )
 
         assert response.status_code == 200
@@ -80,7 +87,7 @@ class TestAsyncSourceAssetPersistence:
     @patch("api.routers.sources.Notebook.get", new_callable=AsyncMock)
     @patch("api.routers.sources.save_uploaded_file", new_callable=AsyncMock)
     async def test_async_upload_source_persists_file_asset(
-        self, mock_upload, mock_nb_get, mock_add_nb, mock_submit, client
+        self, mock_upload, mock_nb_get, mock_add_nb, mock_submit, client, auth_headers
     ):
         """POST /sources with type=upload and async_processing=true persists Asset(file_path=...)."""
         mock_nb_get.return_value = MagicMock()
@@ -103,6 +110,7 @@ class TestAsyncSourceAssetPersistence:
                     "async_processing": "true",
                 },
                 files={"file": ("video.mp4", b"fake content", "video/mp4")},
+                headers=auth_headers,
             )
 
         assert response.status_code == 200
@@ -118,7 +126,7 @@ class TestAsyncSourceAssetPersistence:
     @patch("api.routers.sources.Source.add_to_notebook", new_callable=AsyncMock)
     @patch("api.routers.sources.Notebook.get", new_callable=AsyncMock)
     async def test_async_text_source_has_no_asset(
-        self, mock_nb_get, mock_add_nb, mock_submit, client
+        self, mock_nb_get, mock_add_nb, mock_submit, client, auth_headers
     ):
         """POST /sources with type=text and async_processing=true has asset=None."""
         mock_nb_get.return_value = MagicMock()
@@ -140,6 +148,7 @@ class TestAsyncSourceAssetPersistence:
                     "notebooks": '["notebook:1"]',
                     "async_processing": "true",
                 },
+                headers=auth_headers,
             )
 
         assert response.status_code == 200
