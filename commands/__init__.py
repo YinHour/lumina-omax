@@ -1,4 +1,4 @@
-"""Surreal-commands integration for Open Notebook"""
+"""Surreal-commands integration for Lumiton·Omax"""
 
 from open_notebook.utils.logger_config import setup_logging
 

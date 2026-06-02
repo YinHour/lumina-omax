@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document provides guidelines for writing tests in Open Notebook. Testing is critical to maintaining code quality and preventing regressions.
+This document provides guidelines for writing tests in Lumiton·Omax. Testing is critical to maintaining code quality and preventing regressions.
 
 ## Testing Philosophy
 

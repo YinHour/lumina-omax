@@ -1,4 +1,4 @@
-# Contributing to Open Notebook
+# Contributing to Lumiton·Omax
 
 **📍 This file has moved!**
 

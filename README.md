@@ -15,7 +15,7 @@
     <img src="docs/assets/hero.svg" alt="Logo">
   </a>
 
-  <h3 align="center">Open Notebook</h3>
+  <h3 align="center">Lumiton·Omax</h3>
 
   <p align="center">
     An open source, privacy-focused alternative to Google's Notebook LM!
@@ -56,7 +56,7 @@
 
 In a world dominated by Artificial Intelligence, having the ability to think 🧠 and acquire new knowledge 💡, is a skill that should not be a privilege for a few, nor restricted to a single provider.
 
-**Open Notebook empowers you to:**
+**Lumiton·Omax empowers you to:**
 - 🔒 **Control your data** - Keep your research private and secure
 - 🤖 **Choose your AI models** - Support for 18+ providers including OpenAI, Anthropic, Ollama, LM Studio, and more
 - 📚 **Organize multi-modal content** - PDFs, videos, audio, web pages, and more
@@ -69,9 +69,9 @@ Learn more about our project at [https://www.open-notebook.ai](https://www.open-
 
 ---
 
-## 🆚 Open Notebook vs Google Notebook LM
+## 🆚 Lumiton·Omax vs Google Notebook LM
 
-| Feature | Open Notebook | Google Notebook LM | Advantage |
+| Feature | Lumiton·Omax | Google Notebook LM | Advantage |
 |---------|---------------|--------------------|-----------|
 | **Privacy & Control** | Self-hosted, your data | Google cloud only | Complete data sovereignty |
 | **AI Provider Choice** | 18+ providers (OpenAI, Anthropic, Ollama, LM Studio, etc.) | Google models only | Flexibility and cost optimization |
@@ -83,7 +83,7 @@ Learn more about our project at [https://www.open-notebook.ai](https://www.open-
 | **Customization** | Open source, fully customizable | Closed system | Unlimited extensibility |
 | **Cost** | Pay only for AI usage | Free tier + Monthly subscription | Transparent and controllable |
 
-**Why Choose Open Notebook?**
+**Why Choose Lumiton·Omax?**
 - 🔒 **Privacy First**: Your sensitive research stays completely private
 - 💰 **Cost Control**: Choose cheaper AI providers or run locally with Ollama
 - 🎙️ **Better Podcasts**: Full script control and multi-speaker flexibility vs limited 2-speaker deep-dive format
@@ -247,7 +247,7 @@ Thanks to the [Esperanto](https://github.com/lfnovo/esperanto) library, we suppo
 ## 📚 Documentation
 
 ### Getting Started
-- **[📖 Introduction](docs/0-START-HERE/index.md)** - Learn what Open Notebook offers
+- **[📖 Introduction](docs/0-START-HERE/index.md)** - Learn what Lumiton·Omax offers
 - **[⚡ Quick Start](docs/0-START-HERE/quick-start.md)** - Get up and running in 5 minutes
 - **[🔧 Installation](docs/1-INSTALLATION/index.md)** - Comprehensive setup guide
 - **[🎯 Your First Notebook](docs/0-START-HERE/first-notebook.md)** - Step-by-step tutorial
@@ -294,8 +294,8 @@ See the [open issues](https://github.com/lfnovo/open-notebook/issues) for a full
 
 
 ## 📖 Need Help?
-- **🤖 AI Installation Assistant**: We have a [CustomGPT built to help you install Open Notebook](https://chatgpt.com/g/g-68776e2765b48191bd1bae3f30212631-open-notebook-installation-assistant) - it will guide you through each step!
-- **New to Open Notebook?** Start with our [Getting Started Guide](docs/0-START-HERE/index.md)
+- **🤖 AI Installation Assistant**: We have a [CustomGPT built to help you install Lumiton·Omax](https://chatgpt.com/g/g-68776e2765b48191bd1bae3f30212631-open-notebook-installation-assistant) - it will guide you through each step!
+- **New to Lumiton·Omax?** Start with our [Getting Started Guide](docs/0-START-HERE/index.md)
 - **Need installation help?** Check our [Installation Guide](docs/1-INSTALLATION/index.md)
 - **Want to see it in action?** Try our [Quick Start Tutorial](docs/0-START-HERE/quick-start.md)
 
@@ -304,12 +304,12 @@ See the [open issues](https://github.com/lfnovo/open-notebook/issues) for a full
 ### Join the Community
 - 💬 **[Discord Server](https://discord.gg/37XJPXfz2w)** - Get help, share ideas, and connect with other users
 - 🐛 **[GitHub Issues](https://github.com/lfnovo/open-notebook/issues)** - Report bugs and request features
-- ⭐ **Star this repo** - Show your support and help others discover Open Notebook
+- ⭐ **Star this repo** - Show your support and help others discover Lumiton·Omax
 
 ### Contributing
 We welcome contributions! We're especially looking for help with:
 - **Frontend Development**: Help improve our modern Next.js/React UI
-- **Testing & Bug Fixes**: Make Open Notebook more robust
+- **Testing & Bug Fixes**: Make Lumiton·Omax more robust
 - **Feature Development**: Build the coolest research tool together
 - **Documentation**: Improve guides and tutorials
 
@@ -323,7 +323,7 @@ See our [Contributing Guide](CONTRIBUTING.md) for detailed information on how to
 
 ## 📄 License
 
-Open Notebook is MIT licensed. See the [LICENSE](LICENSE) file for details.
+Lumiton·Omax is MIT licensed. See the [LICENSE](LICENSE) file for details.
 
 
 **Community Support**:

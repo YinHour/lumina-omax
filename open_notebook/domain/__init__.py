@@ -1,5 +1,5 @@
 """
-Domain models for Open Notebook.
+Domain models for Lumiton·Omax.
 
 This module exports the core domain models used throughout the application.
 """

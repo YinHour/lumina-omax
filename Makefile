@@ -158,7 +158,7 @@ worker-restart: worker-stop
 
 # === Service Management ===
 start-all:
-	@echo "🚀 Starting Open Notebook (Database + API + Worker + Frontend)..."
+	@echo "🚀 Starting Lumiton·Omax (Database + API + Worker + Frontend)..."
 	@echo "📊 Starting SurrealDB..."
 	@docker compose -f docker-compose.yml up -d surrealdb
 	@python -c "import time; time.sleep(3)"
@@ -176,7 +176,7 @@ start-all:
 	@cd frontend && npm run dev -- -H 0.0.0.0
 # @cd frontend && npm run build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && PORT=3000 HOSTNAME=0.0.0.0 node .next/standalone/server.js
 stop-all:
-	@echo "🛑 Stopping all Open Notebook services..."
+	@echo "🛑 Stopping all Lumiton·Omax services..."
 	@pkill -f "next dev" || true
 	@pkill -f "node .next/standalone/server.js" || true
 	@pkill -f "surreal-commands-worker" || true
@@ -186,7 +186,7 @@ stop-all:
 	@echo "✅ All services stopped!"
 
 status:
-	@echo "📊 Open Notebook Service Status:"
+	@echo "📊 Lumiton·Omax Service Status:"
 	@echo "Database (SurrealDB):"
 	@docker compose ps surrealdb 2>/dev/null || echo "  ❌ Not running"
 	@echo "API Backend:"
