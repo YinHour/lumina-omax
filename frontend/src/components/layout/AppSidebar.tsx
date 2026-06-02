@@ -41,7 +41,6 @@ import {
   Wrench,
   Command,
   HelpCircle,
-  UserCircle,
 } from 'lucide-react'
 
 interface NavItem { name: string; href: string; icon: typeof Book; adminOnly?: boolean }
@@ -333,8 +332,8 @@ export function AppSidebar() {
               </>
             ) : (
               <>
-                <ThemeToggle />
-                <LanguageToggle />
+                <div className="flex-1"><ThemeToggle /></div>
+                <div className="flex-1"><LanguageToggle /></div>
               </>
             )}
           </div>
