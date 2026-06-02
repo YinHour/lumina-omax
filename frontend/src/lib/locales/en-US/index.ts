@@ -31,7 +31,7 @@ export const enUS = {
     podcast: "Podcast",
     quickActions: "Quick actions",
     quickActionsDesc: "Navigation, search, ask, theme",
-    appName: "Lumina™ | Yinshi AI",
+    appName: "Lumiton·Omax|知涌",
     add: "Add",
     remove: "Remove",
     confirm: "Confirm",

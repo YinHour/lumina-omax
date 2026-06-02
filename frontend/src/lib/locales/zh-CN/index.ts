@@ -31,7 +31,7 @@ export const zhCN = {
     podcast: "播客",
     quickActions: "快捷操作",
     quickActionsDesc: "导航、搜索、提问、主题",
-    appName: "Lumina™ | Yinshi AI",
+    appName: "Lumiton·Omax|知涌",
     add: "添加",
     remove: "移除",
     confirm: "确认",

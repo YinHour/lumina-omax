@@ -402,6 +402,15 @@ class UserPasswordResetRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=100)
 
 
+class UserProfileUpdateRequest(BaseModel):
+    display_name: str = Field(..., min_length=1, max_length=100)
+
+
+class UserChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
 @router.put("/users/{user_id}/password", response_model=UserResponse)
 async def reset_user_password(
     user_id: str,
@@ -445,3 +454,72 @@ async def logout_user(current_user: dict = Depends(get_current_user_from_state))
     logout flow and allow future token blacklisting.
     """
     return {"message": "Logged out successfully", "username": current_user.get("username")}
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_my_profile(
+    req: UserProfileUpdateRequest,
+    current_user: dict = Depends(get_current_user_from_state),
+):
+    """Update the current user's display name."""
+    try:
+        user = await User.get(current_user["id"])
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        user.display_name = req.display_name.strip()
+        await user.save()
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            status=user.status,
+            role=user.role,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update profile: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update profile. Please try again later.",
+        )
+
+
+@router.put("/me/password", response_model=UserResponse)
+async def change_my_password(
+    req: UserChangePasswordRequest,
+    current_user: dict = Depends(get_current_user_from_state),
+):
+    """Change the current user's password (requires old password verification)."""
+    try:
+        user = await User.get(current_user["id"])
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        if not verify_password(req.old_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="旧密码不正确",
+            )
+        user.password_hash = hash_password(req.new_password)
+        await user.save()
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            status=user.status,
+            role=user.role,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to change password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to change password. Please try again later.",
+        )

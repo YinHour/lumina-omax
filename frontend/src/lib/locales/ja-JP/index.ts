@@ -31,7 +31,7 @@ export const jaJP = {
     podcast: "ポッドキャスト",
     quickActions: "クイックアクション",
     quickActionsDesc: "ナビゲーション、検索、質問、テーマ",
-    appName: "Lumina™ | Yinshi AI",
+    appName: "Lumiton·Omax|知涌",
     add: "追加",
     remove: "削除",
     confirm: "確認",

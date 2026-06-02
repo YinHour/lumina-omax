@@ -18,6 +18,8 @@ interface AuthState {
   register: (username: string, password: string, displayName: string) => Promise<{ success: boolean; message?: string }>
   logout: () => void
   checkAuth: () => Promise<boolean>
+  updateProfile: (displayName: string) => Promise<boolean>
+  changePassword: (oldPassword: string, newPassword: string) => Promise<{ success: boolean; message?: string }>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -284,15 +286,60 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('checkAuth error:', error)
-          set({ 
-            isAuthenticated: false, 
+          set({
+            isAuthenticated: false,
             token: null,
             lastAuthCheck: null,
-            isCheckingAuth: false 
+            isCheckingAuth: false
           })
           return false
         }
-      }
+      },
+
+      updateProfile: async (displayName: string) => {
+        try {
+          const apiUrl = await getApiUrl()
+          const token = get().token
+          const response = await fetch(`${apiUrl}/api/auth/me`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ display_name: displayName })
+          })
+          if (response.ok) {
+            const data = await response.json()
+            set({ user: { ...get().user!, display_name: data.display_name } })
+            return true
+          }
+          return false
+        } catch {
+          return false
+        }
+      },
+
+      changePassword: async (oldPassword: string, newPassword: string) => {
+        try {
+          const apiUrl = await getApiUrl()
+          const token = get().token
+          const response = await fetch(`${apiUrl}/api/auth/me/password`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+          })
+          if (response.ok) {
+            return { success: true }
+          }
+          const errData = await response.json().catch(() => ({}))
+          return { success: false, message: errData.detail || '修改失败' }
+        } catch {
+          return { success: false, message: '网络连接失败' }
+        }
+      },
     }),
     {
       name: 'auth-storage',
