@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '@/lib/stores/auth-store'
+import { apiClient } from '@/lib/api/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -59,23 +60,9 @@ export function UserApprovalDashboard() {
     setIsLoading(true)
     setError(null)
     try {
-      console.log('[UserApprovalDashboard] Fetching users, token present:', !!token)
-      const response = await fetch(`/api/auth/users`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => '(empty)')
-        console.error(`[UserApprovalDashboard] fetchUsers failed: ${response.status}`, body)
-        throw new Error(`获取成员列表失败: ${response.status} — ${body}`)
-      }
-
-      const data = await response.json()
-      setUsersList(data)
+      console.log('[UserApprovalDashboard] Fetching users, token present:', !!token, 'length:', token?.length || 0)
+      const response = await apiClient.get('/auth/users')
+      setUsersList(response.data)
     } catch (err: unknown) {
       console.error('Error fetching users:', err)
       setError(err instanceof Error ? err.message : '获取成员列表失败')
@@ -93,20 +80,8 @@ export function UserApprovalDashboard() {
     const { userId, status: targetStatus } = confirmAction
     setConfirmAction(null)
     try {
-      const response = await fetch(`/api/auth/users/${userId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status: targetStatus })
-      })
-
-      if (!response.ok) {
-        throw new Error(`更新成员状态失败: ${response.status}`)
-      }
-
-      const updatedUser = await response.json()
+      const response = await apiClient.put(`/auth/users/${userId}/status`, { status: targetStatus })
+      const updatedUser = response.data
       
       // Update local state
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, status: updatedUser.status } : u))
@@ -120,20 +95,8 @@ export function UserApprovalDashboard() {
 
   const handleUpdateRole = async (userId: string, targetRole: 'admin' | 'user') => {
     try {
-      const response = await fetch(`/api/auth/users/${userId}/role`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ role: targetRole })
-      })
-
-      if (!response.ok) {
-        throw new Error(`更新角色失败: ${response.status}`)
-      }
-
-      const updatedUser = await response.json()
+      const response = await apiClient.put(`/auth/users/${userId}/role`, { role: targetRole })
+      const updatedUser = response.data
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: updatedUser.role } : u))
       toast.success(targetRole === 'admin' ? '已将该成员提升为管理员' : '已取消该成员的管理员权限')
     } catch (err: unknown) {
@@ -148,19 +111,7 @@ export function UserApprovalDashboard() {
       return
     }
     try {
-      const response = await fetch(`/api/auth/users/${userId}/password`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ password: newPassword })
-      })
-
-      if (!response.ok) {
-        throw new Error(`重置密码失败: ${response.status}`)
-      }
-
+      await apiClient.put(`/auth/users/${userId}/password`, { password: newPassword })
       return true
     } catch (err: unknown) {
       console.error('Error resetting password:', err)
