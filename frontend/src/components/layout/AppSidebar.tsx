@@ -137,9 +137,9 @@ export function AppSidebar() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2">
-                <Image src="/logo.png" alt="Lumiton Omax Logo" width={32} height={32} />
-                <span className="text-base font-medium text-sidebar-foreground">
+              <div className="flex items-center gap-1.5">
+                <Image src="/logo.png" alt="Lumiton Omax Logo" width={28} height={28} />
+                <span className="text-sm font-semibold whitespace-nowrap text-sidebar-foreground">
                   Lumiton·Omax|知涌
                 </span>
               </div>
