@@ -158,7 +158,7 @@ export function AppSidebar() {
 
         <nav
           className={cn(
-            'flex-1 space-y-1 py-4',
+            'flex-1 space-y-1 py-4 overflow-y-auto min-h-0',
             isCollapsed ? 'px-2' : 'px-3'
           )}
         >
