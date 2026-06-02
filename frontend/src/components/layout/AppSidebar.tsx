@@ -303,6 +303,19 @@ export function AppSidebar() {
             </div>
           )}
 
+          {/* User Profile */}
+          {!isCollapsed && user && (
+            <Link href="/profile" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-400 text-xs font-bold">
+                {user.display_name?.charAt(0) || user.username?.charAt(0) || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate text-sidebar-foreground">{user.display_name || user.username}</p>
+                <p className="text-xs text-muted-foreground truncate">@{user.username}</p>
+              </div>
+            </Link>
+          )}
+
           <div
             className={cn(
               'flex flex-row gap-2',
@@ -335,19 +348,6 @@ export function AppSidebar() {
               </>
             )}
           </div>
-
-          {/* User Profile */}
-          {!isCollapsed && user && (
-            <Link href="/profile" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-400 text-xs font-bold">
-                {user.display_name?.charAt(0) || user.username?.charAt(0) || '?'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-sidebar-foreground">{user.display_name || user.username}</p>
-                <p className="text-xs text-muted-foreground truncate">@{user.username}</p>
-              </div>
-            </Link>
-          )}
 
           {isCollapsed ? (
             <Tooltip>
