@@ -138,7 +138,7 @@ export function AppSidebar() {
           ) : (
             <>
               <Image src="/logo.png" alt="Lumiton Omax Logo" width={28} height={28} className="shrink-0" />
-              <span className="flex-1 text-center text-sm font-semibold whitespace-nowrap text-sidebar-foreground mx-2">
+              <span className="flex-1 text-center text-base font-bold whitespace-nowrap text-sidebar-foreground mx-2">
                 Lumiton·Omax|知涌
               </span>
               <Button
