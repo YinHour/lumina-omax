@@ -137,17 +137,15 @@ export function AppSidebar() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-1.5">
-                <Image src="/logo.png" alt="Lumiton Omax Logo" width={28} height={28} />
-                <span className="text-sm font-semibold whitespace-nowrap text-sidebar-foreground">
-                  Lumiton·Omax|知涌
-                </span>
-              </div>
+              <Image src="/logo.png" alt="Lumiton Omax Logo" width={28} height={28} className="shrink-0" />
+              <span className="flex-1 text-center text-sm font-semibold whitespace-nowrap text-sidebar-foreground mx-2">
+                Lumiton·Omax|知涌
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleCollapse}
-                className="text-sidebar-foreground hover:bg-sidebar-accent"
+                className="text-sidebar-foreground hover:bg-sidebar-accent shrink-0"
                 data-testid="sidebar-toggle"
               >
                 <ChevronLeft className="h-4 w-4" />
