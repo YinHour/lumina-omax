@@ -1,284 +1,131 @@
-# Notebooks, Sources, and Notes - The Container Model
+# 笔记本、来源和笔记 — 容器模型
 
-Lumiton·Omax organizes research in three connected layers. Understanding this hierarchy is key to using the system effectively.
+Lumiton·Omax 用三层关联结构组织研究。理解这一层级关系是高效使用系统的关键。
 
-## The Three-Layer Structure
+## 三层结构
 
 ```
 ┌─────────────────────────────────────┐
-│         NOTEBOOK (The Container)    │
-│     "My AI Safety Research 2026"   │
+│         笔记本（容器）               │
+│     "AI 安全研究 2026"              │
 ├─────────────────────────────────────┤
-│                                     │
-│  SOURCES (The Raw Materials)        │
-│  ├─ safety_paper.pdf                │
-│  ├─ alignment_video.mp4             │
-│  └─ prompt_injection_article.html   │
-│                                     │
-│  NOTES (The Processed Insights)     │
-│  ├─ AI Summary (auto-generated)     │
-│  ├─ Key Concepts (transformation)   │
-│  ├─ My Research Notes (manual)      │
-│  └─ Chat Insights (from conversation)
-│                                     │
+│  来源（原材料）                      │
+│  ├─ 安全论文.pdf                     │
+│  ├─ 对齐视频.mp4                     │
+│  └─ 提示注入文章.html                │
+│  笔记（处理后的见解）                 │
+│  ├─ AI 摘要（自动生成）               │
+│  ├─ 关键概念（转换提取）              │
+│  ├─ 我的研究笔记（手动）              │
+│  └─ 聊天洞察（来自对话）              │
 └─────────────────────────────────────┘
 ```
 
 ---
 
-## 1. NOTEBOOKS - The Research Container
+## 1. 笔记本 — 研究容器
 
-### What Is a Notebook?
+### 什么是笔记本？
 
-A **notebook** is a *scoped container* for a research project or topic. It's your research workspace.
+笔记本是一个研究项目或主题的**限定容器**。它就是你研究的工作空间。
 
-Think of it like a physical notebook: everything inside is about the same topic, shares the same context, and builds toward the same goals.
+可以把它想成一个物理笔记本：里面的内容围绕同一主题，共享同一上下文，服务于同一目标。
 
-### What Goes In?
+### 里面有什么？
 
-- **A description** — "This notebook collects research on X topic"
-- **Sources** — The raw materials you add
-- **Notes** — Your insights and outputs
-- **Conversation history** — Your chats and questions
+- **一段描述** — "这个笔记本收集关于 X 主题的研究"
+- **来源** — 你添加的原材料
+- **笔记** — 你的见解和输出
+- **对话历史** — 你的聊天记录和问题
 
-### Why This Matters
+### 为什么这很重要
 
-**Isolation**: Each notebook is completely separate. Sources in Notebook A never appear in Notebook B. This lets you:
-- Keep different research topics completely isolated
-- Reuse source names across notebooks without conflicts
-- Control which AI context applies to which research
+**隔离性**：每个笔记本完全独立。笔记本 A 中的来源绝不会出现在笔记本 B 中。这让你可以：
+- 将不同研究主题完全隔离
+- 跨笔记本复用来源名称而不冲突
+- 控制每个研究的 AI 上下文范围
 
-**Shared Context**: All sources and notes in a notebook inherit the notebook's context. If your notebook is titled "AI Safety 2026" with description "Focusing on alignment and interpretability," that context applies to all AI interactions within that notebook.
+**共享上下文**：笔记本中的所有来源和笔记继承笔记本的上下文设定。
 
-**Parallel Projects**: You can have 10 notebooks running simultaneously. Each one is its own isolated research environment.
-
-### Example
-
-```
-Notebook: "Customer Research - Product Launch"
-Description: "User interviews and feedback for Q1 2026 launch"
-
-→ All sources added to this notebook are about customer feedback
-→ All notes generated are in that context
-→ When you chat, the AI knows you're analyzing product launch feedback
-→ Different from your "Market Analysis - Competitors" notebook
-```
+**并行项目**：你可以同时运行 10 个笔记本，各为独立的研究环境。
 
 ---
 
-## 2. SOURCES - The Raw Materials
+## 2. 来源 — 原材料
 
-### What Is a Source?
+### 什么是来源？
 
-A **source** is a *single piece of input material* — the raw content you bring in. Sources never change; they're just processed and indexed.
+来源是你导入的**单个输入材料**——原材料。来源不改变，只被处理和索引。
 
-### What Can Be a Source?
+### 可以是什么？
 
-- **PDFs** — Research papers, reports, documents
-- **Web links** — Articles, blog posts, web pages
-- **Audio files** — Podcasts, interviews, lectures
-- **Video files** — Tutorials, presentations, recordings
-- **Plain text** — Notes, transcripts, passages
-- **Uploaded text** — Paste content directly
+- **PDF** — 研究论文、报告、文档
+- **网页链接** — 文章、博客、网页
+- **音频文件** — 播客、访谈、讲座
+- **视频文件** — 教程、演示、录制
+- **纯文本** — 笔记、转录、段落
 
-### What Happens When You Add a Source?
-
-```
-1. EXTRACTION
-   File/URL → Extract text and metadata
-   (OCR for PDFs, web scraping for URLs, speech-to-text for audio)
-
-2. CHUNKING
-   Long text → Break into searchable chunks
-   (Prevents "too much context" in single query)
-
-3. EMBEDDING
-   Each chunk → Generate semantic vector
-   (Allows AI to find conceptually similar content)
-
-4. STORAGE
-   Chunks + vectors → Store in database
-   (Ready for search and retrieval)
-```
-
-### Key Properties
-
-**Immutable**: Once added, the source doesn't change. If you need a new version, add it as a new source.
-
-**Indexed**: Sources are automatically indexed for search (both text and semantic).
-
-**Scoped**: A source belongs to exactly one notebook.
-
-**Referenceable**: Other sources and notes can reference this source by citation.
-
-### Example
+### 添加来源后发生了什么？
 
 ```
-Source: "openai_charter.pdf"
-Type: PDF document
-
-What happens:
-→ PDF is uploaded
-→ Text is extracted (including images)
-→ Text is split into 50 chunks (paragraphs, sections)
-→ Each chunk gets an embedding vector
-→ Now searchable by: "OpenAI's approach to safety"
+1. 提取 → 文件/URL → 提取文本和元数据
+2. 分块 → 长文本 → 拆分为可搜索的片段
+3. 向量化 → 每个片段 → 生成语义向量
+4. 存储 → 片段 + 向量 → 存入数据库
 ```
+
+### 关键属性
+
+**不可变**：一旦添加，来源不再改变。如需新版本，作为新来源添加。
+
+**已索引**：来源自动建立文本和语义搜索索引。
+
+**限定范围**：一个来源只属于一个笔记本。
+
+**可引用**：其他来源和笔记可以通过引用来引用该来源。
 
 ---
 
-## 3. NOTES - The Processed Insights
+## 3. 笔记 — 处理后的见解
 
-### What Is a Note?
+### 什么是笔记？
 
-A **note** is a *processed output* — something you created or AI created based on your sources. Notes are the "results" of your research work.
+笔记是**处理后的输出**——你或 AI 基于来源创建的成果。笔记是你研究工作的"成果"。
 
-### Types of Notes
+### 笔记类型
 
-#### Manual Notes
-You write them yourself. They're your original thinking, capturing:
-- What you learned from sources
-- Your analysis and interpretations
-- Your next steps and questions
+**手动笔记**：你自己撰写的原创思考，记录：
+- 从来源学到的东西
+- 你的分析和解读
+- 下一步行动和问题
 
-#### AI-Generated Notes
-Created by applying AI processing to sources:
-- **Transformations** — Structured extraction (main points, key concepts, methodology)
-- **Chat Responses** — Answers you saved from conversations
-- **Ask Results** — Comprehensive answers saved to your notebook
+**AI 生成笔记**：通过 AI 处理来源创建：
+- **Transformations（转换）** — 结构化提取（要点、关键概念、方法论）
+- **Chat 回复** — 从对话中保存的答案
+- **Ask 结果** — 保存到笔记本的综合答案
 
-#### Captured Insights
-Notes you explicitly saved from interactions:
-- "Save this response as a note"
-- "Save this transformation result"
-- Convert any AI output into a permanent note
+### 为什么笔记重要
 
-### What Can Notes Contain?
+**知识积累**：笔记构成你真正的知识库，是你从研究中带走的东西。
 
-- **Text** — Your writing or AI-generated content
-- **Citations** — References to specific sources
-- **Metadata** — When created, how created (manual/AI), which sources influenced it
-- **Tags** — Your categorization (optional but useful)
+**可搜索**：笔记与来源一起可被搜索。
 
-### Why Notes Matter
-
-**Knowledge Accumulation**: Notes become your actual knowledge base. They're what you take away from the research.
-
-**Searchable**: Notes are searchable along with sources. "Find everything about X" includes your notes, not just sources.
-
-**Citable**: Notes can cite sources, creating an audit trail of where insights came from.
-
-**Shareable**: Notes are your outputs. You can share them, publish them, or build on them in other projects.
+**可引用**：笔记可以引用来源，形成洞察来源的溯源链。
 
 ---
 
-## How They Connect: The Data Flow
+## 关键设计决策
 
-```
-YOU
- │
- ├─→ Create Notebook ("AI Research")
- │
- ├─→ Add Sources (papers, articles, videos)
- │    └─→ System: Extract, embed, index
- │
- ├─→ Search Sources (text or semantic)
- │    └─→ System: Find relevant chunks
- │
- ├─→ Apply Transformations (extract insights)
- │    └─→ Creates Notes
- │
- ├─→ Chat with Sources (explore with context control)
- │    ├─→ Can save responses as Notes
- │    └─→ Notes include citations
- │
- ├─→ Ask Questions (automated comprehensive search)
- │    ├─→ Can save results as Notes
- │    └─→ Notes include citations
- │
- └─→ Generate Podcast (transform notebook into audio)
-     └─→ Uses all sources + notes for content
-```
+1. **一个来源对应一个笔记本** — 边界清晰，项目隔离
+2. **来源不可变，笔记可编辑** — 来源是证据，不能改动；笔记是思考，可以演进
+3. **显式上下文控制** — 你决定哪些来源进入每次交互的上下文
 
 ---
 
-## Key Design Decisions
+## 总结
 
-### 1. One Notebook Per Source
-
-Each source belongs to exactly one notebook. This creates clear boundaries:
-- No ambiguity about which research project a source is in
-- Easy to isolate or export a complete project
-- Clean permissions model (if someone gets access to notebook, they get access to all its sources)
-
-### 2. Immutable Sources, Mutable Notes
-
-Sources never change (once added, always the same). But notes can be edited or deleted. Why?
-- Sources are evidence → evidence shouldn't be altered
-- Notes are your thinking → thinking evolves as you learn
-
-### 3. Explicit Context Control
-
-Sources don't automatically go to AI. You decide which sources are "in context" for each interaction:
-- Chat: You manually select which sources to include
-- Ask: System automatically figures out which sources to search
-- Transformations: You choose which sources to transform
-
-This is different from systems that always send everything to AI.
-
----
-
-## Mental Models Explained
-
-### Notebook as Boundaries
-Think of a notebook like a Git repository:
-- Everything in it is about the same topic
-- You can clone/fork it (copy to new project)
-- It has clear entry/exit points
-- You know exactly what's included
-
-### Sources as Evidence
-Think of sources like exhibits in a legal case:
-- Once filed, they don't change
-- They can be cited and referenced
-- They're the ground truth for what you're basing claims on
-- Multiple sources can be cross-referenced
-
-### Notes as Synthesis
-Think of notes like your case brief:
-- You write them based on evidence
-- They're your interpretation
-- You can cite which evidence supports each claim
-- They're what you actually share or act on
-
----
-
-## Common Questions
-
-### Can I move a source to a different notebook?
-Not directly. Each source is tied to one notebook. If you want it in multiple notebooks, add it again (uploads are fast if it's already processed).
-
-### Can a note reference sources from a different notebook?
-No. Notes stay within their notebook and reference sources within that notebook. This keeps boundaries clean.
-
-### What if I want to group sources within a notebook?
-Use tags. You can tag sources ("primary research," "background," "methodology") and filter by tags.
-
-### Can I merge two notebooks?
-Not built-in, but you can manually copy sources from one notebook to another by re-uploading them.
-
----
-
-## Summary
-
-| Concept | Purpose | Lifecycle | Scope |
-|---------|---------|-----------|-------|
-| **Notebook** | Container + context | Create once, configure | All its sources + notes |
-| **Source** | Raw material | Add → Process → Store | One notebook |
-| **Note** | Processed output | Create/capture → Edit → Share | One notebook |
-
-This three-layer model gives you:
-- **Clear organization** (everything scoped to projects)
-- **Privacy control** (isolated notebooks)
-- **Audit trails** (notes cite sources)
-- **Flexibility** (notes can be manual or AI-generated)
+| 概念 | 用途 | 生命周期 | 范围 |
+|------|------|----------|------|
+| **笔记本** | 容器 + 上下文 | 创建后配置 | 其下所有来源 + 笔记 |
+| **来源** | 原材料 | 添加→处理→存储 | 一个笔记本 |
+| **笔记** | 处理后输出 | 创建/捕获→编辑→分享 | 一个笔记本 |

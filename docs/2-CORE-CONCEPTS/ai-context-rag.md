@@ -1,450 +1,100 @@
-# AI Context & RAG - How Lumiton·Omax Uses Your Research
+# AI 上下文与 RAG — Lumiton·Omax 如何利用你的研究
 
-Lumiton·Omax uses different approaches to make AI models aware of your research depending on the feature. This section explains **RAG** (used in Ask) and **full-content context** (used in Chat).
-
----
-
-## The Problem: Making AI Aware of Your Data
-
-### Traditional Approaches (and their problems)
-
-**Option 1: Fine-Tuning**
-- Train the model on your data
-- Pro: Model becomes specialized
-- Con: Expensive, slow, permanent (can't unlearn)
-
-**Option 2: Send Everything to Cloud**
-- Upload all your data to ChatGPT/Claude API
-- Pro: Works well, fast
-- Con: Privacy nightmare, data leaves your control, expensive
-
-**Option 3: Ignore Your Data**
-- Just use the base model without your research
-- Pro: Private, free
-- Con: AI doesn't know anything about your specific topic
-
-### Lumiton·Omax's Dual Approach
-
-**For Chat**: Sends the entire selected content to the LLM
-- Simple and transparent: You select sources, they're sent in full
-- Maximum context: AI sees everything you choose
-- You control which sources are included
-
-**For Ask (RAG)**: Retrieval-Augmented Generation
-- RAG = Retrieval-Augmented Generation
-- The insight: *Search your content, find relevant pieces, send only those*
-- Automatic: AI decides what's relevant based on your question
+Lumiton·Omax 根据功能不同使用不同方式让 AI 理解你的研究。本节解释 **RAG**（检索增强生成，用于 Ask）和**全文上下文**（用于 Chat）。
 
 ---
 
-## How RAG Works: Three Stages
+## 问题：让 AI 感知你的数据
 
-### Stage 1: Content Preparation
+### 传统方案（及其问题）
 
-When you upload a source, Lumiton·Omax prepares it for retrieval:
+| 方案 | 优点 | 缺点 |
+|------|------|------|
+| **微调（Fine-Tuning）** | 模型专业化 | 昂贵、缓慢、不可逆 |
+| **全部发送到云端** | 效果好、快速 | 隐私噩梦、数据失控、昂贵 |
+| **忽略你的数据** | 私密、免费 | AI 不了解你的具体领域 |
 
-```
-1. EXTRACT TEXT
-   PDF → text
-   URL → webpage text
-   Audio → transcribed text
-   Video → subtitles + transcription
+### Lumiton·Omax 的双重方案
 
-2. CHUNK INTO PIECES
-   Long documents → break into ~500-word chunks
-   Why? AI context has limits; smaller pieces are more precise
-
-3. CREATE EMBEDDINGS
-   Each chunk → semantic vector (numbers representing meaning)
-   Why? Allows finding chunks by similarity, not just keywords
-
-4. STORE IN DATABASE
-   Chunks + embeddings + metadata → searchable storage
-```
-
-**Example:**
-```
-Source: "AI Safety Research 2026" (50-page PDF)
-↓
-Extracted: 50 pages of text
-↓
-Chunked: 150 chunks (~500 words each)
-↓
-Embedded: Each chunk gets a vector (1536 numbers for OpenAI)
-↓
-Stored: Ready for search
-```
+- **Chat**：将选定的全部内容发送给 LLM——简单透明，你选来源，AI 看到完整内容
+- **Ask (RAG)**：检索增强生成——自动搜索你的内容，找到相关片段，只发送那些部分
 
 ---
 
-### Stage 2: Query Time (What You Search For)
+## RAG 三阶段
 
-When you ask a question, the system finds relevant content:
+### 阶段 1：内容准备
 
-```
-1. YOU ASK A QUESTION
-   "What does the paper say about alignment?"
+上传来源时系统自动：
+1. **提取文本** — PDF / URL / 音频 / 视频 → 文本
+2. **分块** — 长文档拆分为约 500 词的片段
+3. **向量化** — 每个片段生成语义向量（代表含义的数字序列）
+4. **存储** — 片段 + 向量 + 元数据 → 可搜索存储
 
-2. SYSTEM CONVERTS QUESTION TO EMBEDDING
-   Your question → vector (same way chunks are vectorized)
+### 阶段 2：查询时
 
-3. SIMILARITY SEARCH
-   Find chunks most similar to your question
-   (using vector math, not keyword matching)
+当你提问时：
+1. 系统将问题转换为向量
+2. 在所有片段中做相似度搜索
+3. 返回最相似的 Top 5-10 个片段
 
-4. RETURN TOP RESULTS
-   Usually top 5-10 most similar chunks
+### 阶段 3：增强
 
-5. YOU GET BACK
-   ✓ The relevant chunks
-   ✓ Where they came from (sources + page numbers)
-   ✓ Relevance scores
-```
-
-**Example:**
-```
-Q: "What does the paper say about alignment?"
-↓
-Q vector: [0.23, -0.51, 0.88, ..., 0.12]
-↓
-Search: Compare to all chunk vectors
-↓
-Results:
-  - Chunk 47 (alignment section): similarity 0.94
-  - Chunk 63 (safety approaches): similarity 0.88
-  - Chunk 12 (related work): similarity 0.71
-```
+系统构建 prompt，将检索到的片段注入，LLM 基于这些片段回答。
 
 ---
 
-### Stage 3: Augmentation (How AI Uses It)
+## 两种搜索模式
 
-Now you have the relevant pieces. The AI uses them:
+### 文本搜索（关键词匹配）
+- 使用 BM25 排名算法
+- 找包含你关键词的片段
+- 适合：记住精确短语、找具体名称或数字、需要精确引用
 
-```
-SYSTEM BUILDS A PROMPT:
-  "You are an AI research assistant.
-
-   The user has the following research materials:
-   [CHUNK 47 CONTENT]
-   [CHUNK 63 CONTENT]
-
-   User question: 'What does the paper say about alignment?'
-
-   Answer based on the above materials."
-
-AI RESPONDS:
-  "Based on the research materials, the paper approaches
-   alignment through [pulls from chunks] and emphasizes
-   [pulls from chunks]..."
-
-SYSTEM ADDS CITATIONS:
-  "- See research materials page 15 for approach details
-   - See research materials page 23 for emphasis on X"
-```
+### 向量搜索（语义相似度）
+- 将问题转换为向量
+- 找语义上相似的片段
+- 适合：探索概念、不必知道确切词语、找相关想法
 
 ---
 
-## Two Search Modes: Exact vs. Semantic
+## 上下文管理：你的控制面板
 
-Lumiton·Omax provides two different search strategies for different goals.
-
-### 1. Text Search (Keyword Matching)
-
-**How it works:**
-- Uses BM25 ranking (the same algorithm Google uses)
-- Finds chunks containing your keywords
-- Ranks by relevance (how often keywords appear, position, etc.)
-
-**When to use:**
-- "I remember the exact phrase 'X' and want to find it"
-- "I'm looking for a specific name or number"
-- "I need the exact quote"
-
-**Example:**
-```
-Search: "transformer architecture"
-Results:
-  1. Chunk with "transformer architecture" 3 times
-  2. Chunk with "transformer" and "architecture" separately
-  3. Chunk with "transformer-based models"
-```
-
-### 2. Vector Search (Semantic Similarity)
-
-**How it works:**
-- Converts your question to a vector (number embedding)
-- Finds chunks with similar vectors
-- No keywords needed—finds conceptually similar content
-
-**When to use:**
-- "Find content about X (without saying exact words)"
-- "I'm exploring a concept"
-- "Find similar ideas even if worded differently"
-
-**Example:**
-```
-Search: "what's the mechanism for model understanding?"
-Results (no "understanding" in any chunk):
-  1. Chunk about interpretability and mechanistic analysis
-  2. Chunk about feature analysis
-  3. Chunk about attention mechanisms
-
-Why? The vectors are semantically similar to your concept.
-```
+| 级别 | 共享内容 | 隐私 | 适用场景 |
+|------|----------|------|----------|
+| **完整内容** | 完整来源文本 | 低 | 详细分析、精读 |
+| **仅摘要** | AI 生成的摘要 | 高 | 背景材料、参考 |
+| **不在上下文中** | 无 | 最高 | 机密、不相关、已归档 |
 
 ---
 
-## Context Management: Your Control Panel
+## Chat vs Ask：核心区别
 
-Here's where Lumiton·Omax is different: **You decide what the AI sees.**
+### Chat（全文上下文）
+- 你手动选择来源，AI 看到完整内容
+- 对话式：多次追问，上下文保持
+- 适合：你知道哪些来源相关、想精读分析
 
-### The Three Levels
-
-| Level | What's Shared | Example Cost | Privacy | Use Case |
-|-------|---------------|--------------|---------|----------|
-| **Full Content** | Complete source text | 10,000 tokens | Low | Detailed analysis, close reading |
-| **Summary Only** | AI-generated summary | 2,000 tokens | High | Background material, references |
-| **Not in Context** | Nothing | 0 tokens | Max | Confidential, irrelevant, or archived |
-
-### How It Works
-
-**Full Content:**
-```
-You: "What's the methodology in paper A?"
-System:
-  - Searches paper A
-  - Retrieves full paper content (or large chunks)
-  - Sends to AI: "Here's paper A. Answer about methodology."
-  - AI analyzes complete content
-  - Result: Detailed, precise answer
-```
-
-**Summary Only:**
-```
-You: "I want to chat using paper A and B"
-System:
-  - For Paper A: Sends AI-generated summary (not full text)
-  - For Paper B: Sends full content (detailed analysis)
-  - AI sees 2 sources but in different detail levels
-  - Result: Uses summaries for context, details for focused content
-```
-
-**Not in Context:**
-```
-You: "I have 10 sources but only want 5 in context"
-System:
-  - Paper A-E: In context (sent to AI)
-  - Paper F-J: Not in context (AI can't see them, doesn't search them)
-  - AI never knows these 5 sources exist
-  - Result: Tight, focused context
-```
-
-### Why This Matters
-
-**Privacy**: You control what leaves your system
-```
-Scenario: Confidential company docs + public research
-Control: Public research in context → Confidential docs excluded
-Result: AI never sees confidential content
-```
-
-**Cost**: You control token usage
-```
-Scenario: 100 sources for background + 5 for detailed analysis
-Control: Full content for 5 detailed, summaries for 95 background
-Result: 80% lower token cost than sending everything
-```
-
-**Quality**: You control what the AI focuses on
-```
-Scenario: 20 sources, question requires deep analysis
-Control: Full content for relevant source, exclude others
-Result: AI doesn't get distracted; gives better answer
-```
+### Ask（RAG 自动检索）
+- 系统自动搜索所有来源
+- 只发送最相关的片段给 AI
+- 一次性综合回答，非对话式
+- 适合：来源多、不确定哪些相关、需要综合答案
 
 ---
 
-## The Difference: Chat vs. Ask
+## 关键设计决策
 
-**IMPORTANT**: These use completely different approaches!
-
-### Chat: Full-Content Context (NO RAG)
-
-**How it works:**
-```
-YOU:
-  1. Select which sources to include in context
-  2. Set context level (full/summary/excluded)
-  3. Ask question
-
-SYSTEM:
-  - Takes ALL selected sources (respecting context levels)
-  - Sends the ENTIRE content to the LLM at once
-  - NO search, NO retrieval, NO chunking
-  - AI sees everything you selected
-
-AI:
-  - Responds based on the full content you provided
-  - Can reference any part of selected sources
-  - Conversational: context stays for follow-ups
-```
-
-**Use this when**:
-- You know which sources are relevant
-- You want conversational back-and-forth
-- You want AI to see the complete context
-- You're doing close reading or analysis
-
-**Advantages:**
-- Simple and transparent
-- AI sees everything (no missed content)
-- Conversational flow
-
-**Limitations:**
-- Limited by LLM context window
-- You must manually select relevant sources
-- Sends more tokens (higher cost with many sources)
+1. **搜索，而非训练** — 搜索灵活可逆，微调缓慢且永久
+2. **显式检索，非隐式知识** — 可验证 AI 看了什么，有溯源链
+3. **多种搜索类型** — 不同问题需要不同搜索，给你两种选择
+4. **上下文作为权限系统** — 不是所有保存的内容都需要送达 AI
 
 ---
 
-### Ask: RAG - Automatic Retrieval
+## 总结
 
-**How it works:**
-```
-YOU:
-  Ask one complex question
+**Chat（全文）**：手动选源，对话式，透明
+**Ask（RAG）**：自动搜索，一次性回答，高效
 
-SYSTEM:
-  1. Analyzes your question
-  2. Searches across ALL your sources automatically
-  3. Finds relevant chunks using vector similarity
-  4. Retrieves only the most relevant pieces
-  5. Sends ONLY those chunks to the LLM
-  6. Synthesizes into comprehensive answer
-
-AI:
-  - Sees ONLY the retrieved chunks (not full sources)
-  - Answers based on what was found to be relevant
-  - One-shot answer (not conversational)
-```
-
-**Use this when**:
-- You have many sources and don't know which are relevant
-- You want the AI to search automatically
-- You need a comprehensive answer to a complex question
-- You want to minimize tokens sent to LLM
-
-**Advantages:**
-- Automatic search (you don't pick sources)
-- Works across many sources at once
-- Cost-effective (sends only relevant chunks)
-
-**Limitations:**
-- Not conversational (single question/answer)
-- AI only sees retrieved chunks (might miss context)
-- Search quality depends on how well question matches content
-
----
-
-## What This Means: Privacy by Design
-
-Lumiton·Omax's RAG approach gives you something you don't get with ChatGPT or Claude directly:
-
-**You control the boundary between:**
-- What stays private (on your system)
-- What goes to AI (explicitly chosen)
-- What the AI can see (context levels)
-
-### The Audit Trail
-
-Because everything is retrieved explicitly, you can ask:
-- "Which sources did the AI use for this answer?" → See citations
-- "What exactly did the AI see?" → See chunks in context level
-- "Is the AI's claim actually in my sources?" → Verify citation
-
-This prevents hallucinations or misrepresentation better than most systems.
-
----
-
-## How Embeddings Work (Simplified)
-
-The magic of semantic search comes from embeddings. Here's the intuition:
-
-### The Idea
-Instead of storing text, store it as a list of numbers (vectors) that represent "meaning."
-
-```
-Chunk: "The transformer uses attention mechanisms"
-Vector: [0.23, -0.51, 0.88, 0.12, ..., 0.34]
-        (1536 numbers for OpenAI)
-
-Another chunk: "Attention allows models to focus on relevant parts"
-Vector: [0.24, -0.48, 0.87, 0.15, ..., 0.35]
-        (similar numbers = similar meaning!)
-```
-
-### Why This Works
-Words that are semantically similar produce similar vectors. So:
-- "alignment" and "interpretability" have similar vectors
-- "transformer" and "attention" have related vectors
-- "cat" and "dog" are more similar than "cat" and "radiator"
-
-### How Search Works
-```
-Your question: "How do models understand their decisions?"
-Question vector: [0.25, -0.50, 0.86, 0.14, ..., 0.33]
-
-Compare to all stored vectors. Find the most similar:
-- Chunk about interpretability: similarity 0.94
-- Chunk about explainability: similarity 0.91
-- Chunk about feature attribution: similarity 0.88
-
-Return the top matches.
-```
-
-This is why semantic search finds conceptually similar content even when words are different.
-
----
-
-## Key Design Decisions
-
-### 1. Search, Don't Train
-**Why?** Fine-tuning is slow and permanent. Search is flexible and reversible.
-
-### 2. Explicit Retrieval, Not Implicit Knowledge
-**Why?** You can verify what the AI saw. You have audit trails. You control what leaves your system.
-
-### 3. Multiple Search Types
-**Why?** Different questions need different search (keyword vs. semantic). Giving you both is more powerful.
-
-### 4. Context as a Permission System
-**Why?** Not everything you save needs to reach AI. You control granularly.
-
----
-
-## Summary
-
-Lumiton·Omax gives you **two ways** to work with AI:
-
-### Chat (Full-Content)
-- Sends entire selected sources to LLM
-- Manual control: you pick sources
-- Conversational: back-and-forth dialog
-- Transparent: you know exactly what AI sees
-- Best for: focused analysis, close reading
-
-### Ask (RAG)
-- Searches and retrieves relevant chunks automatically
-- Automatic: AI finds what's relevant
-- One-shot: single comprehensive answer
-- Efficient: sends only relevant pieces
-- Best for: broad questions across many sources
-
-**Both approaches:**
-1. Keep your data private (doesn't leave your system by default)
-2. Give you control (you choose which features to use)
-3. Create audit trails (citations show what was used)
-4. Support multiple AI providers
-
-**Coming Soon**: The community is working on adding RAG capabilities to Chat as well, giving you the best of both worlds.
+两者都：保护数据隐私、给你控制权、创建溯源链、支持多个 AI 提供商

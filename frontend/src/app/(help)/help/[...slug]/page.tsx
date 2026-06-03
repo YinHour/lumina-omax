@@ -58,7 +58,7 @@ export default async function HelpPage({ params }: Props) {
             )
           },
           img: ({ src, alt }) => (
-            <span className="block text-sm text-muted-foreground italic">[图片: {alt || src}]</span>
+            <span className="block text-sm text-muted-foreground italic">[图片: {alt || (typeof src === 'string' ? src : '')}]</span>
           ),
         }}
       >

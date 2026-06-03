@@ -1,70 +1,59 @@
-# Core Concepts - Understand the Mental Model
+# 核心概念 — 理解思维模型
 
-Before diving into how to use Lumiton·Omax, it's important to understand **how it thinks**. These core concepts explain the "why" behind the design.
+在深入学习 Lumiton·Omax 的各项功能之前，理解它的**底层逻辑**至关重要。这些核心概念解释了设计背后的"为什么"。
 
-## The Five Mental Models
+## 四大思维模型
 
-### 1. [Notebooks, Sources, and Notes](notebooks-sources-notes.md)
-How Lumiton·Omax organizes your research. Understand the three-tier container structure and how information flows from raw materials to finished insights.
+### 1. [笔记本、来源和笔记](notebooks-sources-notes.md)
+Lumiton·Omax 如何组织你的研究。理解三层容器结构，以及信息如何从原材料流动到最终成果。
 
-**Key idea**: A notebook is a scoped research container. Sources are inputs (PDFs, URLs, etc.). Notes are outputs (your insights, AI-generated summaries, captured responses).
-
----
-
-### 2. [AI Context & RAG](ai-context-rag.md)
-How Lumiton·Omax makes AI aware of your research - two different approaches.
-
-**Key idea**: **Chat** sends entire selected sources to the LLM (full context, conversational). **Ask** uses RAG (retrieval-augmented generation) to automatically search and retrieve only relevant chunks. Different tools for different needs.
+**核心理念**：笔记本是限定范围的研究容器。来源（Sources）是输入（PDF、URL 等）。笔记（Notes）是输出（你的见解、AI 生成的摘要、保存的回复）。
 
 ---
 
-### 3. [Chat vs. Transformations](chat-vs-transformations.md)
-Why Lumiton·Omax has different interaction modes and when to use each one.
+### 2. [AI 上下文与 RAG](ai-context-rag.md)
+Lumiton·Omax 如何让 AI 感知你的研究——两种不同方式。
 
-**Key idea**: Chat is conversational exploration (you control context). Transformations are insight extractions. They reduced content to smaller bits of concentrated/dense information, which is much more suitable for an AI to use. 
-
----
-
-### 4. [Context Management](chat-vs-transformations.md#context-management-the-control-panel)
-Your control panel for privacy and cost. Decide what data actually reaches AI.
-
-**Key idea**: You choose three levels—not in context (private), summary only (condensed), or full content (complete access). This gives you fine-grained control.
+**核心理念**：**Chat（聊天）** 将选定的来源全文发送给 LLM（完整上下文，对话式）。**Ask（询问）** 使用 RAG（检索增强生成）自动搜索并只检索相关片段。不同工具对应不同需求。
 
 ---
 
-### 5. [Podcasts Explained](podcasts-explained.md)
-Why Lumiton·Omax can turn research into audio and why this matters.
+### 3. [聊天 vs 转换](chat-vs-transformations.md)
+Lumiton·Omax 为什么有不同的交互模式，以及何时使用每种模式。
 
-**Key idea**: Podcasts transform your research into a different consumption format. Instead of reading, someone can listen and absorb your insights passively.
-
----
-
-## Read This Section If:
-
-- **You're new to Lumiton·Omax** — Start here to understand how the system works conceptually before learning the features
-- **You're confused about Chat vs Ask** — Section 2 explains the difference (full-content vs RAG)
-- **You're wondering when to use Chat vs Transformations** — Section 3 clarifies the differences
-- **You want to understand privacy controls** — Section 4 shows you what you can control
-- **You're curious about podcasts** — Section 5 explains the architecture and why it's different from competitors
+**核心理念**：Chat 是对话探索（你控制上下文）。Transformation（转换）是深度信息提取——每条来源单独处理。它们将内容浓缩为密集的信息片段，更适于下游应用。
 
 ---
 
-## The Big Picture
+### 4. [上下文管理](chat-vs-transformations.md#上下文管理——控制面板)
+你的隐私和成本控制面板。决定哪些数据真正到达 AI。
 
-Lumiton·Omax is built on a simple insight: **Your research deserves to stay yours**.
-
-That means:
-- **Privacy by default** — Your data doesn't leave your infrastructure unless you explicitly choose
-- **AI as a tool, not a gatekeeper** — You decide which sources the AI sees, not the AI deciding for you
-- **Flexible consumption** — Read, listen, search, chat, or transform your research however makes sense
-
-These core concepts explain how that works.
+**核心理念**：你可以选择三个级别——不在上下文中（私密）、仅摘要（浓缩）、完整内容（完全访问）。这给你精细的控制粒度。
 
 ---
 
-## Next Steps
+## 适合阅读的情况
 
-1. **Just want to use it?** → Go to [User Guide](../3-USER-GUIDE/index.md)
-2. **Want to understand it first?** → Read the 5 sections above (15 min)
-3. **Setting up for the first time?** → Go to [Installation](../1-INSTALLATION/index.md)
+- **你是 Lumiton·Omax 新用户** — 在学习具体功能之前，先理解系统的概念模型
+- **你不清楚 Chat 和 Ask 的区别** — 第 2 节解释了差异（全文 vs RAG）
+- **你想知道何时用 Chat、何时用 Transformation** — 第 3 节澄清了区别
+- **你想了解隐私控制** — 第 4 节展示了你能控制什么
 
+---
+
+## 全局视图
+
+Lumiton·Omax 建立在一个简单的理念上：**你的研究应当属于你自己**。
+
+这意味着：
+- **默认隐私** — 除非你明确选择，数据不会离开你的基础设施
+- **AI 是工具，不是守门人** — 你决定 AI 能看到哪些来源，而不是 AI 替你决定
+- **灵活消费** — 阅读、聆听、搜索、聊天、转换，选择最合适的方式
+
+---
+
+## 下一步
+
+1. **想直接使用？** → 去 [用户指南](../3-USER-GUIDE/index.md)
+2. **想先理解原理？** → 阅读以上 4 节（约 15 分钟）
+3. **想配置系统？** → 去 [配置指南](../5-CONFIGURATION/index.md)
