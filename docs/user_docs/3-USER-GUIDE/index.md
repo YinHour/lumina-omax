@@ -1,208 +1,75 @@
-# User Guide - How to Use Lumiton·Omax
+# 用户指南 — 如何使用 Lumiton·Omax
 
-This guide covers practical, step-by-step usage of Lumiton·Omax features. You already understand the concepts; now learn how to actually use them.
+本指南涵盖 Lumiton·Omax 各项功能的实际使用。你已经理解了概念，现在学习如何实际操作。
 
-> **Prerequisite**: Review [2-CORE-CONCEPTS](../2-CORE-CONCEPTS/index.md) first to understand the mental models (notebooks, sources, notes, chat, transformations, podcasts).
-
----
-
-## Start Here
-
-### [Interface Overview](interface-overview.md)
-Learn the layout before diving in. Understand the three-panel design and where everything is.
+> **前置阅读**：建议先看 [核心概念](../2-CORE-CONCEPTS/index.md) 理解思维模型。
 
 ---
 
-## Eight Core Features
+## 从这里开始
 
-### 1. [Adding Sources](adding-sources.md)
-How to bring content into your notebook. Supports PDFs, web links, audio, video, text, and more.
-
-**Quick links:**
-- Upload a PDF or document
-- Add a web link or article
-- Transcribe audio or video
-- Paste text directly
-- Common mistakes + fixes
+### [界面总览](interface-overview.md)
+在深入之前先了解布局。理解三栏设计和各区域位置。
 
 ---
 
-### 2. [Working with Notes](working-with-notes.md)
-Creating, organizing, and using notes (both manual and AI-generated).
+## 八大核心功能
 
-**Quick links:**
-- Create a manual note
-- Save AI responses as notes
-- Apply transformations to generate insights
-- Organize with tags and naming
-- Use notes across your notebook
+### 1. [添加来源](adding-sources.md)
+如何将内容导入笔记本。支持 PDF、网页链接、音频、视频、文本等。
 
----
+### 2. [笔记管理](working-with-notes.md)
+创建、组织和使用笔记（手动和 AI 生成）。
 
-### 3. [Chat Effectively](chat-effectively.md)
-Have conversations with AI about your sources. Manage context to control what AI sees.
+### 3. [高效聊天](chat-effectively.md)
+与 AI 对话讨论你的来源。通过上下文管理控制 AI 看到的内容。
 
-**Quick links:**
-- Start your first chat
-- Select which sources go in context
-- Ask effective questions
-- Use follow-ups productively
-- Understand citations and verify claims
+### 4. [搜索指南](search.md)
+两种搜索模式：文本搜索（关键词）和向量搜索（语义）。何时用哪种。
 
----
+### 5. [内容转换](transformations.md)
+用预设模板批量处理来源。从多份文档中提取相同类型的洞察。
 
-### 4. [Creating Podcasts](creating-podcasts.md)
-Convert your research into audio dialogue for passive consumption.
+### 6. [引用与验证](citations.md)
+通过溯源验证 AI 的断言。
 
-**Quick links:**
-- Create your first podcast
-- Choose or customize speakers
-- Select TTS provider
-- Generate and download
-- Common audio quality fixes
+### 7. [API 配置](api-configuration.md)
+在设置界面配置 AI 提供商 API 密钥。
 
 ---
 
-### 5. [Search Effectively](search.md)
-Two search modes: text-based (keyword) and vector-based (semantic). Know when to use each.
+## 快速上手检查清单：15 分钟
 
-**Quick links:**
-- Text search vs vector search (when to use)
-- Running effective searches
-- Using the Ask feature for comprehensive answers
-- Saving search results as notes
-- Troubleshooting poor results
+**第 1 步：创建笔记本**（1 分钟）
+- 名称：描述性的（如"Q1 市场调研""AI 安全论文"）
+- 描述：1-2 句研究内容简介
 
----
+**第 2 步：添加第一个来源**（3 分钟）
+- 选择：PDF、网页链接或文本
+- 按 [添加来源](adding-sources.md) 操作
+- 等待处理（通常 30-60 秒）
 
-### 6. [Transformations](transformations.md)
-Batch-process sources with predefined templates. Extract the same insights from multiple documents.
+**第 3 步：聊天提问**（3 分钟）
+- 进入 Chat
+- 选择来源（上下文设为"完整内容"）
+- 提问："主要观点是什么？"
+- 查看 AI 带引用的回复
 
-**Quick links:**
-- Built-in transformation templates
-- Creating custom transformations
-- Applying to single or multiple sources
-- Managing transformation output
+**第 4 步：保存为笔记**（2 分钟）
+- 好的回复 → 点击"保存为笔记"
 
----
-
-### 7. [Citations](citations.md)
-Verify AI claims by tracing them back to source material. Understand the citation system.
-
-**Quick links:**
-- Reading and clicking citations
-- Verifying claims against sources
-- Requesting better citations
-- Saving cited content as notes
+**第 5 步：进一步探索**（6 分钟）
+- 再添加一个来源
+- 对比两个来源提问
+- 追问澄清
 
 ---
 
-### 8. [API Configuration](api-configuration.md)
-Configure AI provider API keys directly through the Settings UI.
+## 常见错误
 
-**Quick links:**
-- Add API keys without editing files
-- Test provider connections
-- Migrate from environment variables
-- Manage Azure and OpenAI-compatible providers
-- Understand key storage and encryption
-
----
-
-## Which Feature for Which Task?
-
-```
-Task: "I want to explore a topic with follow-ups"
-→ Use: Chat (add sources, select context, have conversation)
-
-Task: "I want one comprehensive answer"
-→ Use: Search / Ask (system finds relevant content)
-
-Task: "I want to extract the same info from many sources"
-→ Use: Transformations (define template, apply to all)
-
-Task: "I want summaries of all my sources"
-→ Use: Transformations (with built-in summary template)
-
-Task: "I want to share my research in audio form"
-→ Use: Podcasts (create speakers, generate episode)
-
-Task: "I want to find that quote I remember"
-→ Use: Search / Text Search (keyword matching)
-
-Task: "I'm exploring a concept without knowing exact words"
-→ Use: Search / Vector Search (semantic similarity)
-
-Task: "I need to add or change my AI provider API keys"
-→ Use: Settings / API Keys (configure providers without editing files)
-```
-
----
-
-## Quick-Start Checklist: First 15 Minutes
-
-**Step 1: Create a Notebook (1 min)**
-- Name: Something descriptive ("Q1 Market Research", "AI Safety Papers", etc.)
-- Description: 1-2 sentences about what you're researching
-- This is your research container
-
-**Step 2: Add Your First Source (3 min)**
-- Pick one: PDF, web link, or text
-- Follow [Adding Sources](adding-sources.md)
-- Wait for processing (usually 30-60 seconds)
-
-**Step 3: Chat About It (3 min)**
-- Go to Chat
-- Select your source (set context to "Full Content")
-- Ask a simple question: "What are the main points?"
-- See AI respond with citations
-
-**Step 4: Save Insight as Note (2 min)**
-- Good response? Click "Save as Note"
-- Name it something useful ("Main points from source X")
-- Now you have a captured insight
-
-**Step 5: Explore More (6 min)**
-- Add another source
-- Chat about both together
-- Ask a question that compares them
-- Follow up with clarifying questions
-
-**Done!** You've used the core workflow: notebook → sources → chat → notes
-
----
-
-## Common Mistakes to Avoid
-
-| Mistake | Problem | Fix |
-|---------|---------|-----|
-| Adding everything to one notebook | No isolation between projects | Create separate notebooks for different topics |
-| Expecting AI to know your context | Questions get generic answers | Describe your research focus in chat context |
-| Forgetting to cite sources | You can't verify claims | Click citations to check source chunks |
-| Using Chat for one-time questions | Slower than Ask | Use Ask for comprehensive Q&A, Chat for exploration |
-| Adding huge PDFs without chunking | Slow processing, poor search | Break into multiple smaller sources if possible |
-| Using same context for all chats | Expensive, unfocused | Adjust context level for each chat |
-| Ignoring vector search | Only finding exact keywords | Use vector search to explore conceptually |
-
----
-
-## Next Steps
-
-1. **Follow each guide** in order (sources → notes → chat → podcasts → search)
-2. **Create your first notebook** with real content
-3. **Practice each feature** with your own research
-4. **Return to CORE-CONCEPTS** if you need to understand the "why"
-
----
-
-## Getting Help
-
-- **Feature not working?** → Check the feature's guide (look for "Troubleshooting" section)
-- **Error message?** → Check [6-TROUBLESHOOTING](../6-TROUBLESHOOTING/index.md)
-- **Understanding how something works?** → Check [2-CORE-CONCEPTS](../2-CORE-CONCEPTS/index.md)
-- **Setting up for the first time?** → Go back to [1-INSTALLATION](../1-INSTALLATION/index.md)
-- **For developers** → See [7-DEVELOPMENT](../7-DEVELOPMENT/index.md)
-
----
-
-**Ready to start?** Pick the guide for what you want to do first!
+| 错误 | 问题 | 修复 |
+|------|------|------|
+| 所有内容放进一个笔记本 | 项目间无隔离 | 不同主题用不同笔记本 |
+| 期待 AI 自动知道上下文 | 回答泛泛 | 在聊天中描述你的研究焦点 |
+| 忘记引用来源 | 无法验证断言 | 点击引用检查来源片段 |
+| 一次性上传超大 PDF | 处理慢 | 拆分为多个较小来源 |
