@@ -384,7 +384,146 @@
 
 ---
 
-## 文件索引（关键变更文件）
+## 13. 侧边栏 UI 与个人资料（新增 2026-06-01 ~ 2026-06-02）
+
+基于多用户认证系统上线后的界面体验优化。
+
+### 侧边栏品牌标识重构
+- `frontend/src/components/layout/AppSidebar.tsx:140-142` — Logo 图片替换为 `/logo.png`（28px），品牌文字硬编码为 `Lumiton·Omax|知涌`（`text-base font-bold whitespace-nowrap`）
+- 文字居中于 Logo 图标与折叠 `<` 按钮之间（扁平化布局：Image | span(flex-1 text-center) | Button）
+- 9 个 locale 文件 `appName` 同步更新为 `"Lumiton·Omax|知涌"`
+
+### 底部功能区重组
+- 主题/语言切换器从 `flex-col` 改为 `flex-row`，各占 `flex-1` 平分一行宽度
+- 用户信息区（头像首字母圆圈 + display_name + @username）位于主题/语言上方、登出按钮上方，点击跳转 `/profile`
+- 移除未使用的 `UserCircle` 导入
+
+### 管理员菜单权限控制
+- `AppSidebar.tsx:47-76` — `getNavigation` 接受 `isAdmin` 参数，"管理"分组中模型（`/settings/api-keys`）、设置（`/settings`）、高级（`/advanced`）标记 `adminOnly: true`
+- 非管理员用户仅可见"转换"和"帮助"两项，模型/设置/高级自动隐藏
+- 组件从 `useAuth()` 解构 `user`，传入 `user?.role === 'admin'`
+
+### 侧边栏滚动修复
+- `AppSidebar.tsx:160` — `<nav>` 增加 `overflow-y-auto min-h-0`，底部功能区固定在可视区
+- `frontend/src/app/layout.tsx:25-29` — `<html>` 和 `<body>` 增加 `h-full overflow-hidden`，消除页面级外层滚动条
+
+### 个人资料页 `/profile`
+- `frontend/src/app/(dashboard)/profile/page.tsx` — **全新页面**：首字母头像 + 角色标签（ShieldAlert/Shield）+ 状态标签（CheckCircle/Clock/XCircle）
+- **显示名称编辑**：输入框 + 保存按钮，调用 `PUT /auth/me` 更新
+- **修改密码**：当前密码验证 + 新密码确认，调用 `PUT /auth/me/password`
+- `frontend/src/lib/stores/auth-store.ts:289-338` — 新增 `updateProfile(displayName)` 和 `changePassword(oldPassword, newPassword)` actions
+- `api/routers/auth.py:448-505` — 新增 `PUT /auth/me`（更新 display_name）和 `PUT /auth/me/password`（旧密码验证后更新）
+
+**决策**：侧边栏品牌标识改为硬编码（非 i18n key），因为 Lumiton·Omax 是产品专有名称不随语言变化。管理员菜单过滤为纯前端控制，后端路由已有权限中间件兜底。
+
+---
+
+## 14. 帮助文档网页化（新增 2026-06-02）
+
+将 `docs/` Markdown 渲染为可通过 `/help` 直接访问的网页帮助中心。
+
+### 路由与渲染
+- `frontend/src/app/(help)/help/` — **新增路由组**（中间件放行 `/help`，无需登录）
+- `frontend/src/app/(help)/help/page.tsx` — 首页（`/help`），读取 `docs/user_docs/index.md` 渲染
+- `frontend/src/app/(help)/help/[...slug]/page.tsx` — 子页面（如 `/help/3-USER-GUIDE/adding-sources`），动态路由
+- `frontend/src/lib/help/docs.ts` — **新增工具模块**：`getHelpNav()` 构建导航树、`resolveDocPath()` 解析 URL、`readDoc()` 读取 Markdown
+
+### 独立用户文档目录
+- `docs/user_docs/` — **新建目录**（33 文件），与 `docs/`（开发文档）物理隔离
+- 包含章节：2-CORE-CONCEPTS（4）、3-USER-GUIDE（10）、5-CONFIGURATION（12）、6-TROUBLESHOOTING（5）、index.md（1）
+- 移除：播客文档（`podcasts-explained.md`）、定制记录（8-CUSTOMIZATION）、安装/贡献开发章节
+
+### 导航系统
+- `frontend/src/app/(help)/help/_components/HelpSidebar.tsx` — **客户端组件**：折叠式导航，每个大标题可点击展开/收起子项（`ChevronDown` 旋转动画）
+- `docs.ts` — `SECTION_LABELS` + `DOC_LABELS` 两级中文映射表，`INCLUDED_CHAPTERS` 白名单过滤
+- 导航数据在服务端 layout 调用 `getHelpNav()`，通过 props 传入客户端组件（避免 `fs` 模块浏览器端报错）
+
+### Markdown 渲染升级
+- 对照 `ChatPanel.tsx` 的 `AIMessageContent` 样式：`prose prose-sm prose-neutral` + `rehype-raw`
+- 补齐全部组件映射：h1-h4、ul/ol/li、blockquote、pre/code（含 `language-` 检测）、table/thead/tbody/tr/th/td、hr、img
+- 外部链接自动 `target="_blank"`
+
+### 全量中文化
+- 33 个文件全部翻译为简体中文
+- 专业术语保留英文：API、RAG、JWT、SSE、OCR、TTS、STT、Markdown、URL、PDF 等
+- 项目特有名词保留：SurrealDB、Ollama、Tavily、MinerU、Docling、Vision LLM 等
+
+### Turbopack 兼容性修复
+- `[[...slug]]` → `[...slug]`（Turbopack 不支持可选 catch-all 参数）
+- 清理残留的 `[[slug]]` 目录
+
+**决策**：用户文档与开发文档物理分离，避免混淆。导航标签中文化，内容翻译保留技术术语。帮助页面公开访问（无认证要求），方便用户随时查阅。
+
+---
+
+## 15. 品牌文本全局替换（新增 2026-06-01）
+
+在全项目范围内将用户可见的"Open Notebook"替换为"Lumiton·Omax"。
+
+### 替换范围
+- `docs/` 全部 45 篇 Markdown 正文中的产品名称引用
+- `README.md`、`README.dev.md` 标题、描述段落
+- `AGENTS.md`、`CLAUDE.md`（含子目录共 18 个）概述段落
+- `api/main.py:125-126,302` — FastAPI app `title`/`description`/根路由消息
+- `open_notebook/` 下 30+ 个 Python 文件的模块 docstring、logger 消息、异常描述
+- `frontend/src/app/layout.tsx:15` — 页面 `<title>` 元数据
+- `Makefile` 注释
+
+### 排除范围
+- Python 包导入路径 `from open_notebook...`（代码依赖）
+- `lfnovo/open-notebook` GitHub 上游 URL 引用
+- 数据库 namespace/database 环境变量
+- `pyproject.toml` `name` 字段
+
+### 统计
+- 74 文件，纯字符串替换，零代码影响
+- Python 导入全部保留 `open_notebook`，lint 验证零破坏
+
+**决策**：仅替换用户可见的产品名称，不动代码路径和配置标识，避免引入运行时问题。
+
+---
+
+## 16. 认证安全加固与测试修复（新增 2026-06-01 ~ 2026-06-02）
+
+基于 Sourcery + GitHub Copilot Code Review 和安全最佳实践的集中加固。
+
+### JWT 密钥安全
+- `open_notebook/utils/jwt_config.py:11-18` — 新增 `_derive_key()`：短于 32 字节的密钥通过 SHA-256 派生为完整 HS256 密钥，消除 PyJWT `InsecureKeyLengthWarning`
+- 非开发环境（`OPEN_NOTEBOOK_ENV` 非 dev/test）拒绝硬编码默认值，抛出 `RuntimeError`
+- `api/auth.py:13-19` — 更新 `PasswordAuthMiddleware` docstring 对齐双轨鉴权（JWT + 后门）行为
+
+### 密码安全
+- `open_notebook/domain/user.py:15-16` — PBKDF2 迭代次数 100,000 → **600,000**（OWASP 推荐）
+- `open_notebook/domain/user.py:25` — `==` 字符串比较 → `hmac.compare_digest` 恒定时间比较
+
+### 错误信息安全
+- `api/routers/auth.py` — 5 处 `detail=f"Failed to...: {str(e)}"` 改为通用提示，完整错误仅写入 `logger.error()`
+- 登录页移除后门提示文本（`🔒 超级管理员可使用部署密码直接绕过验证登录` → `Lumiton·Omax 科研数据中台`）
+
+### Python 3.12 兼容
+- `api/routers/auth.py:55` — `datetime.utcnow()` → `datetime.now(timezone.utc)`（Python 3.12 废弃警告）
+- `pyproject.toml:48` — `pyjwt>=2.8.0` 显式声明为直接依赖
+
+### 认证兼容性修复
+- `api/routers/auth.py:60-117` — `get_current_user_from_state` 新增 JWT fallback：中间件未设置 `request.state.user` 时直接从 Authorization header 解码（解决 ASGI scope 传递问题）
+- fallback 中包含 master password 后门检查 + pending/rejected/active 状态校验
+- `frontend/src/app/(dashboard)/settings/components/UserApprovalDashboard.tsx` — 所有 4 个 API 调用从 `fetch()` 改为 `apiClient`（axios），避免 Next.js 代理层 Authorization header 丢失
+
+### 用户管理 UI 增强
+- `UserApprovalDashboard.tsx:51,88-110` — 审批/拒绝/禁用操作前弹出 `ConfirmDialog` 二次确认
+- `UserApprovalDashboard.tsx:218-226` — 角色标签可点击切换 `admin` ↔ `user`（`ShieldAlert`/`Shield` 图标），保护 `admin` 账户不可降级
+- `UserApprovalDashboard.tsx:374-380` — 密码重置从 `window.prompt` 替换为 `AlertDialog`（双密码输入 + 确认 + 实时校验）
+- `api/routers/auth.py:311-349` — `PUT /auth/users/{id}/role` 角色修改端点
+- `api/routers/auth.py:351-383` — `PUT /auth/users/{id}/password` 管理员重置密码端点
+
+### 测试环境适配
+- `tests/conftest.py:15-17` — 设置 `OPEN_NOTEBOOK_PASSWORD` 和 `AUTH_JWT_SECRET` 测试值（旧逻辑的空密码=跳过认证已失效）
+- `tests/test_sources_api.py:17-20,46,91,129` — 3 个 source 创建测试新增 `auth_headers` fixture（Bearer token），适配 JWT 强制认证
+
+### 登录表单增强
+- `frontend/src/components/auth/LoginForm.tsx:169-172` — 先检查 `password.trim()` 再执行登录，避免空密码提交
+
+**决策**：安全加固优先于功能，Review 反馈即时收敛。JWT fallback 为防御性编程，解决 ASGI 框架间 state 传递的边界情况。
 
 | 文件 | 涉及主题 |
 |------|----------|
@@ -424,8 +563,23 @@
 | `tests/test_integration_e2e.py` | 新增：L2/L4/L5 集成/E2E 测试（手动运行） |
 | `frontend/src/components/source/ChatPanel.test.tsx` | 新增：Stop 按钮渲染测试 |
 | `.github/workflows/test.yml` | CI 排除 e2e 标记 |
-| `pyproject.toml` | 注册 e2e marker |
+| `frontend/src/app/(dashboard)/profile/page.tsx` | 个人资料页：显示名称编辑、修改密码（§13 新增） |
+| `frontend/src/app/(help)/help/` | 帮助中心路由组（§14 新增） |
+| `frontend/src/app/(help)/help/_components/HelpSidebar.tsx` | 帮助中心折叠式导航（§14 新增） |
+| `frontend/src/lib/help/docs.ts` | 帮助文档工具：导航树构建、路径解析（§14 新增） |
+| `docs/user_docs/` | 用户帮助文档独立目录，33 文件全部中文化（§14 新增） |
+| `frontend/src/app/layout.tsx` | HTML body overflow-hidden + 页面标题更新（§13/§15） |
+| `frontend/src/components/layout/AppSidebar.tsx` | 侧边栏品牌标识重构、菜单权限过滤、布局优化（§13） |
+| `frontend/src/lib/locales/*/index.ts` | 9 locale appName 更新为 Lumiton·Omax\|知涌（§13/§15） |
+| `frontend/src/lib/stores/auth-store.ts` | `updateProfile` + `changePassword` actions（§13） |
+| `frontend/src/components/auth/LoginForm.tsx` | 登录校验增强、后门提示移除（§16） |
+| `open_notebook/utils/jwt_config.py` | JWT 密钥安全：SHA-256 派生 + fail-fast（§16） |
+| `open_notebook/domain/user.py` | PBKDF2 600k + hmac.compare_digest（§16） |
+| `api/routers/auth.py` | PUT /auth/me、PUT /auth/me/password、JWT fallback、错误通用化、utcnow()→timezone.utc（§13/§16） |
+| `tests/conftest.py` | 测试认证环境适配（§16） |
+| `tests/test_sources_api.py` | auth_headers fixture 适配 JWT 认证（§16） |
+| `pyproject.toml` | `pyjwt>=2.8.0` 显式依赖（§16） |
 
 ---
 
-> 最后更新：2026-06-01 | 新增 §12 多用户认证系统。前期变更基于分支 `bugfix/user_feedback_0529`（已合入 main，PR #10），以及 `enhancement_0526_feedback`、`feat_picture_parse_0528`。
+> 最后更新：2026-06-02 | 新增 §13~§16（UI/品牌/帮助网页/安全加固），分支 `bugfix_functest_4_regloginpage_0601`。前期变更基于分支 `bugfix/user_feedback_0529`（已合入 main，PR #10），以及 `enhancement_0526_feedback`、`feat_picture_parse_0528`、`enhancement_regloginpage_0601`（PR #11）。
