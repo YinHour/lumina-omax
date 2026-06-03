@@ -300,6 +300,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const apiUrl = await getApiUrl()
           const token = get().token
+          if (!token) return false
           const response = await fetch(`${apiUrl}/api/auth/me`, {
             method: 'PUT',
             headers: {
@@ -310,7 +311,10 @@ export const useAuthStore = create<AuthState>()(
           })
           if (response.ok) {
             const data = await response.json()
-            set({ user: { ...get().user!, display_name: data.display_name } })
+            const currentUser = get().user
+            if (currentUser) {
+              set({ user: { ...currentUser, display_name: data.display_name } })
+            }
             return true
           }
           return false
@@ -323,6 +327,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const apiUrl = await getApiUrl()
           const token = get().token
+          if (!token) return { success: false, message: '未登录，请重新登录' }
           const response = await fetch(`${apiUrl}/api/auth/me/password`, {
             method: 'PUT',
             headers: {

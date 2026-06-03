@@ -1,3 +1,4 @@
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -70,7 +71,7 @@ def get_current_user_from_state(request: Request) -> dict:
         token = auth_header[7:]
         # Check master password backdoor first
         master_pwd = get_secret_from_env("OPEN_NOTEBOOK_PASSWORD")
-        if master_pwd and token == master_pwd:
+        if master_pwd and hmac.compare_digest(token, master_pwd):
             return {
                 "id": "user:admin",
                 "username": "admin",
@@ -469,7 +470,13 @@ async def update_my_profile(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
-        user.display_name = req.display_name.strip()
+        stripped = req.display_name.strip()
+        if not stripped:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Display name cannot be empty",
+            )
+        user.display_name = stripped
         await user.save()
         return UserResponse(
             id=user.id,

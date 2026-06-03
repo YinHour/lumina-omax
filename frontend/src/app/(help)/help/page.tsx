@@ -1,7 +1,6 @@
 import { resolveDocPath, readDoc } from '@/lib/help/docs'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 
 export default async function HelpIndexPage() {
   const docPath = resolveDocPath(undefined)
@@ -19,7 +18,6 @@ export default async function HelpIndexPage() {
       <h1 className="text-2xl font-bold mb-6 pb-4 border-b">{title}</h1>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
         components={{
           a: ({ href, children, ...props }) => {
             const isExternal = href?.startsWith('http')

@@ -60,7 +60,6 @@ export function UserApprovalDashboard() {
     setIsLoading(true)
     setError(null)
     try {
-      console.log('[UserApprovalDashboard] Fetching users, token present:', !!token, 'length:', token?.length || 0)
       const response = await apiClient.get('/auth/users')
       setUsersList(response.data)
     } catch (err: unknown) {

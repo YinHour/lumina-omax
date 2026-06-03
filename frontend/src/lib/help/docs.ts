@@ -103,18 +103,22 @@ export function resolveDocPath(slugs: string[] | undefined): string | null {
     return null
   }
 
-  const dirPath = path.join(DOCS_ROOT, slugs[0])
-  if (!fs.existsSync(dirPath)) return null
+  // Sanitize slug segments: prevent path traversal
+  const sanitized = slugs.map(s => s.replace(/\.\./g, '').replace(/[^a-zA-Z0-9_-]/g, ''))
+  if (sanitized.length === 0) return null
 
-  if (slugs.length === 1) {
+  const dirPath = path.join(DOCS_ROOT, sanitized[0])
+  if (!dirPath.startsWith(DOCS_ROOT) || !fs.existsSync(dirPath)) return null
+
+  if (sanitized.length === 1) {
     const indexPath = path.join(dirPath, 'index.md')
     if (fs.existsSync(indexPath)) return indexPath
     return null
   }
 
-  const docPath = path.join(dirPath, `${slugs[1]}.md`)
-  if (fs.existsSync(docPath)) return docPath
-  return null
+  const docPath = path.join(dirPath, `${sanitized[1]}.md`)
+  if (!docPath.startsWith(DOCS_ROOT) || !fs.existsSync(docPath)) return null
+  return docPath
 }
 
 /** Read markdown content from a doc path */

@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation'
 import { resolveDocPath, readDoc } from '@/lib/help/docs'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 
 interface Props {
   params: Promise<{ slug?: string[] }>
@@ -29,7 +28,6 @@ export default async function HelpPage({ params }: Props) {
       <h1 className="text-2xl font-bold mb-6 pb-4 border-b">{title}</h1>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
         components={{
           a: ({ href, children, ...props }) => {
             const isExternal = href?.startsWith('http')
