@@ -2,12 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { getHelpNav } from '@/lib/help/docs'
+import type { HelpNavItem } from '@/lib/help/docs'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export function HelpSidebar() {
-  const nav = getHelpNav()
+export function HelpSidebar({ nav }: { nav: HelpNavItem[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {}
     nav.forEach(s => { initial[s.href] = true })
