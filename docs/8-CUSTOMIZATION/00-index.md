@@ -582,4 +582,115 @@
 
 ---
 
-> 最后更新：2026-06-02 | 新增 §13~§16（UI/品牌/帮助网页/安全加固），分支 `bugfix_functest_4_regloginpage_0601`。前期变更基于分支 `bugfix/user_feedback_0529`（已合入 main，PR #10），以及 `enhancement_0526_feedback`、`feat_picture_parse_0528`、`enhancement_regloginpage_0601`（PR #11）。
+## 17. 登录页布局优化与 UI 多语言治理（新增 2026-06-03）
+
+基于 2K/5K 高分辨率屏幕场景的登录页适配，以及全站硬编码中文字符串的 i18n 系统性修复。分支 `en_ui_optima_0603`。
+
+### 登录页大屏布局优化
+
+#### 3xl 断点引入
+- `frontend/src/app/globals.css:5` — `@theme inline` 新增 `--breakpoint-3xl: 120rem`（1920px），与 Tailwind v4 默认的 `sm→2xl` 形成六级响应式阶梯
+- **决策**：1902×1080 屏幕（< 1920px）使用紧凑 `lg` 尺寸，5120×2880 屏幕（≥ 1920px）使用 `3xl` 展开尺寸，解决之前 `2xl`（1536px）在大屏上过度扩张导致 1080p 竖屏底部内容截断的问题
+
+#### 大屏字体与组件等比缩放
+- `frontend/src/components/auth/LoginForm.tsx` — 全组件链引入 `lg:` / `3xl:` 三级渐进式尺寸：
+  - **标题**：`text-3xl lg:text-4xl 3xl:text-5xl`
+  - **正文**：`text-sm lg:text-base 3xl:text-lg`
+  - **脚注/标签**：`text-[10px] lg:text-xs 3xl:text-sm`
+  - **Logo**：`h-10 lg:h-12 3xl:h-14`
+  - **表单卡片**：`max-w-[420px] lg:max-w-[480px] 3xl:max-w-[540px]`
+  - **输入框**：`3xl:text-lg 3xl:py-3`（放大触控区域）
+  - **功能卡片**：`p-3 lg:p-4 3xl:p-6`
+  - **网格背景密度**：`bg-[size:24px] lg:32px 3xl:40px`
+  - **模糊光球**：`w-96 h-96 3xl:w-[600px] 3xl:h-[600px]`
+  - **指标数字**：`text-2xl lg:text-3xl 3xl:text-4xl`
+  - **图标**：`h-4 w-4 lg:h-5 lg:w-5 3xl:h-6 3xl:w-6`
+- **决策**：不按 viewport 百分比缩放（避免 5K 屏字体过大），采用固定断点阶梯式缩放，兼顾 2K 可读性与 5K 舒适度
+
+#### 面板全宽延展
+- 移除网格容器 `max-w-[1600px] 2xl:max-w-[1800px] mx-auto`，左侧面板（7/12）渐变与右侧面板（5/12）背景自然延伸至视口边缘，消除大屏两侧生硬的 `bg-background` 色块接缝
+- 内容区通过 `max-w-2xl 3xl:max-w-4xl mx-auto` 居中约束，Logo 和版权信息保持面板内边距对齐
+- 左侧面板 `overflow-hidden` 保证装饰网格和光球不溢出
+
+#### 亮色/暗色双模式适配
+- 左侧面板渐变：`from-slate-50 via-white to-teal-50 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950`
+- 主标题：`text-slate-900 dark:text-white`
+- 品牌渐变文字：`from-teal-600 to-indigo-600 dark:from-teal-400 dark:to-indigo-400`
+- 功能卡片：`border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-white/[0.02]`
+- 指标/AI 能力卡片全部适配 `dark:` 变体
+
+#### 底部内容截断修复
+- 面板 padding：`p-12` → `p-6 lg:p-10 3xl:p-12`（1080p 竖屏下回收 48px）
+- 方法学区间距：`space-y-8` → `space-y-4 lg:space-y-6 3xl:space-y-8`
+- 功能卡片：gap `gap-5` → `gap-3 lg:gap-4 3xl:gap-5`，padding `p-4 lg:p-5` → `p-3 lg:p-4 3xl:p-6`
+- 指标区：gap `gap-8` → `gap-4 lg:gap-6 3xl:gap-8`，上边距 `pt-6` → `pt-4 lg:pt-5 3xl:pt-6`
+- AI 能力区：gap `gap-4` → `gap-2 lg:gap-3 3xl:gap-4`
+- **决策**：仅在非 3xl 下缩紧垂直间距，3xl（≥ 1920px）恢复原始舒展尺寸，确保 5K 屏不受影响
+
+#### 三列指标对齐
+- 指标区（+40% / -30% / 1/2）从 `flex gap-4 lg:gap-6 3xl:gap-8` 改为 `grid grid-cols-3 gap-2 lg:gap-3 3xl:gap-4`，与下方 AI 能力三列矩形框共享同一网格列宽，精确对齐
+- 每项新增 `text-center` 居中
+
+#### 移动端品牌头部
+- 右侧面板布局从 `flex items-center justify-center` 改为 `flex flex-col items-center justify-center gap-6`
+- 新增 `lg:hidden` 品牌头部区块（Logo 40px + 渐变品牌名），解决移动端仅显示裸表单无品牌标识的问题
+
+#### 过渡动画
+- 表单卡片：`transition-shadow hover:shadow-2xl`
+- 功能卡片：`transition-all duration-200`
+
+### 多语言硬编码修复
+
+#### 登录表单 i18n 全面改造
+- `frontend/src/components/auth/LoginForm.tsx` — ~45 处硬编码中文全部替换为 `t.auth.*` 调用：
+  - Tab 按钮（`用户登录`/`申请注册` → `t.auth.tabLogin`/`t.auth.tabRegister`）
+  - 表单标签和占位符（`用户名 / 邮箱`/`密码`/9 个注册字段 → `t.auth.*`）
+  - 按钮文本（`进入科研平台`/`提交注册申请`/加载态 → `t.auth.*`）
+  - 错误/成功消息（6 处 `setRegistrationError`/`setRegistrationSuccess` 硬编码 → `t.auth.*`）
+  - 卡片标题（`科研数据中台`/`油井化学智能决策与文献大模型系统` → `t.auth.platformTitle`/`t.auth.platformDesc`）
+  - 版本信息（`平台版本：v...` → `t.auth.configVersion`）
+  - 底部署名（`Lumiton·Omax 科研数据中台` → `t.auth.platformTagline`）
+  - 审批提示（注册须知长文本 → `t.auth.regApprovalHint`）
+- `frontend/src/lib/locales/en-US/index.ts:196-237` / `zh-CN/index.ts:196-237` — `auth` 区段从 6 个键扩展至 36 个键
+- **决策**：左侧面板品牌叙事文本（方法学卡片描述、指标标签）保留硬编码，因其属于领域专业营销文案，切换语言需重新撰稿而非翻译
+
+#### 个人资料页 i18n
+- `frontend/src/app/(dashboard)/profile/page.tsx` — 全面重写，~25 处硬编码 → `t.profile.*`
+- `frontend/src/lib/locales/en-US/index.ts:465-489` / `zh-CN/index.ts:465-489` — 新增 `profile` 顶级区段（22 键）：标题、描述、表单标签/占位符、状态（已激活/等待审批/已拒绝）、角色（管理员/用户）、提示消息
+- **决策**：用户角色和状态的标签纳入 i18n（其他地方可能复用），避免重复硬编码
+
+#### language.startsWith('zh') 反模式剔除
+共修复 6 个文件中 27 处 `language.startsWith('zh') ? '中文' : 'English'` 条件分支：
+- `frontend/src/app/(dashboard)/sources/page.tsx` — 13 处（`密码错误`/`上传人`/`引用次数`/分页文本/批量删除对话框等 → `t.sources.*`）
+- `frontend/src/components/sources/AddSourceDialog.tsx` — 9 处（重复文件检测 toast/对话框 → `t.sources.*`）
+- `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx` — 3 处（`全部设为参考全文/见解/不参考` → `t.sources.setAllFullText`/`setAllInsights`/`setAllToOff`）
+- `frontend/src/app/(dashboard)/notebooks/components/NotesColumn.tsx` — 2 处
+- `frontend/src/app/(dashboard)/search/page.tsx` — 2 处（`清空内容` → `t.common.clear`）
+- `frontend/src/lib/locales/en-US/index.ts:464-484` / `zh-CN/index.ts:464-484` — `sources` 区段新增 17 个键
+- `frontend/src/lib/locales/en-US/index.ts:56` / `zh-CN/index.ts:56` — `common` 区段新增 `clear` 键
+- **决策**：`language.startsWith('zh')` 模式绕过 i18n 框架，使多语言支持形同虚设。移除后恢复框架管理的正确多语言路径
+
+### Ask (beta) 标签移除
+- `frontend/src/lib/locales/*/index.ts` — 全部 9 个语言文件（en-US/zh-CN/zh-TW/ja-JP/ru-RU/pt-BR/it-IT/fr-FR/bn-IN）的 `searchPage.askBeta` 和 `searchPage.askYourKb` 移除 ` (beta)` / `（ベータ）` 等后缀
+- **决策**：Ask 功能已全链路实现（LangGraph 三阶段工作流 + SSE 流式 + 多模型支持），(beta) 标签源自上游项目的保守标注，实际已达到生产可用水平
+
+### 文件上传格式声明对齐
+- `frontend/src/components/sources/steps/SourceTypeStep.tsx:253` — 文件选择器 `accept` 属性移除 `.doc, .ppt, .xls, .jpg, .jpeg, .png, .tiff, .zip, .tar, .gz, .html`（11 项），保留 `.pdf, .docx, .pptx, .xlsx, .txt, .md, .epub, .mp4, .avi, .mov, .wmv, .mp3, .wav, .m4a, .aac`
+- 全部 9 个语言文件 `sources.selectMultipleFilesHint` 移除 `图片 (JPG, PNG)` / `归档 (ZIP)` / `DOC, PPT, XLS`
+- 后续再移除 `媒体 (MP4, MP3, WAV, M4A)` 宣称（处理能力保留但不在 UI 提示中声明）
+- **决策**：文件选择器和 UI 宣称与后端 `content_core` 实际处理能力严格对齐。MinerU 和 Docling 均未在 `.env` 配置故视为禁用，依赖它们的老 Office 格式和图片格式同步移除
+
+### 内容转换规则管理员权限加固
+- `api/routers/transformations.py` — `update_transformation`（PUT）、`delete_transformation`（DELETE）、`update_default_prompt`（PUT）三个端点新增 `Depends(require_admin)` 依赖注入，非管理员返回 403
+- `frontend/src/app/(dashboard)/transformations/components/TransformationCard.tsx` — 导入 `useAuthStore`，编辑按钮（`Edit`）和删除按钮（`Trash2`）仅 `user.role === 'admin'` 渲染
+- `frontend/src/app/(dashboard)/transformations/components/DefaultPromptEditor.tsx` — 导入 `useAuthStore`，保存按钮仅管理员可见（后端已保护，前端同步隐藏避免困惑）
+- 导入：`from api.routers.auth import require_admin`、`from fastapi import Depends`
+- **决策**：定义好的转换模板作为系统级配置，双重保护（后端 403 + 前端 UI 隐藏），Playground 测试功能保持全员可用
+
+### 其他调整
+- `frontend/src/app/globals.css:5` — 新增 `--breakpoint-3xl: 120rem`（复用 §17.1）
+- `frontend/src/lib/stores/auth-store.ts` 等文件 — 未改动，复用现有 role 字段
+
+---
+
+> 最后更新：2026-06-03 | 新增 §17（登录页布局优化与 UI 多语言治理），分支 `en_ui_optima_0603`。"

@@ -514,7 +514,7 @@ export function AddSourceDialog({
         const results = await submitBatch(data, filterDuplicates)
 
         if (results.success === 0 && results.failed === 0) {
-          toast.info(language.startsWith('zh') ? '没有上传新文件，全部为重复项' : 'No new files uploaded, all were duplicates')
+          toast.info(t.sources.noNewFiles)
           handleClose()
           return
         }
@@ -531,7 +531,7 @@ export function AddSourceDialog({
         handleClose()
       } else {
         if (filterDuplicates) {
-          toast.info(language.startsWith('zh') ? '该文件为重复项，已跳过' : 'File was a duplicate and skipped')
+          toast.info(t.sources.fileDuplicateSkipped)
           handleClose()
           return
         }
@@ -673,7 +673,7 @@ export function AddSourceDialog({
       }
       
       console.log('Calling onSubmit with dataToSubmit (filtering duplicates):', dataToSubmit)
-      toast.info(language.startsWith('zh') ? '确认继续上传，过滤重复项...' : 'Continuing upload, filtering duplicates...')
+      toast.info(t.sources.filteringDuplicates)
       
       setShowDuplicateWarning(false)
       setProcessing(true)
@@ -942,18 +942,16 @@ export function AddSourceDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {language.startsWith('zh') ? '发现同名文件' : 'Duplicate Files Detected'}
+            {t.sources.duplicateFilesDetected}
           </AlertDialogTitle>
           <div className="text-muted-foreground text-sm">
-            {language.startsWith('zh') 
-              ? '系统检测到以下文件可能已经上传过：' 
-              : 'The system detected that the following files may have already been uploaded:'}
+            {t.sources.duplicateFilesDetectedDesc}
             <ul className="list-disc pl-5 mt-2 mb-2 max-h-[150px] overflow-y-auto">
               {duplicateFiles.map((file, i) => (
                 <li key={i} className="text-sm font-medium text-foreground">{file}</li>
               ))}
             </ul>
-            {language.startsWith('zh') ? '是否继续上传？' : 'Do you want to continue uploading?'}
+            {t.sources.continueUploadQuestion}
           </div>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -961,19 +959,19 @@ export function AddSourceDialog({
             console.log('Cancel button clicked')
             handleCancelDuplicate(e)
           }}>
-            {language.startsWith('zh') ? '否 (取消)' : 'No (Cancel)'}
+            {t.sources.cancelNo}
           </Button>
           <Button type="button" variant="secondary" onClick={(e) => {
             console.log('Upload non-duplicates button clicked')
             handleUploadNonDuplicates(e)
           }}>
-            {language.startsWith('zh') ? '仅上传非重复文件' : 'Only Non-duplicates'}
+            {t.sources.onlyNonDuplicates}
           </Button>
           <Button type="button" onClick={(e) => {
             console.log('Confirm button clicked')
             handleConfirmDuplicate(e)
           }}>
-            {language.startsWith('zh') ? '是 (全部上传)' : 'Yes (Upload All)'}
+            {t.sources.uploadAll}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

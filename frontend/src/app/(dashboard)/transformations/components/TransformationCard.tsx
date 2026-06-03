@@ -9,6 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ChevronDown, ChevronRight, Trash2, Wand2, Edit } from 'lucide-react'
 import { Transformation } from '@/lib/types/transformations'
 import { useDeleteTransformation } from '@/lib/hooks/use-transformations'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +21,8 @@ interface TransformationCardProps {
 
 export function TransformationCard({ transformation, onPlayground, onEdit }: TransformationCardProps) {
   const { t } = useTranslation()
+  const user = useAuthStore((s) => s.user)
+  const isAdmin = user?.role === 'admin'
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const deleteTransformation = useDeleteTransformation()
@@ -61,20 +64,22 @@ export function TransformationCard({ transformation, onPlayground, onEdit }: Tra
                     {t.transformations.playground}
                   </Button>
                 )}
-                {onEdit && (
+                {isAdmin && onEdit && (
                   <Button variant="outline" size="sm" onClick={onEdit}>
                     <Edit className="h-4 w-4 mr-2" />
                     {t.common.edit}
                   </Button>
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {isAdmin && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>

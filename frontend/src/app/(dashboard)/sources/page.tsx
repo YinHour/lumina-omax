@@ -252,7 +252,7 @@ export default function SourcesPage() {
 
     const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
     if (masterPassword && deletePassword !== masterPassword) {
-      setDeletePasswordError(language.startsWith('zh') ? '密码错误' : 'Incorrect password')
+      setDeletePasswordError(t.sources.incorrectPassword)
       return
     }
 
@@ -272,7 +272,7 @@ export default function SourcesPage() {
   const handleBatchDeleteConfirm = async () => {
     const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
     if (masterPassword && batchDeletePassword !== masterPassword) {
-      setBatchDeletePasswordError(language.startsWith('zh') ? '密码错误' : 'Incorrect password')
+      setBatchDeletePasswordError(t.sources.incorrectPassword)
       return
     }
 
@@ -371,7 +371,7 @@ export default function SourcesPage() {
                   {t.common.title}
                 </th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                  {language.startsWith('zh') ? "上传人" : "Uploader"}
+                  {t.sources.uploader}
                 </th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">
                   <Button
@@ -402,7 +402,7 @@ export default function SourcesPage() {
                     {t.sources.kgExtracted || "已抽取图谱"}
                   </th>
                   <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden lg:table-cell">
-                    {language.startsWith('zh') ? "引用次数" : "References"}
+                    {t.sources.references}
                   </th>
                   <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
                     {t.common.actions}
@@ -530,17 +530,17 @@ export default function SourcesPage() {
             onClick={() => { setPage(p => Math.max(1, p - 1)); setSelectedIds(new Set()); }}
             disabled={page === 1}
           >
-            {language.startsWith('zh') ? '上一页' : 'Previous'}
+            {t.sources.prevPage}
           </Button>
           <span className="text-sm text-muted-foreground">
-            {language.startsWith('zh') ? `第 ${page} 页` : `Page ${page}`}
+            {t.sources.pageOf.replace('{page}', page.toString())}
           </span>
           <Button 
             variant="outline" 
             onClick={() => { setPage(p => p + 1); setSelectedIds(new Set()); }}
             disabled={!hasMore}
           >
-            {language.startsWith('zh') ? '下一页' : 'Next'}
+            {t.sources.nextPage}
           </Button>
         </div>
       </div>
@@ -563,7 +563,7 @@ export default function SourcesPage() {
           {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
             <div className="space-y-2 py-4">
               <p className="text-sm font-medium">
-                {language.startsWith('zh') ? '需要管理员密码' : 'Admin Password Required'}
+                {t.sources.enterPassword}
               </p>
               <Input
                 type="password"
@@ -579,7 +579,7 @@ export default function SourcesPage() {
                     handleDeleteConfirm()
                   }
                 }}
-                placeholder={language.startsWith('zh') ? '请输入密码' : 'Enter password'}
+                placeholder={t.sources.enterPassword}
                 autoFocus
               />
               {deletePasswordError && (
@@ -619,7 +619,7 @@ export default function SourcesPage() {
           {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
             <div className="space-y-2 py-4">
               <p className="text-sm font-medium">
-                {language.startsWith('zh') ? '需要管理员密码' : 'Admin Password Required'}
+                {t.sources.enterPassword}
               </p>
               <Input
                 type="password"
@@ -635,7 +635,7 @@ export default function SourcesPage() {
                     handleBatchDeleteConfirm()
                   }
                 }}
-                placeholder={language.startsWith('zh') ? '请输入密码' : 'Enter password'}
+                placeholder={t.sources.enterPassword}
                 autoFocus
                 disabled={isBatchDeleting}
               />
