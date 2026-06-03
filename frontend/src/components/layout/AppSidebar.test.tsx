@@ -17,8 +17,7 @@ describe('AppSidebar', () => {
   it('renders correctly when expanded', () => {
     render(<AppSidebar />)
     
-    // Check for logo or app name (using actual locale value)
-    expect(screen.getByText(/Lumina™ | Yinshi AI/i)).toBeDefined()
+    expect(screen.getByTestId('sidebar-brand')).toBeInTheDocument()
     
     // Check for navigation items (using actual locale values)
     expect(screen.getByText(/Sources/i)).toBeDefined()
@@ -54,7 +53,7 @@ describe('AppSidebar', () => {
 
     render(<AppSidebar />)
     
-    // In collapsed mode, app name shouldn't be visible (as text)
-    expect(screen.queryByText(/Lumina™ | Yinshi AI/i)).toBeNull()
+    // In collapsed mode, brand text shouldn't be visible
+    expect(screen.queryByTestId('sidebar-brand')).not.toBeInTheDocument()
   })
 })

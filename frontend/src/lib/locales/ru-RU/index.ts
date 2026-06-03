@@ -31,7 +31,7 @@ export const ruRU = {
     podcast: "Подкаст",
     quickActions: "Быстрые действия",
     quickActionsDesc: "Навигация, поиск, запрос, тема",
-    appName: "Lumina™ | Yinshi AI",
+    appName: "Lumiton·Omax|知涌",
     add: "Добавить",
     remove: "Удалить",
     confirm: "Подтвердить",

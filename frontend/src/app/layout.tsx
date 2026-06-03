@@ -12,7 +12,7 @@ import { I18nProvider } from "@/components/providers/I18nProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Lumina™ | Yinshi AI",
+  title: "Lumiton·Omax|知涌",
   description: "Privacy-focused research and knowledge management",
 };
 
@@ -22,11 +22,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
-      <body className={inter.className}>
+      <html lang="en" suppressHydrationWarning className="h-full">
+        <head>
+          <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        </head>
+        <body className={`${inter.className} h-full overflow-hidden`}>
         <ErrorBoundary>
           <ThemeProvider>
             <QueryProvider>

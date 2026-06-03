@@ -43,39 +43,45 @@ import {
   HelpCircle,
 } from 'lucide-react'
 
-const getNavigation = (t: TranslationKeys) => [
-  {
-    title: t.navigation.collect,
-    items: [
-      { name: t.navigation.sources, href: '/sources', icon: FileText },
-    ],
-  },
-  {
-    title: t.navigation.process,
-    items: [
-      { name: t.navigation.notebooks, href: '/notebooks', icon: Book },
-      { name: t.navigation.askAndSearch, href: '/search', icon: Search },
-    ],
-  },
-  {
-    title: t.navigation.manage,
-    items: [
-      { name: t.navigation.models, href: '/settings/api-keys', icon: Bot },
-      { name: t.navigation.transformations, href: '/transformations', icon: Shuffle },
-      { name: t.navigation.settings, href: '/settings', icon: Settings },
-      { name: t.navigation.help, href: '/help', icon: HelpCircle },
-      { name: t.navigation.advanced, href: '/advanced', icon: Wrench },
-    ],
-  },
-] as const
+interface NavItem { name: string; href: string; icon: typeof Book; adminOnly?: boolean }
+
+const getNavigation = (t: TranslationKeys, isAdmin: boolean): { title: string; items: NavItem[] }[] => {
+  const manageItems: NavItem[] = [
+    { name: t.navigation.models, href: '/settings/api-keys', icon: Bot, adminOnly: true },
+    { name: t.navigation.transformations, href: '/transformations', icon: Shuffle },
+    { name: t.navigation.settings, href: '/settings', icon: Settings, adminOnly: true },
+    { name: t.navigation.help, href: '/help', icon: HelpCircle },
+    { name: t.navigation.advanced, href: '/advanced', icon: Wrench, adminOnly: true },
+  ]
+
+  return [
+    {
+      title: t.navigation.collect,
+      items: [
+        { name: t.navigation.sources, href: '/sources', icon: FileText },
+      ],
+    },
+    {
+      title: t.navigation.process,
+      items: [
+        { name: t.navigation.notebooks, href: '/notebooks', icon: Book },
+        { name: t.navigation.askAndSearch, href: '/search', icon: Search },
+      ],
+    },
+    {
+      title: t.navigation.manage,
+      items: manageItems.filter(item => !item.adminOnly || isAdmin),
+    },
+  ]
+}
 
 type CreateTarget = 'source' | 'notebook'
 
 export function AppSidebar() {
   const { t } = useTranslation()
-  const navigation = getNavigation(t)
   const pathname = usePathname()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
+  const navigation = getNavigation(t, user?.role === 'admin')
   const { isCollapsed, toggleCollapse } = useSidebarStore()
   const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
 
@@ -114,8 +120,8 @@ export function AppSidebar() {
           {isCollapsed ? (
             <div className="relative flex items-center justify-center w-full">
               <Image
-                src="/logo.svg"
-                alt="Lumina™ | Yinshi AI"
+                src="/logo.png"
+                alt="Lumiton Omax Logo"
                 width={32}
                 height={32}
                 className="transition-opacity group-hover:opacity-0"
@@ -131,17 +137,15 @@ export function AppSidebar() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2">
-                <Image src="/logo.svg" alt={t.common.appName} width={32} height={32} />
-                <span className="text-base font-medium text-sidebar-foreground">
-                  {t.common.appName}
-                </span>
-              </div>
+              <Image src="/logo.png" alt="Lumiton Omax Logo" width={28} height={28} className="shrink-0" />
+              <span className="flex-1 text-center text-base font-bold whitespace-nowrap text-sidebar-foreground mx-2" data-testid="sidebar-brand">
+                Lumiton·Omax|知涌
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleCollapse}
-                className="text-sidebar-foreground hover:bg-sidebar-accent"
+                className="text-sidebar-foreground hover:bg-sidebar-accent shrink-0"
                 data-testid="sidebar-toggle"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -152,7 +156,7 @@ export function AppSidebar() {
 
         <nav
           className={cn(
-            'flex-1 space-y-1 py-4',
+            'flex-1 space-y-1 py-4 overflow-y-auto min-h-0',
             isCollapsed ? 'px-2' : 'px-3'
           )}
         >
@@ -299,9 +303,22 @@ export function AppSidebar() {
             </div>
           )}
 
-           <div
+          {/* User Profile */}
+          {!isCollapsed && user && (
+            <Link href="/profile" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-400 text-xs font-bold">
+                {user.display_name?.charAt(0) || user.username?.charAt(0) || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate text-sidebar-foreground">{user.display_name || user.username}</p>
+                <p className="text-xs text-muted-foreground truncate">@{user.username}</p>
+              </div>
+            </Link>
+          )}
+
+          <div
             className={cn(
-              'flex flex-col gap-2',
+              'flex flex-row gap-2',
               isCollapsed ? 'items-center' : 'items-stretch'
             )}
           >
@@ -326,8 +343,8 @@ export function AppSidebar() {
               </>
             ) : (
               <>
-                <ThemeToggle />
-                <LanguageToggle />
+                <div className="flex-1"><ThemeToggle /></div>
+                <div className="flex-1"><LanguageToggle /></div>
               </>
             )}
           </div>

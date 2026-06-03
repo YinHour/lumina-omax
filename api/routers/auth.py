@@ -1,3 +1,4 @@
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -58,15 +59,63 @@ def create_access_token(data: dict, expires_delta: timedelta = timedelta(days=7)
 
 
 def get_current_user_from_state(request: Request) -> dict:
-    """Dependency to get the current user injected by the middleware."""
+    """Dependency to get the current user injected by the middleware or decoded from JWT."""
     user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user
+    if user:
+        return user
+
+    # Fallback: if middleware didn't set request.state.user (e.g., due to
+    # ASGI scope/state lifecycle), decode the JWT token directly.
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        # Check master password backdoor first
+        master_pwd = get_secret_from_env("OPEN_NOTEBOOK_PASSWORD")
+        if master_pwd and hmac.compare_digest(token, master_pwd):
+            return {
+                "id": "user:admin",
+                "username": "admin",
+                "display_name": "System Admin",
+                "role": "admin",
+                "status": "active",
+            }
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            status_check = payload.get("status")
+            if status_check == "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="账号等待管理员审批，请联系管理员",
+                )
+            if status_check == "rejected":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="您的账号注册申请已被拒绝",
+                )
+            if status_check != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="您的账号未激活",
+                )
+            return payload
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        except jwt.PyJWTError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or malformed authentication token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 def require_admin(user: dict = Depends(get_current_user_from_state)):
@@ -354,6 +403,15 @@ class UserPasswordResetRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=100)
 
 
+class UserProfileUpdateRequest(BaseModel):
+    display_name: str = Field(..., min_length=1, max_length=100)
+
+
+class UserChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
 @router.put("/users/{user_id}/password", response_model=UserResponse)
 async def reset_user_password(
     user_id: str,
@@ -397,3 +455,78 @@ async def logout_user(current_user: dict = Depends(get_current_user_from_state))
     logout flow and allow future token blacklisting.
     """
     return {"message": "Logged out successfully", "username": current_user.get("username")}
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_my_profile(
+    req: UserProfileUpdateRequest,
+    current_user: dict = Depends(get_current_user_from_state),
+):
+    """Update the current user's display name."""
+    try:
+        user = await User.get(current_user["id"])
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        stripped = req.display_name.strip()
+        if not stripped:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Display name cannot be empty",
+            )
+        user.display_name = stripped
+        await user.save()
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            status=user.status,
+            role=user.role,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update profile: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update profile. Please try again later.",
+        )
+
+
+@router.put("/me/password", response_model=UserResponse)
+async def change_my_password(
+    req: UserChangePasswordRequest,
+    current_user: dict = Depends(get_current_user_from_state),
+):
+    """Change the current user's password (requires old password verification)."""
+    try:
+        user = await User.get(current_user["id"])
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+        if not verify_password(req.old_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="旧密码不正确",
+            )
+        user.password_hash = hash_password(req.new_password)
+        await user.save()
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            status=user.status,
+            role=user.role,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to change password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to change password. Please try again later.",
+        )

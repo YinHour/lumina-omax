@@ -31,7 +31,7 @@ export const itIT = {
     podcast: "Podcast",
     quickActions: "Azioni rapide",
     quickActionsDesc: "Navigazione, ricerca, domande, tema",
-    appName: "Lumina™ | Yinshi AI",
+    appName: "Lumiton·Omax|知涌",
     add: "Aggiungi",
     remove: "Rimuovi",
     confirm: "Conferma",

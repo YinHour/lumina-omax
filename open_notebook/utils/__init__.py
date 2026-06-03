@@ -1,5 +1,5 @@
 """
-Utils package for Open Notebook.
+Utils package for Lumiton·Omax.
 
 To avoid circular imports, import functions directly:
 - from open_notebook.utils.context_builder import ContextBuilder

@@ -1,289 +1,78 @@
-# Open Notebook Documentation
+# Lumiton·Omax 帮助文档
 
-Welcome to Open Notebook - a privacy-focused AI research assistant. This documentation is organized for different needs.
-
----
-
-## 🎯 Choose Your Path
-
-### I'm brand new
-→ Start here: **[0-START-HERE](0-START-HERE/index.md)**
-- Learn what Open Notebook is
-- Pick your setup path (OpenAI, cloud, local/Ollama)
-- 5-minute quick start
-
-### I need to install/deploy
-→ Go here: **[1-INSTALLATION](1-INSTALLATION/index.md)**
-- Multiple installation routes
-- Docker Compose (recommended)
-- From source (developers)
-- ~~Single container~~ (deprecated, see Docker Compose)
-
-### I want to understand how it works
-→ Read this: **[2-CORE-CONCEPTS](2-CORE-CONCEPTS/index.md)**
-- Mental models and architecture
-- How RAG (retrieval-augmented generation) works
-- Notebooks, sources, and notes explained
-- Chat vs. transformations vs. podcasts
-
-### I want to use it (tutorials)
-→ Follow this: **[3-USER-GUIDE](3-USER-GUIDE/index.md)**
-- How to add sources (PDFs, URLs, audio, video)
-- Creating and organizing notes
-- Chat effectively with your research
-- Creating podcasts from research
-- Search techniques
-
-### I need to configure it
-→ Check this: **[5-CONFIGURATION](5-CONFIGURATION/index.md)**
-- Choose and setup AI provider
-- API configuration
-- Database setup
-- Advanced tuning
-
-### I need provider-specific help
-→ Go here: **[4-AI-PROVIDERS](4-AI-PROVIDERS/index.md)**
-- OpenAI, Anthropic, Google, Groq, Ollama, Azure
-- Model comparisons
-- Cost estimates
-- Setup paths
-
-### Something's not working
-→ Troubleshoot: **[6-TROUBLESHOOTING](6-TROUBLESHOOTING/index.md)**
-- Quick fixes (top 10 issues)
-- Installation problems
-- Connection issues
-- AI/chat problems
-- Content processing issues
-- Podcast problems
-
-### I want to contribute/develop
-→ Read this: **[7-DEVELOPMENT](7-DEVELOPMENT/index.md)**
-- Architecture and tech stack
-- Contributing guidelines
-- API reference
-- Testing
+欢迎使用 Lumiton·Omax，一款注重隐私的 AI 科研助手。本文档按不同需求组织。
 
 ---
 
-## 📊 Documentation Overview
+## 🎯 选择你的路径
 
-### By Section
+### 我是新手
+→ **[核心概念](2-CORE-CONCEPTS/index.md)**
+- 了解 Lumiton·Omax 的核心理念
+- 笔记本、来源、笔记三层结构
+- AI 上下文与 RAG 检索增强
 
-**[0-START-HERE](0-START-HERE/index.md)** — Entry point
-- What is Open Notebook?
-- Quick start guides (3 routes)
-- First 5 minutes
+### 我想了解如何使用
+→ **[用户指南](3-USER-GUIDE/index.md)**
+- 如何添加来源（PDF、URL、音频、视频）
+- 创建和管理笔记
+- 高效聊天技巧
+- 搜索方法
 
-**[1-INSTALLATION](1-INSTALLATION/index.md)** — Getting it running
-- Multiple installation routes
-- Docker Compose (recommended), from-source
-- Requirements and setup
+### 我需要配置系统
+→ **[配置指南](5-CONFIGURATION/index.md)**
+- AI 提供商配置
+- API 密钥管理
+- 数据库设置
+- 高级调优
 
-**[2-CORE-CONCEPTS](2-CORE-CONCEPTS/index.md)** — Understanding the system
-- Notebooks, sources, notes hierarchy
-- RAG (retrieval-augmented generation)
-- Chat, transformations, podcasts
-- Context management
+### 遇到了问题
+→ **[故障排查](6-TROUBLESHOOTING/index.md)**
+- 快速修复（10 大常见问题）
+- 连接问题
+- AI/聊天问题
+- 常见问题解答
 
-**[3-USER-GUIDE](3-USER-GUIDE/index.md)** — Using features
-- Adding sources (all types)
-- Working with notes
-- Chat effectively
-- Creating podcasts
-- Searching (text and semantic)
-
-**[4-AI-PROVIDERS](4-AI-PROVIDERS/index.md)** — AI configuration
-- Provider comparison
-- Setup for each provider
-- Model recommendations
-- Cost estimates
-
-**[5-CONFIGURATION](5-CONFIGURATION/index.md)** — Complete reference
-- AI provider setup (detailed)
-- Database configuration
-- Server/API settings
-- Advanced tuning
-- Environment variables (complete reference)
-
-**[6-TROUBLESHOOTING](6-TROUBLESHOOTING/index.md)** — Problem solving
-- Quick fixes (top 10)
-- Installation issues
-- Connection problems
-- AI/chat issues
-- Content processing
-- Podcast generation
-- Getting help
-
-**[7-DEVELOPMENT](7-DEVELOPMENT/index.md)** — For contributors
-- Architecture
-- Contributing guidelines
-- API reference
-- Testing & development
+### 定制开发记录
+→ **[定制记录](8-CUSTOMIZATION/index.md)**
+- 二次开发变更日志
+- 功能增强说明
+- 架构决策记录
 
 ---
 
-## 🔍 Find What You Need
+## 📚 阅读路径
 
-### By Problem Type
+### 路径 1：完整学习（1-2 小时）
+1. [核心概念](2-CORE-CONCEPTS/index.md) — 理解系统设计
+2. [用户指南](3-USER-GUIDE/index.md) — 学习各项功能
+3. [配置指南](5-CONFIGURATION/index.md) — 按需配置
 
-**Installation & Setup**
-- Fresh install? → [0-START-HERE](0-START-HERE/index.md)
-- Detailed installation routes? → [1-INSTALLATION](1-INSTALLATION/index.md)
-- Configuration reference? → [5-CONFIGURATION](5-CONFIGURATION/index.md)
-- Provider setup? → [4-AI-PROVIDERS](4-AI-PROVIDERS/index.md)
+**结果：** 全面掌握 Lumiton·Omax 的使用
 
-**Using Open Notebook**
-- How to use features? → [3-USER-GUIDE](3-USER-GUIDE/index.md)
-- Understanding concepts? → [2-CORE-CONCEPTS](2-CORE-CONCEPTS/index.md)
-- Chat not working? → [6-TROUBLESHOOTING - AI Issues](6-TROUBLESHOOTING/ai-chat-issues.md)
-- Files won't upload? → [6-TROUBLESHOOTING - Quick Fixes](6-TROUBLESHOOTING/quick-fixes.md#4-cannot-process-file-or-unsupported-format)
+### 路径 2：快速上手（15 分钟）
+1. [用户指南 - 界面总览](3-USER-GUIDE/interface-overview.md) — 了解界面布局
+2. [用户指南 - 添加来源](3-USER-GUIDE/adding-sources.md) — 上传你的第一批文档
+3. [用户指南 - 高效聊天](3-USER-GUIDE/chat-effectively.md) — 开始对话
 
-**Troubleshooting**
-- Quick fix? → [6-TROUBLESHOOTING - Quick Fixes](6-TROUBLESHOOTING/quick-fixes.md)
-- Can't connect? → [6-TROUBLESHOOTING - Connection](6-TROUBLESHOOTING/connection-issues.md)
-- Chat issues? → [6-TROUBLESHOOTING - AI Issues](6-TROUBLESHOOTING/ai-chat-issues.md)
-- Podcast problems? → [6-TROUBLESHOOTING - Quick Fixes](6-TROUBLESHOOTING/quick-fixes.md#8-podcast-generation-failed)
+**结果：** 15 分钟内开始使用，细节后续再学
 
-**Development**
-- Architecture? → [7-DEVELOPMENT - Architecture](7-DEVELOPMENT/architecture.md)
-- Contributing? → [7-DEVELOPMENT - Contributing](7-DEVELOPMENT/contributing.md)
-- API reference? → [7-DEVELOPMENT - API Reference](7-DEVELOPMENT/api-reference.md)
+### 路径 3：问题排查（5-30 分钟）
+1. [故障排查](6-TROUBLESHOOTING/index.md) — 定位问题
+2. 找到对应的修复指南
+3. 按步骤解决
+
+**结果：** 问题解决！
 
 ---
 
-## 📚 Reading Paths
+## 📖 文档组织原则
 
-### Path 1: Complete Beginner (1-2 hours)
-1. [0-START-HERE/index.md](0-START-HERE/index.md) — Understand what it is
-2. [0-START-HERE Quick Start](0-START-HERE/index.md) — Set it up
-3. [2-CORE-CONCEPTS/index.md](2-CORE-CONCEPTS/index.md) — Understand concepts
-4. [3-USER-GUIDE/index.md](3-USER-GUIDE/index.md) — Learn features
-
-**Result:** Fully understand how to use Open Notebook
-
-### Path 2: Get Running Fast (15 minutes)
-1. [0-START-HERE](0-START-HERE/index.md) — Pick your path
-2. Follow quick-start guide for your setup
-3. Start using!
-
-**Result:** Running in 15 minutes, learn details later
-
-### Path 3: DevOps/Deployment (1-2 hours)
-1. [1-INSTALLATION](1-INSTALLATION/index.md) — Understand routes
-2. [5-CONFIGURATION](5-CONFIGURATION/index.md) — Reference setup
-3. [7-DEVELOPMENT - Architecture](../7-DEVELOPMENT/architecture.md) — Understand system
-
-**Result:** Ready to deploy to production
-
-### Path 4: Troubleshooting (5-30 minutes)
-1. [6-TROUBLESHOOTING/index.md](6-TROUBLESHOOTING/index.md) — Identify problem
-2. Find specific guide
-3. Follow solutions
-
-**Result:** Problem solved!
+- **渐进式展开**：从简单入手，按需深入
+- **多路径入口**：不同用户走不同路线
+- **高信息密度**：聚焦核心内容，不堆砌
+- **决策树导航**：帮助你选择正确的路径
 
 ---
 
-## ❓ Common Questions
-
-**Q: Where do I start?**
-A: → [0-START-HERE](0-START-HERE/index.md) — Choose your setup path
-
-**Q: How do I install it?**
-A: → [1-INSTALLATION](1-INSTALLATION/index.md) — Multiple routes available
-
-**Q: How do I use [feature]?**
-A: → [3-USER-GUIDE](3-USER-GUIDE/index.md) — Step-by-step tutorials
-
-**Q: Why does [feature] work like that?**
-A: → [2-CORE-CONCEPTS](2-CORE-CONCEPTS/index.md) — Understand the mental model
-
-**Q: How do I configure [provider]?**
-A: → [4-AI-PROVIDERS](4-AI-PROVIDERS/index.md) or [5-CONFIGURATION](5-CONFIGURATION/index.md)
-
-**Q: Something's broken, what do I do?**
-A: → [6-TROUBLESHOOTING](6-TROUBLESHOOTING/index.md) — Problem solver
-
-**Q: How does the system work?**
-A: → [2-CORE-CONCEPTS](2-CORE-CONCEPTS/index.md) — Architecture and concepts
-
-**Q: Can I contribute?**
-A: → [7-DEVELOPMENT](../7-DEVELOPMENT/index.md) — Contributing guide
-
----
-
-## 📖 How This Documentation is Organized
-
-### Principles
-- **Progressive Disclosure**: Start simple, go deeper if needed
-- **Multiple Entry Routes**: Different paths for different users
-- **High Signal-to-Noise**: Focused content, no fluff
-- **Step-by-Step**: Clear instructions you can follow
-- **Decision Trees**: Help you pick the right path
-- **Symptom-Based**: Troubleshooting by what's broken
-
-### Structure
-- **0-START-HERE** — Entry point (everyone starts here)
-- **1-INSTALLATION** — Multiple setup routes
-- **2-CORE-CONCEPTS** — Mental models (understand why)
-- **3-USER-GUIDE** — How to use (step-by-step)
-- **4-AI-PROVIDERS** — Provider guides
-- **5-CONFIGURATION** — Reference material
-- **6-TROUBLESHOOTING** — Problem solving
-- **7-DEVELOPMENT** — For contributors
-
----
-
-## 🚀 Quick Navigation
-
-### First Time?
-→ **[START HERE](0-START-HERE/index.md)**
-
-### Just Want to Use It?
-→ **[QUICK START](0-START-HERE/index.md)** (5 minutes)
-
-### Something Broken?
-→ **[TROUBLESHOOTING](6-TROUBLESHOOTING/index.md)**
-
-### Full Reference?
-→ **[CONFIGURATION](5-CONFIGURATION/index.md)**
-
-### Developer?
-→ **[DEVELOPMENT](7-DEVELOPMENT/index.md)**
-
----
-
-## 📞 Getting Help
-
-- **Discord Community** — https://discord.gg/37XJPXfz2w
-- **GitHub Issues** — https://github.com/lfnovo/open-notebook/issues
-- **Documentation** — You're reading it!
-
----
-
-## 📈 Documentation Stats
-
-- **8 major sections**
-- **35+ focused guides**
-- **~80,000 words**
-- **Covers all features**
-- **Multiple entry paths**
-- **Progressive difficulty**
-
----
-
-## 🎯 Start Here
-
-**First time using Open Notebook?**
-→ Go to **[0-START-HERE](0-START-HERE/index.md)**
-
-**Experienced, looking for specific help?**
-→ Use the navigation above to find your section
-
-**Something not working?**
-→ Go to **[TROUBLESHOOTING](6-TROUBLESHOOTING/index.md)**
-
----
-
-Last updated: January 2026 | Open Notebook v1.2.4+
+最后更新：2026 年 6 月 | Lumiton·Omax
