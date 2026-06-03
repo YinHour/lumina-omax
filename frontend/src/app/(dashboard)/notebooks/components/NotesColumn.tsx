@@ -108,11 +108,11 @@ export function NotesColumn({
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => onBulkContextModeChange('full')}>
                         <List className="h-4 w-4 mr-2" />
-                        {language.startsWith('zh') ? '全部设为参考全文' : 'Set All to Full Text'}
+                        {t.sources.setAllFullText}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => onBulkContextModeChange('off')}>
                         <Ban className="h-4 w-4 mr-2" />
-                        {language.startsWith('zh') ? '全部设为不参考' : 'Set All to Off'}
+                        {t.sources.setAllToOff}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

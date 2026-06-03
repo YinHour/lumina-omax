@@ -397,7 +397,7 @@ export default function SearchPage() {
                           disabled={ask.isStreaming}
                           className="w-full sm:flex-1"
                         >
-                          {language.startsWith('zh') ? '清空内容' : 'Clear'}
+                          {t.common.clear}
                         </Button>
                       )}
                     </div>
@@ -486,7 +486,7 @@ export default function SearchPage() {
                         disabled={searchMutation.isPending}
                         className="w-full sm:w-auto"
                       >
-                        {language.startsWith('zh') ? '清空内容' : 'Clear'}
+                        {t.common.clear}
                       </Button>
                     )}
                   </div>

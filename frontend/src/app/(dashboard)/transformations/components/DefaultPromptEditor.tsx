@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronDown, ChevronRight, Settings } from 'lucide-react'
 import { useDefaultPrompt, useUpdateDefaultPrompt } from '@/lib/hooks/use-transformations'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 export function DefaultPromptEditor() {
@@ -16,6 +17,8 @@ export function DefaultPromptEditor() {
   const { data: defaultPrompt, isLoading } = useDefaultPrompt()
   const updateDefaultPrompt = useUpdateDefaultPrompt()
   const { t } = useTranslation()
+  const user = useAuthStore((s) => s.user)
+  const isAdmin = user?.role === 'admin'
   const textareaId = useId()
 
   useEffect(() => {
@@ -68,12 +71,14 @@ export function DefaultPromptEditor() {
               />
             </div>
             <div className="flex justify-end">
-              <Button 
-                onClick={handleSave}
-                disabled={isLoading || updateDefaultPrompt.isPending}
-              >
-                {t.common.save}
-              </Button>
+              {isAdmin && (
+                <Button 
+                  onClick={handleSave}
+                  disabled={isLoading || updateDefaultPrompt.isPending}
+                >
+                  {t.common.save}
+                </Button>
+              )}
             </div>
           </CardContent>
         </CollapsibleContent>
