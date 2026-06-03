@@ -10,7 +10,7 @@
 
 1. 将本地图片 `D:\iCloudDrive\__NEW\00_MINE\PRJ\石油化工\41-设计\Logo\Lumiton·Omax图标.png`
    复制到前端项目：`frontend/public/logo.png`
-2. 文本Logo统一为：`Lumiton·Omax | 知涌`
+2. 文本Logo统一为：`Lumiton·Omax|知涌`
 
 ### 2. 全局替换代码（核心文件）
 

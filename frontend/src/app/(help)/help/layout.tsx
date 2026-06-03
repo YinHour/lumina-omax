@@ -9,7 +9,7 @@ export default function HelpLayout({ children }: { children: React.ReactNode }) 
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-50">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center gap-4">
           <Link href="/help" className="font-bold text-lg text-teal-400 hover:text-teal-300 transition-colors">
-            Lumina·Omax 帮助中心
+            Lumiton·Omax | 知涌
           </Link>
           <span className="text-xs text-muted-foreground">|</span>
           <Link href="/notebooks" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -17,8 +17,8 @@ export default function HelpLayout({ children }: { children: React.ReactNode }) 
           </Link>
         </div>
       </header>
-      <div className="max-w-7xl mx-auto flex">
-        <aside className="w-56 shrink-0 border-r min-h-[calc(100vh-3.5rem)] p-4 space-y-1 overflow-y-auto sticky top-14">
+      <div className="max-w-7xl mx-auto flex h-[calc(100vh-3.5rem)]">
+        <aside className="w-56 shrink-0 border-r p-4 space-y-1 overflow-y-auto">
           <Link
             href="/help"
             className="block px-3 py-1.5 rounded text-sm font-medium hover:bg-muted transition-colors"
@@ -50,7 +50,7 @@ export default function HelpLayout({ children }: { children: React.ReactNode }) 
             </div>
           ))}
         </aside>
-        <main className="flex-1 min-w-0 p-8">
+        <main className="flex-1 min-w-0 p-8 overflow-y-auto">
           {children}
         </main>
       </div>
