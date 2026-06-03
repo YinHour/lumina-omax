@@ -1,475 +1,79 @@
-# Adding Sources - Getting Content Into Your Notebook
+# 添加来源 — 将内容导入笔记本
 
-Sources are the raw materials of your research. This guide covers how to add different types of content.
-
----
-
-## Quick-Start: Add Your First Source
-
-### Option 1: Upload a File (PDF, Word, etc.)
-
-```
-1. In your notebook, click "Add Source"
-2. Select "Upload File"
-3. Choose a file from your computer
-4. Click "Upload"
-5. Wait 30-60 seconds for processing
-6. Done! Source appears in your notebook
-```
-
-### Option 2: Add a Web Link
-
-```
-1. Click "Add Source"
-2. Select "Web Link"
-3. Paste URL: https://example.com/article
-4. Click "Add"
-5. Wait for processing (usually faster than files)
-6. Done!
-```
-
-### Option 3: Paste Text
-
-```
-1. Click "Add Source"
-2. Select "Text"
-3. Paste or type your content
-4. Click "Save"
-5. Done! Immediately available
-```
+来源是你研究的原材料。
 
 ---
 
-## Supported File Types
+## 快速入门
 
-### Documents
-- **PDF** (.pdf) — Best support, including scanned PDFs with OCR
-- **Word** (.docx, .doc) — Full support
-- **PowerPoint** (.pptx) — Slides converted to text
-- **Excel** (.xlsx, .xls) — Spreadsheet data
-- **EPUB** (.epub) — eBook files
-- **Markdown** (.md, .txt) — Plain text formats
-- **HTML** (.html, .htm) — Web page files
+### 上传文件
+笔记本 → [+ 添加来源] → "上传文件" → 选文件 → 上传 → 等待 30-60 秒
 
-**File size limits:** Up to ~100MB (varies by system)
+### 添加网页链接
+[+ 添加来源] → "网页链接" → 粘贴 URL → 添加
 
-**Processing time:** 10 seconds - 2 minutes (depending on length and file type)
-
-### Audio & Video
-- **Audio**: MP3, WAV, M4A, OGG, FLAC (~30 seconds - 3 minutes per hour)
-- **Video**: MP4, AVI, MOV, MKV, WebM (~3-10 minutes per hour)
-- **YouTube**: Direct URL support
-- **Podcasts**: RSS feed URL
-
-**Automatic transcription**: Audio/video is transcribed to text automatically. This requires enabling speech-to-text in settings.
-
-### Web Content
-- **Articles**: Blog posts, news articles, Medium
-- **YouTube**: Full videos or playlists
-- **PDFs online**: Direct PDF links
-- **News**: News site articles
-
-**Just paste the URL** in "Web Link" section.
-
-### What Doesn't Work
-- Paywalled content (WSJ, FT, etc.) — Can't extract
-- Password-protected PDFs — Can't open
-- Pure image files (.jpg, .png) — Except scanned PDFs which have OCR
-- Very large files (>100MB) — Timeout
+### 粘贴文本
+[+ 添加来源] → "文本" → 粘贴内容 → 保存（立即可用）
 
 ---
 
-## What Happens When You Add a Source
+## 支持的文件类型
 
-The system automatically does four things:
+### 文档
+PDF、Word、PowerPoint、Excel、EPUB、Markdown、HTML
 
-```
-1. EXTRACT TEXT
-   File/URL → Readable text
-   (PDFs get OCR if scanned)
-   (Videos get transcribed if enabled)
-
-2. BREAK INTO CHUNKS
-   Long text → ~500-word pieces
-   (So search finds specific parts, not whole document)
-
-3. CREATE EMBEDDINGS
-   Each chunk → Vector representation
-   (Enables semantic/concept search)
-
-4. INDEX & STORE
-   Everything → Database
-   (Ready to search and retrieve)
-```
-
-**Time to use:** After the progress bar completes, the source is ready immediately. Embeddings are created in the background.
+### 音频与视频
+MP3、WAV、M4A、MP4、AVI、YouTube URL
 
 ---
 
-## Content Processing Engines
+## 内容处理引擎
 
-Lumina·Omax supports multiple content extraction engines, optimized for different document types:
+Lumiton·Omax 支持多种引擎：
 
-| Engine | Best For | Characteristics |
-|--------|----------|-----------------|
-| **MinerU** (default) | Chinese PDFs, complex layouts | Best for Chinese-language documents, strong table/formula recognition |
-| **Docling** | English PDFs, general documents | Strong OCR, hierarchical structure extraction |
-| **Simple** | Plain text, Markdown | Fastest, no heavy dependencies |
+| 引擎 | 最佳场景 |
+|------|----------|
+| **MinerU**（默认） | 中文 PDF、复杂排版 |
+| **Docling** | 英文 PDF、通用文档 |
+| **Simple** | 纯文本、Markdown |
 
-### Engine Selection
-
-The content processing engine is configured via environment variable:
-
-```bash
-# .env or docker.env
-CCORE_DOCUMENT_ENGINE=mineru   # Default for Chinese documents
-# CCORE_DOCUMENT_ENGINE=docling  # For English-centric workloads
-```
-
-Engines can also be changed per-notebook via **Settings → Processing**.
-
-### Image Description (Vision LLM)
-
-For documents containing images (PDFs, PowerPoint, Excel), Lumina·Omax automatically:
-
-1. Extracts embedded images from the document
-2. Sends each image to the configured **Vision Model** for AI description
-3. Injects descriptions as `## Figure Descriptions` into the source text
-4. Descriptions are included in vector embeddings, making image content searchable
-
-To enable this feature, configure a Vision Model in **Settings → API Keys → Advanced**.
+通过环境变量 `CCORE_DOCUMENT_ENGINE` 配置，或通过 Settings → Processing 每个笔记本单独设置。
 
 ---
 
-## File Deduplication
+## 图片描述（Vision LLM）
 
-When uploading files, the system checks for duplicates based on **original filename**:
+对于含图片的文档（PDF、PPT、Excel），Lumiton·Omax 自动：
+1. 提取嵌入图片
+2. 用 Vision Model 生成 AI 描述
+3. 描述注入文档文本中
+4. 图片内容可被搜索
 
-- If a file with the same name already exists in the notebook, you'll be warned
-- Duplicate check runs before upload to save processing time
-- Files are stored with UUID names for internal consistency, but the original filename is preserved for display and deduplication
-- Downloaded files retain their original filenames
-
----
-
-## Step-by-Step for Different Types
-
-### PDFs
-
-**Best practices:**
-```
-Clean PDFs:
-  1. Upload → Done
-  2. Processing time: ~30-60 seconds
-
-Scanned/Image PDFs:
-  1. Upload same way
-  2. System auto-detects and uses OCR
-  3. Processing time: ~2-3 minutes
-  4. (Higher, due to OCR overhead)
-
-Large PDFs (50+ pages):
-  1. Consider splitting into smaller files
-  2. Or upload as-is (system handles it)
-  3. Processing time scales with size
-```
-
-**Common issues:**
-- "Can't extract text" → PDF is corrupted or has copy protection
-- Solution: Try opening in Adobe. If it won't, the PDF is likely protected.
-
-### Web Links / Articles
-
-**Best practices:**
-```
-1. Copy full URL from browser: https://example.com/article-title
-2. Paste in "Web Link"
-3. Click Add
-4. Wait for extraction
-
-Processing time: Usually 5-15 seconds
-```
-
-**What works:**
-- Standard web articles
-- Blog posts
-- News articles
-- Wikipedia pages
-- Medium posts
-- Substack articles
-
-**What doesn't work:**
-- Twitter threads (unreliable)
-- Paywalled articles (can't access)
-- JavaScript-heavy sites (content not extracted)
-
-**Pro tip:** If it doesn't work, copy the article text and paste as "Text" instead.
-
-### Audio Files
-
-**Best practices:**
-```
-1. Ensure speech-to-text is enabled in Settings
-2. Upload MP3, WAV, or M4A file
-3. System automatically transcribes to text
-4. Processing time: ~1 minute per 5 minutes of audio
-
-Example:
-  - 1-hour podcast → 12 minutes processing
-  - 10-minute recording → 2 minutes processing
-```
-
-**Quality matters:**
-- Clear audio: Fast transcription
-- Muffled/noisy audio: Slower, less accurate transcription
-- Background noise: Try to minimize before uploading
-
-**Tip:** If audio quality is poor, the AI might misinterpret content. You can manually correct transcription if needed.
-
-### YouTube Videos
-
-**Best practices:**
-```
-Two ways to add:
-
-Method 1: Direct URL
-  1. Copy YouTube URL: https://www.youtube.com/watch?v=...
-  2. Paste in "Web Link"
-  3. Click Add
-  4. System extracts captions (if available) + transcript
-
-Method 2: Playlist
-  1. Paste playlist URL
-  2. System adds all videos as separate sources
-  3. Each video processed separately
-  4. Takes longer (multiple videos)
-```
-
-**What's extracted:**
-- Captions/subtitles (if available)
-- Transcription (if captions aren't available)
-- Basic metadata (title, channel, length)
-
-**Processing:**
-- 10-minute video: ~2-3 minutes
-- 1-hour video: ~10-15 minutes
-
-### Text / Paste Content
-
-**Best practices:**
-```
-1. Select "Text" when adding source
-2. Paste or type content
-3. System processes immediately
-4. No wait time needed
-
-Good for:
-  - Notes you want to reference
-  - Quotes from books
-  - Transcripts you have handy
-  - Quick research snippets
-```
+需在 Settings → API Keys → 高级设置中配置 Vision Model。
 
 ---
 
-## Managing Your Sources
+## 文件重名检测
 
-### Viewing Source Details
-
-```
-Click on source → See:
-  - Original file name/title
-  - When it was added
-  - Size and format
-  - Processing status
-  - Number of chunks
-```
-
-### Organizing with Metadata
-
-You can add to each source:
-- **Title**: Better name than original filename
-- **Tags**: Category labels ("primary research", "background", "competitor analysis")
-- **Description**: A few notes about what it contains
-
-**Why this matters:**
-- Makes sources easier to find
-- Helps when contextualizing for Chat
-- Useful for organizing large notebooks
-
-### Searching Within Sources
-
-```
-After sources are added, you can:
-
-Text search: "Find exact phrase"
-Vector search: "Find conceptually similar"
-
-Both search across all sources in notebook.
-Results show:
-  - Which source
-  - Which section
-  - Relevance score
-```
+上传时系统自动检查重名：
+- 笔记本中已有同名文件时会提示
+- 重名检测在正式上传前执行
+- 文件内部用 UUID 存储，原文件名保留用于显示和下载
 
 ---
 
-## Context Management: How Sources Get Used
+## 上下文管理
 
-You control how AI accesses sources:
+### 三个级别（Chat 中）
 
-### Three Levels (for Chat)
-
-**Full Content:**
-```
-AI sees: Complete source text
-Cost: 100% of tokens
-Use when: Analyzing in detail, need precise citations
-Example: "Analyze this methodology paper closely"
-```
-
-**Summary Only:**
-```
-AI sees: AI-generated summary (not full text)
-Cost: ~10-20% of tokens
-Use when: Background material, reference context
-Example: "Use this as context but focus on the main source"
-```
-
-**Not in Context:**
-```
-AI sees: Nothing (excluded)
-Cost: 0 tokens
-Use when: Confidential, not relevant, or archived
-Example: "Keep this in notebook but don't use in this conversation"
-```
-
-### How to Set Context (in Chat)
-
-```
-1. Go to Chat
-2. Click "Select Context Sources"
-3. For each source:
-   - Toggle ON/OFF (include/exclude)
-   - Choose level (Full/Summary/Excluded)
-4. Click "Save"
-5. Now chat uses these settings
-```
+**完整内容** → AI 看到完整文本 → 细节分析
+**仅摘要** → AI 看到 AI 生成的摘要 → 背景材料
+**不在上下文中** → AI 看不到 → 机密材料
 
 ---
 
-## Common Mistakes
+## 处理状态
 
-| Mistake | What Happens | How to Fix |
-|---------|--------------|-----------|
-| Upload 200 sources at once | System gets slow, processing stalls | Add 10-20 at a time, wait for processing |
-| Use full content for all sources | Token usage skyrockets, expensive | Use "Summary" or "Excluded" for background material |
-| Add huge PDFs without splitting | Processing is slow, search results less precise | Consider splitting large PDFs into chapters |
-| Forget source titles | Can't distinguish between similar sources | Rename sources with descriptive titles right after uploading |
-| Don't tag sources | Hard to find and organize later | Add tags immediately: "primary", "background", etc. |
-| Mix languages in one source | Transcription/embedding quality drops | Keep each language in separate sources |
-| Use same source multiple times | Takes up space, creates confusion | Add once; reuse in multiple chats/notebooks |
-
----
-
-## Processing Status & Troubleshooting
-
-### What the Status Indicators Mean
-
-```
-🟡 Processing
-  → Source is being extracted and embedded
-  → Wait 30 seconds - 3 minutes depending on size
-  → Don't use in Chat yet
-
-🟢 Ready
-  → Source is processed and searchable
-  → Can use immediately in Chat
-  → Can apply transformations
-
-🔴 Error
-  → Something went wrong
-  → Common reasons:
-    - Unsupported file format
-    - File too large or corrupted
-    - Network timeout
-
-⚪ Not in Context
-  → Source added but excluded from Chat
-  → Still searchable, not sent to AI
-```
-
-### Common Errors & Solutions
-
-**"Unsupported file type"**
-- You tried to upload a format not in the list (e.g., `.webp` image)
-- Solution: Convert to supported format (PDF for documents, MP3 for audio)
-
-**"Processing timeout"**
-- Very large file (>100MB) or very long audio
-- Solution: Split into smaller pieces or try uploading again
-
-**"Transcription failed"**
-- Audio quality too poor or language not detected
-- Solution: Re-record with better quality, or paste text transcript manually
-
-**"Web link won't extract"**
-- Website blocks automated access or uses JavaScript for content
-- Solution: Copy the article text and paste as "Text" instead
-
----
-
-## Tips for Best Results
-
-### For PDFs
-- Clean, digital PDFs work best
-- Remove copy protection if present (legally)
-- Scanned PDFs work but take longer
-
-### For Web Articles
-- Use full URL including domain
-- Avoid cookie/popup-laden sites
-- If extraction fails, copy-paste text instead
-
-### For Audio
-- Clear, well-recorded audio transcribes better
-- Remove background noise if possible
-- YouTube videos usually have good transcriptions built-in
-
-### For Large Documents
-- Consider splitting into smaller sources
-- Gives more precise search results
-- Processing is faster for smaller pieces
-
-### For Organization
-- Name sources clearly (not "document_2.pdf")
-- Add tags immediately after uploading
-- Use descriptions for complex documents
-
----
-
-## What Comes After: Using Your Sources
-
-Once you've added sources, you can:
-
-- **Chat** → Ask questions (see [Chat Effectively](chat-effectively.md))
-- **Search** → Find specific content (see [Search Effectively](search.md))
-- **Transformations** → Extract structured insights (see [Working with Notes](working-with-notes.md))
-- **Ask** → Get comprehensive answers (see [Search Effectively](search.md))
-- **Podcasts** → Turn into audio (see [Creating Podcasts](creating-podcasts.md))
-
----
-
-## Summary Checklist
-
-Before adding sources, confirm:
-
-- [ ] File is in supported format
-- [ ] File is under 100MB (or splitting large ones)
-- [ ] Web links are full URLs (not shortened)
-- [ ] Audio files have clear speech (if transcription-dependent)
-- [ ] You've named source clearly
-- [ ] You've added tags for organization
-- [ ] You understand context levels (Full/Summary/Excluded)
-
-Done! Sources are now ready for Chat, Search, Transformations, and more.
+- 🟡 处理中 → 等待
+- 🟢 就绪 → 可用
+- 🔴 错误 → 检查格式和文件大小

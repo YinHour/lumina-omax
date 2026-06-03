@@ -1,372 +1,97 @@
-# Quick Fixes - Top 11 Issues & Solutions
-
-Common problems with 1-minute solutions.
+# 快速修复 — 最常见问题
 
 ---
 
-## #1: "Cannot connect to server"
-
-**Symptom:** Browser shows error "Cannot connect to server" or "Unable to reach API"
-
-**Cause:** Frontend can't reach API
-
-**Solution (1 minute):**
+## #1：无法连接服务器
 
 ```bash
-# Step 1: Check if API is running
+# 检查 API 是否运行
 docker ps | grep api
 
-# Step 2: Verify port 5055 is accessible
+# 验证端口 5055 可访问
 curl http://localhost:5055/health
+# 应返回：{"status":"ok"}
 
-# Expected output: {"status":"ok"}
-
-# If that doesn't work:
-# Step 3: Restart services
+# 不行就重启
 docker compose restart
-
-# Step 4: Try again
-# Open http://localhost:8502 in browser
 ```
-
-**If still broken:**
-- Check `API_URL` in .env (should match your frontend URL)
-- See [Connection Issues](connection-issues.md)
 
 ---
 
-## #2: "Invalid API key" or "Models not showing"
+## #2：API 密钥无效 / 模型不显示
 
-**Symptom:** Settings → Models shows "No models available"
-
-**Cause:** No credential configured, or credential has invalid API key
-
-**Solution (1 minute):**
-
-```
-1. Go to Settings → API Keys
-2. If no credential exists, click "Add Credential" and add one
-3. If a credential exists, click "Test Connection"
-4. If test fails, delete and re-create with correct key
-5. After test passes, click "Discover Models" → "Register Models"
-6. Go to Settings → Models to verify models appear
-```
-
-**If still broken:**
-- Make sure key has no extra spaces
-- Generate a fresh key from provider dashboard
-- Check that `OPEN_NOTEBOOK_ENCRYPTION_KEY` is set in docker-compose.yml
-- See [AI & Chat Issues](ai-chat-issues.md)
+1. Settings → API Keys → 测试连接
+2. 失败则删除重建，用正确的密钥
+3. 测试通过 → Discover Models → Register Models
+4. `OPEN_NOTEBOOK_ENCRYPTION_KEY` 必须已设置
 
 ---
 
-## #3: "Port X already in use"
-
-**Symptom:** Docker error "Port 8502 is already allocated"
-
-**Cause:** Another service using that port
-
-**Solution (1 minute):**
+## #3：端口冲突
 
 ```bash
-# Option 1: Stop the other service
-# Find what's using port 8502
+# 找谁在用 8502
 lsof -i :8502
-# Kill it or close the app
-
-# Option 2: Use different port
-# Edit docker-compose.yml
-# Change: - "8502:8502"
-# To:     - "8503:8502"
-
-# Then restart
-docker compose restart
-# Access at: http://localhost:8503
+# 或换端口：docker-compose.yml 中改为 "8503:8502"
 ```
 
 ---
 
-## #4: "Cannot process file" or "Unsupported format"
+## #4：无法处理文件
 
-**Symptom:** Upload fails or says "File format not supported"
+- ✓ PDF、DOCX、PPTX、XLSX
+- ✓ MP3、WAV、MP4、URL
+- ✗ 纯图片（无 OCR）、>100MB 文件
 
-**Cause:** File type not supported or too large
+---
 
-**Solution (1 minute):**
+## #5：聊天很慢
+
+- 换更快模型：gpt-4o-mini、claude-haiku、Groq
+- 减少上下文来源
+- 大文档用"仅摘要"模式
+
+---
+
+## #6：聊天回复差
+
+- 确保正确来源在上下文中（"完整内容"模式）
+- 问具体问题："基于方法论部分，3 个主要局限是什么？"
+- 换成更强模型：gpt-4o、claude-sonnet
+
+---
+
+## #7：搜索无结果
+
+- 无结果 → 换向量搜索（概念匹配）
+- 向量搜索无结果 → 换文本搜索（关键词）
+- 检查来源是否处理完成（绿色"就绪"状态）
+
+---
+
+## #8：播客生成失败
+
+- 确保至少 1-2 条来源
+- 检查 TTS 提供商配额
+- 等 30 秒重试
+- 换不同 TTS 提供商
+
+---
+
+## #9：服务无法启动
 
 ```bash
-# Check if file format is supported:
-# ✓ PDF, DOCX, PPTX, XLSX (documents)
-# ✓ MP3, WAV, M4A (audio)
-# ✓ MP4, AVI, MOV (video)
-# ✓ URLs/web links
-
-# ✗ Pure images (.jpg without OCR)
-# ✗ Files > 100MB
-
-# Try these:
-# - Convert to PDF if possible
-# - Split large files
-# - Try uploading again
+docker compose logs          # 查日志
+docker compose restart       # 重启
+docker compose down && docker compose up --build  # 重建
+df -h                        # 检查磁盘（至少 5GB）
 ```
 
 ---
 
-## #5: "Chat is very slow"
-
-**Symptom:** Chat responses take minutes or timeout
-
-**Cause:** Slow AI provider, large context, or overloaded system
-
-**Solution (1 minute):**
+## 终极方案（数据丢失警告）
 
 ```bash
-# Step 1: Check which model you're using
-# Settings → Models
-# Note the model name
-
-# Step 2: Try a cheaper/faster model
-# OpenAI: Switch to gpt-4o-mini (10x cheaper, slightly faster)
-# Anthropic: Switch to claude-3-5-haiku (fastest)
-# Groq: Use any model (ultra-fast)
-
-# Step 3: Reduce context
-# Chat: Select fewer sources
-# Use "Summary Only" instead of "Full Content"
-
-# Step 4: Check if API is overloaded
-docker stats
-# Look at CPU/memory usage
+docker compose down -v       # 完全重置
+docker compose up --build    # 重建
 ```
-
-For deep dive: See [AI & Chat Issues](ai-chat-issues.md)
-
----
-
-## #6: "Chat gives bad responses"
-
-**Symptom:** AI responses are generic, wrong, or irrelevant
-
-**Cause:** Bad context, vague question, or wrong model
-
-**Solution (1 minute):**
-
-```bash
-# Step 1: Make sure sources are in context
-# Click "Select Sources" in Chat
-# Verify relevant sources are checked and set to "Full Content"
-
-# Step 2: Ask a specific question
-# Bad: "What do you think?"
-# Good: "Based on the paper's methodology section, what are the 3 main limitations?"
-
-# Step 3: Try a more powerful model
-# OpenAI: Use gpt-4o (better reasoning)
-# Anthropic: Use claude-3-5-sonnet (best reasoning)
-
-# Step 4: Check citations
-# Click citations to verify AI actually saw those sources
-```
-
-For detailed help: See [Chat Effectively](../3-USER-GUIDE/chat-effectively.md)
-
----
-
-## #7: "Search returns nothing"
-
-**Symptom:** Search shows 0 results even though content exists
-
-**Cause:** Wrong search type or poor query
-
-**Solution (1 minute):**
-
-```bash
-# Try a different search type:
-
-# If you searched with KEYWORDS:
-# Try VECTOR SEARCH instead
-# (Concept-based, not keyword-based)
-
-# If you searched for CONCEPTS:
-# Try TEXT SEARCH instead
-# (Look for specific words in your query)
-
-# Try simpler search:
-# Instead of: "How do transformers work in neural networks?"
-# Try: "transformers" or "neural networks"
-
-# Check sources are processed:
-# Go to notebook
-# All sources should show green "Ready" status
-```
-
-For detailed help: See [Search Effectively](../3-USER-GUIDE/search.md)
-
----
-
-## #8: "Podcast generation failed"
-
-**Symptom:** "Podcast generation failed" error
-
-**Cause:** Insufficient content, API quota, or network issue
-
-**Solution (1 minute):**
-
-```bash
-# Step 1: Make sure you have content
-# Select at least 1-2 sources
-# Avoid single-sentence sources
-
-# Step 2: Try again
-# Sometimes it's a temporary API issue
-# Wait 30 seconds and retry
-
-# Step 3: Check your TTS provider has quota
-# OpenAI: Check account has credits
-# ElevenLabs: Check monthly quota
-# Google: Check API quota
-
-# Step 4: Try different TTS provider
-# In podcast generation, choose "Google" or "Local"
-# instead of "ElevenLabs"
-```
-
-For detailed help: See [FAQ](faq.md)
-
----
-
-## #9: "Services won't start" or Docker error
-
-**Symptom:** Docker error when running `docker compose up`
-
-**Cause:** Corrupt configuration, permission issue, or resource issue
-
-**Solution (1 minute):**
-
-```bash
-# Step 1: Check logs
-docker compose logs
-
-# Step 2: Try restart
-docker compose restart
-
-# Step 3: If that fails, rebuild
-docker compose down
-docker compose up --build
-
-# Step 4: Check disk space
-df -h
-# Need at least 5GB free
-
-# Step 5: Check Docker has enough memory
-# Docker settings → Resources → Memory: 4GB+
-```
-
----
-
-## #10: "Database says 'too many connections'"
-
-**Symptom:** Error about database connections
-
-**Cause:** Too many concurrent operations
-
-**Solution (1 minute):**
-
-```bash
-# In .env, reduce concurrency:
-SURREAL_COMMANDS_MAX_TASKS=2
-
-# Then restart:
-docker compose restart
-
-# This makes it slower but more stable
-```
-
----
-
-## #11: Slow Startup or Download Timeouts (China/Slow Networks)
-
-**Symptom:** Container crashes on startup, worker enters FATAL state, or pip/uv downloads fail
-
-**Cause:** Slow network or restricted access to Python package repositories
-
-**Solution:**
-
-### Increase Download Timeout
-```yaml
-# In docker-compose.yml environment:
-environment:
-  - UV_HTTP_TIMEOUT=600  # 10 minutes (default is 30s)
-```
-
-### Use Chinese Mirrors (if in China)
-```yaml
-environment:
-  - UV_HTTP_TIMEOUT=600
-  - UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-  - PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-```
-
-**Alternative Chinese mirrors:**
-- Tsinghua: `https://pypi.tuna.tsinghua.edu.cn/simple`
-- Aliyun: `https://mirrors.aliyun.com/pypi/simple/`
-- Huawei: `https://repo.huaweicloud.com/repository/pypi/simple`
-
-**Note:** First startup may take several minutes while dependencies download. Subsequent starts will be faster.
-
----
-
-## Quick Troubleshooting Checklist
-
-When something breaks:
-
-- [ ] **Restart services:** `docker compose restart`
-- [ ] **Check logs:** `docker compose logs`
-- [ ] **Verify connectivity:** `curl http://localhost:5055/health`
-- [ ] **Check .env:** API keys set? API_URL correct?
-- [ ] **Check resources:** `docker stats` (CPU/memory)
-- [ ] **Clear cache:** `docker system prune` (free space)
-- [ ] **Rebuild if needed:** `docker compose up --build`
-
----
-
-## Nuclear Options (Last Resort)
-
-**Completely reset (will lose all data in Docker):**
-
-```bash
-docker compose down -v
-docker compose up --build
-```
-
-**Reset to defaults:**
-```bash
-# Backup your .env first!
-cp .env .env.backup
-
-# Reset to example
-cp .env.example .env
-
-# Edit with your API keys
-# Restart
-docker compose up
-```
-
----
-
-## Prevention Tips
-
-1. **Keep backups** — Export your notebooks regularly
-2. **Monitor logs** — Check `docker compose logs` periodically
-3. **Update regularly** — Pull latest image: `docker pull lfnovo/open_notebook:latest`
-4. **Document changes** — Keep notes on what you configured
-5. **Test after updates** — Verify everything works
-
----
-
-## Still Stuck?
-
-- **Look up your exact error** in [Troubleshooting Index](index.md)
-- **Check the FAQ** in [FAQ](faq.md)
-- **Check logs:** `docker compose logs | head -50`
-- **Ask for help:** [Discord](https://discord.gg/37XJPXfz2w) or [GitHub Issues](https://github.com/lfnovo/open-notebook/issues)
