@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from api.models import (
@@ -12,6 +12,7 @@ from api.models import (
     TransformationResponse,
     TransformationUpdate,
 )
+from api.routers.auth import require_admin
 from open_notebook.ai.models import Model
 from open_notebook.domain.transformation import DefaultPrompts, Transformation
 from open_notebook.exceptions import InvalidInputError, OpenNotebookError
@@ -136,7 +137,10 @@ async def get_default_prompt():
 
 
 @router.put("/transformations/default-prompt", response_model=DefaultPromptResponse)
-async def update_default_prompt(prompt_update: DefaultPromptUpdate):
+async def update_default_prompt(
+    prompt_update: DefaultPromptUpdate,
+    user: dict = Depends(require_admin),
+):
     """Update the default transformation prompt."""
     try:
         default_prompts: DefaultPrompts = await DefaultPrompts.get_instance()  # type: ignore[assignment]
@@ -189,7 +193,9 @@ async def get_transformation(transformation_id: str):
     "/transformations/{transformation_id}", response_model=TransformationResponse
 )
 async def update_transformation(
-    transformation_id: str, transformation_update: TransformationUpdate
+    transformation_id: str,
+    transformation_update: TransformationUpdate,
+    user: dict = Depends(require_admin),
 ):
     """Update a transformation."""
     try:
@@ -233,7 +239,10 @@ async def update_transformation(
 
 
 @router.delete("/transformations/{transformation_id}")
-async def delete_transformation(transformation_id: str):
+async def delete_transformation(
+    transformation_id: str,
+    user: dict = Depends(require_admin),
+):
     """Delete a transformation."""
     try:
         transformation = await Transformation.get(transformation_id)

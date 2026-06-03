@@ -11,8 +11,10 @@ import { Badge } from '@/components/ui/badge'
 import { UserCircle, ShieldAlert, Shield, CheckCircle, Clock, XCircle, Loader2 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+import { useTranslation } from '@/lib/hooks/use-translation'
 
 export default function ProfilePage() {
+  const { t } = useTranslation()
   const { user, updateProfile, changePassword } = useAuthStore()
   const [displayName, setDisplayName] = useState(user?.display_name || '')
   const [savingProfile, setSavingProfile] = useState(false)
@@ -26,9 +28,9 @@ export default function ProfilePage() {
 
   const initials = (user.display_name || user.username).charAt(0).toUpperCase()
   const statusConfig = {
-    active: { icon: CheckCircle, color: 'text-green-500', label: '已激活' },
-    pending: { icon: Clock, color: 'text-yellow-500', label: '等待审批' },
-    rejected: { icon: XCircle, color: 'text-red-500', label: '已拒绝' },
+    active: { icon: CheckCircle, color: 'text-green-500', label: t.profile.active },
+    pending: { icon: Clock, color: 'text-yellow-500', label: t.profile.pending },
+    rejected: { icon: XCircle, color: 'text-red-500', label: t.profile.rejected },
   } as const
   const status = statusConfig[user.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = status.icon
@@ -39,32 +41,32 @@ export default function ProfilePage() {
     const ok = await updateProfile(displayName.trim())
     setSavingProfile(false)
     if (ok) {
-      toast.success('个人资料已更新')
+      toast.success(t.profile.profileUpdated)
     } else {
-      toast.error('更新失败，请稍后重试')
+      toast.error(t.profile.updateFailed)
     }
   }
 
   const handleChangePassword = async () => {
     if (!oldPassword || !newPassword) return
     if (newPassword.length < 6) {
-      toast.error('新密码长度不能少于6位')
+      toast.error(t.profile.passwordTooShort)
       return
     }
     if (newPassword !== confirmPassword) {
-      toast.error('两次输入的密码不一致')
+      toast.error(t.profile.passwordMismatch)
       return
     }
     setChangingPassword(true)
     const res = await changePassword(oldPassword, newPassword)
     setChangingPassword(false)
     if (res.success) {
-      toast.success('密码已修改')
+      toast.success(t.profile.passwordChanged)
       setOldPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } else {
-      toast.error(res.message || '密码修改失败')
+      toast.error(res.message || t.profile.passwordFailed)
     }
   }
 
@@ -75,9 +77,9 @@ export default function ProfilePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserCircle className="h-5 w-5 text-teal-400" />
-              个人资料
+              {t.profile.title}
             </CardTitle>
-            <CardDescription>管理你的个人信息和账号安全</CardDescription>
+            <CardDescription>{t.profile.desc}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Avatar and Identity */}
@@ -91,11 +93,11 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-2 mt-1">
                   {user.role === 'admin' ? (
                     <Badge variant="outline" className="text-xs gap-1">
-                      <ShieldAlert className="h-3 w-3 text-teal-400" /> 管理员
+                      <ShieldAlert className="h-3 w-3 text-teal-400" /> {t.profile.admin}
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="text-xs gap-1">
-                      <Shield className="h-3 w-3 text-muted-foreground" /> 用户
+                      <Shield className="h-3 w-3 text-muted-foreground" /> {t.profile.user}
                     </Badge>
                   )}
                   <Badge variant="outline" className={`text-xs gap-1 ${status.color}`}>
@@ -109,17 +111,17 @@ export default function ProfilePage() {
 
             {/* Display Name */}
             <div className="space-y-2">
-              <Label htmlFor="display-name">显示名称</Label>
+              <Label htmlFor="display-name">{t.profile.displayName}</Label>
               <div className="flex gap-2">
                 <Input
                   id="display-name"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="你的显示名称"
+                  placeholder={t.profile.displayNamePlaceholder}
                   maxLength={100}
                 />
                 <Button onClick={handleSaveProfile} disabled={savingProfile || !displayName.trim()}>
-                  {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存'}
+                  {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : t.profile.save}
                 </Button>
               </div>
             </div>
@@ -128,40 +130,40 @@ export default function ProfilePage() {
 
             {/* Change Password */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">修改密码</h3>
+              <h3 className="text-sm font-semibold">{t.profile.changePassword}</h3>
               <div className="space-y-2">
-                <Label htmlFor="old-password">当前密码</Label>
+                <Label htmlFor="old-password">{t.profile.currentPassword}</Label>
                 <Input
                   id="old-password"
                   type="password"
                   value={oldPassword}
                   onChange={(e) => setOldPassword(e.target.value)}
-                  placeholder="输入当前密码"
+                  placeholder={t.profile.currentPasswordPlaceholder}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-password">新密码</Label>
+                <Label htmlFor="new-password">{t.profile.newPassword}</Label>
                 <Input
                   id="new-password"
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="至少6位"
+                  placeholder={t.profile.newPasswordPlaceholder}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirm-password">确认新密码</Label>
+                <Label htmlFor="confirm-password">{t.profile.confirmPassword}</Label>
                 <Input
                   id="confirm-password"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="再次输入新密码"
+                  placeholder={t.profile.confirmPasswordPlaceholder}
                 />
               </div>
               <Button onClick={handleChangePassword} disabled={changingPassword || !oldPassword || !newPassword || !confirmPassword}>
                 {changingPassword ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                修改密码
+                {t.profile.changePassword}
               </Button>
             </div>
           </CardContent>
