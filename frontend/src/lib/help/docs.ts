@@ -69,6 +69,7 @@ function getLabel(dirName: string, fileName?: string): string {
 
 /** Build navigation tree from docs/ directory */
 export function getHelpNav(): HelpNavItem[] {
+  if (!fs.existsSync(DOCS_ROOT)) return []
   const entries = fs.readdirSync(DOCS_ROOT, { withFileTypes: true })
     .filter(e => e.isDirectory() && INCLUDED_CHAPTERS.has(e.name))
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -97,6 +98,7 @@ export function getHelpNav(): HelpNavItem[] {
 
 /** Resolve a help URL slug to a file path, returning null if not found */
 export function resolveDocPath(slugs: string[] | undefined): string | null {
+  if (!fs.existsSync(DOCS_ROOT)) return null
   if (!slugs || slugs.length === 0) {
     const indexPath = path.join(DOCS_ROOT, 'index.md')
     if (fs.existsSync(indexPath)) return indexPath
