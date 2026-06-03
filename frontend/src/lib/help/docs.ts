@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 
-const DOCS_ROOT = path.resolve(process.cwd(), '..', 'docs')
+const DOCS_ROOT = path.resolve(process.cwd(), '..', 'docs', 'user_docs')
 
 export interface HelpNavItem {
   label: string
@@ -15,7 +15,6 @@ const INCLUDED_CHAPTERS = new Set([
   '3-USER-GUIDE',
   '5-CONFIGURATION',
   '6-TROUBLESHOOTING',
-  '8-CUSTOMIZATION',
 ])
 
 /** Chinese section labels */
@@ -24,7 +23,6 @@ const SECTION_LABELS: Record<string, string> = {
   '3-USER-GUIDE': '用户指南',
   '5-CONFIGURATION': '配置指南',
   '6-TROUBLESHOOTING': '故障排查',
-  '8-CUSTOMIZATION': '定制记录',
 }
 
 /** Chinese labels for individual doc files */
