@@ -54,7 +54,13 @@ def get_libreoffice_command() -> str:
 def get_libreoffice_command_info() -> Dict[str, object]:
     command, source = _resolve_libreoffice_command()
     if os.path.isabs(command):
-        available = os.path.exists(command)
+        if os.path.isfile(command):
+            if os.name == "posix":
+                available = os.access(command, os.X_OK)
+            else:
+                available = True
+        else:
+            available = False
     else:
         available = shutil.which(command) is not None
 
