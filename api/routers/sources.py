@@ -469,7 +469,7 @@ async def create_source(
                 topics=[],
                 asset=source_asset,
                 origin_notebook_id=origin_notebook_id,
-                uploaded_by=current_user["id"],
+                uploaded_by=ensure_record_id(current_user["id"]),
                 uploader_name=current_user.get("display_name") or current_user["username"],
             )
             await source.save()
@@ -557,7 +557,7 @@ async def create_source(
                     title=source_data.title or (upload_file.filename if upload_file else "Processing..."),
                     topics=[],
                     origin_notebook_id=origin_notebook_id,
-                    uploaded_by=current_user["id"],
+                    uploaded_by=ensure_record_id(current_user["id"]),
                     uploader_name=current_user.get("display_name") or current_user["username"],
                 )
                 await source.save()

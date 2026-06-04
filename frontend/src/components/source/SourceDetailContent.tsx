@@ -83,6 +83,7 @@ export function SourceDetailContent({
   onClose
 }: SourceDetailContentProps) {
   const { t, language } = useTranslation()
+  const loadFailedText = t.sources.loadFailed
   const queryClient = useQueryClient()
   const [source, setSource] = useState<SourceDetailResponse | null>(null)
   const [insights, setInsights] = useState<SourceInsightResponse[]>([])
@@ -114,11 +115,11 @@ export function SourceDetailContent({
       }
     } catch (err) {
       console.error('Failed to fetch source:', err)
-      setError(t.sources.loadFailed)
+      setError(loadFailedText)
     } finally {
       setLoading(false)
     }
-  }, [sourceId, t])
+  }, [sourceId, loadFailedText])
 
   const fetchInsights = useCallback(async () => {
     try {

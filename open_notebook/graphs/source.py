@@ -87,6 +87,75 @@ def _sanitize_excel_table_newlines(content: str) -> str:
     return "\n".join(result)
 
 
+def _excel_col_name(index_1_based: int) -> str:
+    name = ""
+    index = max(index_1_based, 1)
+    while index:
+        index, rem = divmod(index - 1, 26)
+        name = chr(65 + rem) + name
+    return name
+
+
+def _infer_excel_image_ext(image_obj: Any) -> str:
+    path = getattr(image_obj, "path", "") or ""
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    if ext:
+        return ext
+    fmt = (getattr(image_obj, "format", "") or "").lower()
+    if fmt:
+        return fmt
+    return "png"
+
+
+def _extract_excel_image_bytes(image_obj: Any) -> Optional[bytes]:
+    data_fn = getattr(image_obj, "_data", None)
+    if callable(data_fn):
+        try:
+            data = data_fn()
+            if isinstance(data, (bytes, bytearray)):
+                return bytes(data)
+        except Exception:
+            return None
+    return None
+
+
+def _excel_anchor_label(image_obj: Any, sheet_title: str) -> str:
+    anchor = getattr(image_obj, "anchor", None)
+    anchor_from = getattr(anchor, "_from", None)
+    if anchor_from is None:
+        return ""
+    try:
+        col = int(getattr(anchor_from, "col", 0)) + 1
+        row = int(getattr(anchor_from, "row", 0)) + 1
+    except Exception:
+        return ""
+    return f"{sheet_title}!{_excel_col_name(col)}{row}"
+
+
+def _build_excel_figure_markdown(
+    safe_source_id: str,
+    figures: List[Dict[str, str]],
+    descriptions_by_file: Dict[str, str],
+) -> str:
+    figures_section_parts = ["\n\n## Extracted Figures\n"]
+    descriptions_section_parts = ["\n\n## Figure Descriptions\n"]
+
+    for fig_index, fig in enumerate(figures, start=1):
+        filename = fig["filename"]
+        anchor = fig.get("anchor", "")
+        anchor_text = f" ({anchor})" if anchor else ""
+        figures_section_parts.append(
+            f"\n### Figure {fig_index}{anchor_text}\n"
+            f"![](/api/uploads/images/{safe_source_id}/{filename})\n"
+        )
+        descriptions_section_parts.append(
+            f"\n### Figure {fig_index}\n"
+            f"{descriptions_by_file.get(filename, 'Description unavailable.')}\n"
+        )
+
+    return "".join(figures_section_parts) + "".join(descriptions_section_parts)
+
+
 async def content_process(state: SourceState) -> dict:
     ContentSettings.clear_instance()  # Force reload from DB
     content_settings = await ContentSettings.get_instance()
@@ -118,6 +187,9 @@ async def content_process(state: SourceState) -> dict:
 
     logger.info(f"Starting content extraction for source_id={state.get('source_id')}")
     logger.info(f"Engine doc: {content_state.get('document_engine')}, URL: {content_state.get('url_engine')}")
+    extracted_excel_figures: List[Dict[str, str]] = []
+    is_excel_source = False
+    safe_source_id = str(state.get("source_id") or "").split(":")[-1] if state.get("source_id") else ""
     try:
         import asyncio
         import os
@@ -245,71 +317,84 @@ async def content_process(state: SourceState) -> dict:
         logger.info(f"Content extraction completed for source_id={state.get('source_id')}")
 
         file_path = content_state.get("file_path", "")
-        if file_path and file_path.lower().endswith(('.xls', '.xlsx')):
+        excel_ext = os.path.splitext(file_path)[1].lower() if file_path else ""
+        is_excel_source = bool(file_path and excel_ext in (".xls", ".xlsx", ".xlsm"))
+        if is_excel_source:
             processed_state.content = _sanitize_excel_table_newlines(
                 processed_state.content or ""
             )
 
-            # Extract embedded images from Excel (not covered by MinerU path)
-            try:
-                import shutil
-                import tempfile
+            # Extract embedded images directly from .xlsx/.xlsm files
+            if excel_ext == ".xls":
+                logger.warning(
+                    "Excel image extraction skipped for legacy .xls format. "
+                    "Only .xlsx/.xlsm image extraction is supported."
+                )
+            else:
+                try:
+                    from openpyxl import load_workbook
 
-                import pymupdf
+                    source_id = state.get("source_id")
+                    if source_id and file_path and safe_source_id:
+                        project_root = os.path.dirname(
+                            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        )
+                        images_dir = os.path.join(
+                            project_root, "data", "uploads", "images", safe_source_id
+                        )
+                        os.makedirs(images_dir, exist_ok=True)
 
-                source_id = state.get("source_id")
-                if source_id and file_path:
-                    safe_source_id = str(source_id).split(':')[-1]
-                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    images_dir = os.path.join(project_root, "data", "uploads", "images", safe_source_id)
-
-                    # Only extract if images dir doesn't have content yet
-                    if not os.path.isdir(images_dir) or not os.listdir(images_dir):
-                        with tempfile.TemporaryDirectory() as tmp_dir:
-                            from open_notebook.utils.office_converter import (
-                                get_libreoffice_command,
+                        existing_images = sorted(
+                            [
+                                f
+                                for f in os.listdir(images_dir)
+                                if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+                            ]
+                        )
+                        if existing_images:
+                            extracted_excel_figures = [
+                                {"filename": name, "anchor": ""} for name in existing_images
+                            ]
+                            logger.info(
+                                f"Reusing {len(existing_images)} existing Excel images for source_id={source_id}"
                             )
-                            libreoffice_cmd = get_libreoffice_command()
-                            subprocess.run([
-                                libreoffice_cmd, "--headless", "--invisible", "--nodefault",
-                                "--convert-to", "pdf",
-                                "--outdir", tmp_dir,
-                                file_path
-                            ], check=True, capture_output=True)
+                        else:
+                            workbook = load_workbook(file_path, data_only=True)
+                            image_counter = 1
+                            try:
+                                for sheet in workbook.worksheets:
+                                    images = getattr(sheet, "_images", []) or []
+                                    for image in images:
+                                        image_bytes = _extract_excel_image_bytes(image)
+                                        if not image_bytes:
+                                            continue
 
-                            excel_basename = os.path.splitext(os.path.basename(file_path))[0]
-                            pdf_path = os.path.join(tmp_dir, f"{excel_basename}.pdf")
+                                        ext = _infer_excel_image_ext(image)
+                                        filename = f"excel_img_{image_counter:03d}.{ext}"
+                                        image_path = os.path.join(images_dir, filename)
+                                        with open(image_path, "wb") as f_img:
+                                            f_img.write(image_bytes)
 
-                            if os.path.exists(pdf_path):
-                                os.makedirs(images_dir, exist_ok=True)
-                                pdf_doc = pymupdf.open(pdf_path)
-                                img_idx = 0
-                                for page_num in range(len(pdf_doc)):
-                                    page = pdf_doc[page_num]
-                                    for img_info in page.get_images(full=True):
-                                        xref = img_info[0]
-                                        base_image = pdf_doc.extract_image(xref)
-                                        if base_image and base_image.get("image"):
-                                            ext = base_image.get("ext", "png")
-                                            img_name = f"excel_img_p{page_num+1}_{img_idx}.{ext}"
-                                            img_path = os.path.join(images_dir, img_name)
-                                            with open(img_path, "wb") as f_img:
-                                                f_img.write(base_image["image"])
-                                            img_idx += 1
-                                pdf_doc.close()
-                                if img_idx > 0:
-                                    logger.info(
-                                        f"Extracted {img_idx} images from Excel via LibreOffice PDF "
-                                        f"for source_id={source_id}"
-                                    )
-                                else:
-                                    logger.debug(f"No embedded images found in Excel for source_id={source_id}")
-                            else:
-                                logger.warning(
-                                    f"LibreOffice did not produce PDF for {file_path}"
+                                        anchor_label = _excel_anchor_label(image, sheet.title)
+
+                                        extracted_excel_figures.append(
+                                            {"filename": filename, "anchor": anchor_label}
+                                        )
+                                        image_counter += 1
+                            finally:
+                                workbook.close()
+
+                            if extracted_excel_figures:
+                                logger.info(
+                                    f"Extracted {len(extracted_excel_figures)} images from Excel workbook "
+                                    f"for source_id={source_id}"
                                 )
-            except Exception as img_e:
-                logger.warning(f"Excel image extraction failed (non-fatal): {img_e}")
+                            else:
+                                logger.debug(
+                                    f"No embedded images found in Excel workbook for source_id={source_id}"
+                                )
+                except Exception as img_e:
+                    logger.warning(f"Excel image extraction failed (non-fatal): {img_e}")
 
         logger.debug(f"Extracted content length: {len(processed_state.content or '')} characters")
     except Exception as e:
@@ -341,8 +426,12 @@ async def content_process(state: SourceState) -> dict:
                         from langchain_core.messages import HumanMessage
 
                         vision_lc = vision_model.to_langchain()
-                        descriptions = []
+                        descriptions: List[Dict[str, str]] = []
                         mime_map = {'.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp', '.bmp': 'bmp'}
+
+                        descriptions_by_file: Dict[str, str] = {}
+                        for img_file in image_files:
+                            descriptions_by_file[img_file] = "Description generation failed."
 
                         for idx, img_file in enumerate(image_files):
                             img_path = os.path.join(images_dir, img_file)
@@ -370,17 +459,64 @@ async def content_process(state: SourceState) -> dict:
 
                                 response = await vision_lc.ainvoke([msg])
                                 desc = response.content if hasattr(response, 'content') else str(response)
-                                descriptions.append(f"### Figure: {img_file}\n{desc}\n")
+                                descriptions.append({"filename": img_file, "description": desc})
+                                descriptions_by_file[img_file] = desc
                                 logger.info(f"Described image {idx+1}/{len(image_files)}: {img_file}")
                             except Exception as img_e:
                                 logger.warning(f"Failed to describe image {img_file}: {img_e}")
+                                descriptions_by_file[img_file] = f"Description generation failed: {img_e}"
 
-                        if descriptions:
-                            desc_section = "\n\n## Figure Descriptions\n\n" + "\n".join(descriptions)
+                        if is_excel_source:
+                            figures = extracted_excel_figures or [
+                                {"filename": name, "anchor": ""} for name in image_files
+                            ]
+                            if figures:
+                                processed_state.content = (
+                                    (processed_state.content or "")
+                                    + _build_excel_figure_markdown(
+                                        safe_source_id,
+                                        figures,
+                                        descriptions_by_file,
+                                    )
+                                )
+                                logger.info(
+                                    f"Added {len(figures)} extracted figure entries and descriptions "
+                                    f"to source content"
+                                )
+                        elif descriptions:
+                            desc_section = (
+                                "\n\n## Figure Descriptions\n\n"
+                                + "\n".join(
+                                    f"### Figure: {item['filename']}\n{item['description']}\n"
+                                    for item in descriptions
+                                )
+                            )
                             processed_state.content = (processed_state.content or "") + desc_section
                             logger.info(f"Added {len(descriptions)} figure descriptions to source content")
                     else:
                         logger.debug("No vision model configured. Skipping image description.")
+                        if is_excel_source:
+                            figures = extracted_excel_figures or [
+                                {"filename": name, "anchor": ""} for name in image_files
+                            ]
+                            if figures:
+                                placeholder_descriptions = {
+                                    fig["filename"]: "Vision model is not configured. Description unavailable."
+                                    for fig in figures
+                                }
+
+                                processed_state.content = (
+                                    (processed_state.content or "")
+                                    + _build_excel_figure_markdown(
+                                        safe_source_id,
+                                        figures,
+                                        placeholder_descriptions,
+                                    )
+                                )
+                                logger.info(
+                                    f"Added {len(figures)} extracted figure entries with placeholder descriptions "
+                                    "to source content"
+                                )
     except Exception as e:
         logger.warning(f"Image description failed (non-fatal): {e}")
 

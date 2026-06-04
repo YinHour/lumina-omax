@@ -51,6 +51,7 @@ from open_notebook.exceptions import (
     OpenNotebookError,
     RateLimitError,
 )
+from open_notebook.utils.office_converter import get_libreoffice_command_info
 from open_notebook.utils.encryption import get_secret_from_env
 
 # Import commands to register them in the API process
@@ -70,6 +71,14 @@ async def lifespan(app: FastAPI):
 
     # Startup: Security checks
     logger.info("Starting API initialization...")
+
+    libreoffice_info = get_libreoffice_command_info()
+    logger.info(
+        "LibreOffice command resolved: "
+        f"command={libreoffice_info['command']}, "
+        f"source={libreoffice_info['source']}, "
+        f"available={libreoffice_info['available']}"
+    )
 
     # Security check: Encryption key
     if not get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY"):

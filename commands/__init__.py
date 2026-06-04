@@ -1,8 +1,18 @@
 """Surreal-commands integration for Lumiton·Omax"""
 
 from open_notebook.utils.logger_config import setup_logging
+from open_notebook.utils.office_converter import get_libreoffice_command_info
+from loguru import logger
 
 setup_logging()
+
+libreoffice_info = get_libreoffice_command_info()
+logger.info(
+    "LibreOffice command resolved: "
+    f"command={libreoffice_info['command']}, "
+    f"source={libreoffice_info['source']}, "
+    f"available={libreoffice_info['available']}"
+)
 
 from .embedding_commands import (
     embed_insight_command,
