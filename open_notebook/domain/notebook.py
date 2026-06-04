@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from surreal_commands import submit_command
 from surrealdb import RecordID
 
-from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.database.repository import ensure_record_id, repo_query, repo_transaction
 from open_notebook.domain.base import ObjectModel
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 
@@ -317,7 +317,7 @@ class Source(ObjectModel):
     topics: Optional[List[str]] = Field(default_factory=list)
     full_text: Optional[str] = None
     origin_notebook_id: Optional[str] = None
-    uploaded_by: Optional[str] = None
+    uploaded_by: Optional[Union[str, RecordID]] = None
     uploader_name: Optional[str] = None
     command: Optional[Union[str, RecordID]] = Field(
         default=None, description="Link to surreal-commands processing job"
@@ -556,8 +556,12 @@ class Source(ObjectModel):
             return None
 
     def _prepare_save_data(self) -> dict:
-        """Override to ensure command field is always RecordID format for database"""
+        """Ensure record reference fields use RecordID format before database writes."""
         data = super()._prepare_save_data()
+
+        # uploaded_by is stored as option<record<user>> in schema
+        if data.get("uploaded_by") is not None:
+            data["uploaded_by"] = ensure_record_id(data["uploaded_by"])
 
         # Ensure command field is RecordID format if not None
         if data.get("command") is not None:
