@@ -21,6 +21,18 @@ class NotebookUpdate(BaseModel):
     creator_name: Optional[str] = Field(None, description="Name of the notebook creator")
 
 
+class NotebookPasswordUpdate(BaseModel):
+    action: Literal["set", "change", "remove"] = Field(..., description="Action: set, change, or remove password")
+    password: Optional[str] = Field(None, description="New password (required for set/change)")
+    current_password: Optional[str] = Field(None, description="Current password (required for change/remove)")
+
+    @model_validator(mode="after")
+    def validate_action_requirements(self):
+        if self.action in ("set", "change") and not self.password:
+            raise ValueError(f"Password is required for '{self.action}' action")
+        return self
+
+
 class NotebookResponse(BaseModel):
     id: str
     name: str
@@ -32,6 +44,7 @@ class NotebookResponse(BaseModel):
     note_count: int
     password: Optional[str] = None
     creator_name: Optional[str] = None
+    created_by: Optional[str] = None
     is_aggregated: bool = False
     aggregated_notebooks: Optional[List[str]] = None
 
@@ -374,6 +387,7 @@ class SourceResponse(BaseModel):
     origin_notebook_id: Optional[str] = None
     origin_notebook_name: Optional[str] = None
     uploader_name: Optional[str] = None
+    uploaded_by: Optional[str] = None
 
 
 class SourceListResponse(BaseModel):
@@ -397,6 +411,12 @@ class SourceListResponse(BaseModel):
     origin_notebook_name: Optional[str] = None
     imported_at: Optional[str] = None
     uploader_name: Optional[str] = None
+    uploaded_by: Optional[str] = None
+
+
+class PaginatedSourceListResponse(BaseModel):
+    items: List[SourceListResponse]
+    total: int
 
 
 # Context API models

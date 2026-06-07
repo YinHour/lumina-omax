@@ -6,6 +6,7 @@ import {
   NotebookAggregateRequest,
   NotebookDeletePreview,
   NotebookDeleteResponse,
+  NotebookPasswordUpdateRequest,
 } from '@/lib/types/api'
 
 export const notebooksApi = {
@@ -59,6 +60,11 @@ export const notebooksApi = {
 
   removeSource: async (notebookId: string, sourceId: string) => {
     const response = await apiClient.delete(`/notebooks/${notebookId}/sources/${sourceId}`)
+    return response.data
+  },
+
+  updatePassword: async (notebookId: string, data: NotebookPasswordUpdateRequest) => {
+    const response = await apiClient.patch(`/notebooks/${notebookId}/password`, data)
     return response.data
   },
 }

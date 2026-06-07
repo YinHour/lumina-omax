@@ -8,9 +8,18 @@ import { useTranslation } from "@/lib/hooks/use-translation"
 import { cn } from "@/lib/utils"
 
 function Dialog({
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  const handleOpenChange = (open: boolean) => {
+    if (!open && typeof document !== 'undefined') {
+      document.body.style.removeProperty('pointer-events')
+      setTimeout(() => document.body.style.removeProperty('pointer-events'), 0)
+    }
+    onOpenChange?.(open)
+  }
+
+  return <DialogPrimitive.Root data-slot="dialog" onOpenChange={handleOpenChange} {...props} />
 }
 
 function DialogTrigger({
@@ -56,6 +65,13 @@ const DialogContent = ({
   showCloseButton?: boolean
 }) => {
   const { t } = useTranslation()
+  React.useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.style.removeProperty('pointer-events')
+      }
+    }
+  }, [])
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />

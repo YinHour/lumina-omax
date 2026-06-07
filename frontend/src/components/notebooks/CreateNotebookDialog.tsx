@@ -24,7 +24,6 @@ const createNotebookSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
   password: z.string().optional(),
-  creator_name: z.string().optional(),
 })
 
 type CreateNotebookFormData = z.infer<typeof createNotebookSchema>
@@ -49,7 +48,6 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
       name: '',
       description: '',
       password: '',
-      creator_name: '',
     },
   })
 
@@ -109,16 +107,6 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
               {...register('password')}
               placeholder={t.notebooks.leaveBlankForNoPassword}
               autoComplete="new-password"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="notebook-creator">{t.notebooks.creatorNameOptional}</Label>
-            <Input
-              id="notebook-creator"
-              {...register('creator_name')}
-              placeholder={t.notebooks.yourName}
-              autoComplete="off"
             />
           </div>
 

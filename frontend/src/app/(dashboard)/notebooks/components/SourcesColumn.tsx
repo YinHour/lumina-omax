@@ -25,6 +25,8 @@ import { ContextMode } from '../[id]/page'
 import { CollapsibleColumn, createCollapseButton } from '@/components/notebooks/CollapsibleColumn'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useToast } from '@/lib/hooks/use-toast'
+import { useAuthStore } from '@/lib/stores/auth-store'
 
 interface SourcesColumnProps {
   sources?: SourceListResponse[]
@@ -54,6 +56,8 @@ export function SourcesColumn({
   fetchNextPage,
 }: SourcesColumnProps) {
   const { t, language } = useTranslation()
+  const { toast } = useToast()
+  const user = useAuthStore((s) => s.user)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false)
@@ -124,12 +128,22 @@ export function SourcesColumn({
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
+
+  useEffect(() => {
+    if (!deleteDialogOpen && typeof document !== 'undefined') {
+      document.body.style.removeProperty('pointer-events')
+    }
+  }, [deleteDialogOpen])
   
   const [deletePassword, setDeletePassword] = useState('')
   const [deletePasswordError, setDeletePasswordError] = useState('')
+  const [deleteNeedsPassword, setDeleteNeedsPassword] = useState(false)
 
   const handleDeleteClick = (sourceId: string) => {
+    const src = sources?.find(s => s.id === sourceId)
+    const needsPassword = src ? (src.notebook_count || 0) > 1 : false
     setSourceToDelete(sourceId)
+    setDeleteNeedsPassword(needsPassword)
     setDeletePassword('')
     setDeletePasswordError('')
     setDeleteDialogOpen(true)
@@ -138,19 +152,18 @@ export function SourcesColumn({
   const handleDeleteConfirm = async () => {
     if (!sourceToDelete) return
 
-    const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
-    if (masterPassword && deletePassword !== masterPassword) {
-      setDeletePasswordError(t.notebooks.incorrectPassword)
-      return
-    }
-
     try {
-      await deleteSource.mutateAsync(sourceToDelete)
+      await deleteSource.mutateAsync({ id: sourceToDelete, password: deletePassword || undefined })
       setDeleteDialogOpen(false)
       setSourceToDelete(null)
       onRefresh?.()
     } catch (error) {
       console.error('Failed to delete source:', error)
+      toast({
+        title: t.common.error,
+        description: t.sources.failedToDeleteSource,
+        variant: 'destructive',
+      })
     }
   }
 
@@ -273,6 +286,7 @@ export function SourcesColumn({
                     onRefresh={onRefresh}
                     showRemoveFromNotebook={true}
                     currentNotebookId={notebookId}
+                    currentUserId={user?.id}
                     contextMode={contextSelections?.[source.id]}
                     onContextModeChange={onContextModeChange
                       ? (mode) => onContextModeChange(source.id, mode)
@@ -321,7 +335,7 @@ export function SourcesColumn({
             </DialogDescription>
           </DialogHeader>
           
-          {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
+          {deleteNeedsPassword && (
             <div className="space-y-2 py-4">
               <p className="text-sm font-medium">
                 {t.common.adminPasswordRequired}
@@ -335,8 +349,6 @@ export function SourcesColumn({
                 }}
                 onKeyDown={e => {
                   e.stopPropagation()
-                  // Also stop native event propagation to be safe
-                  e.nativeEvent.stopImmediatePropagation()
                   if (e.key === 'Enter') {
                     e.preventDefault()
                     handleDeleteConfirm()

@@ -9,6 +9,7 @@ export interface NotebookResponse {
   note_count: number
   password?: string | null
   creator_name?: string | null
+  created_by?: string | null
   is_aggregated: boolean
   aggregated_notebooks?: string[]
 }
@@ -46,6 +47,12 @@ export interface SourceListResponse {
   origin_notebook_name?: string | null
   imported_at?: string | null
   uploader_name?: string | null
+  uploaded_by?: string | null
+}
+
+export interface SourceListPaginatedResponse {
+  items: SourceListResponse[]
+  total: number
 }
 
 export interface SourceDetailResponse extends SourceListResponse {
@@ -94,6 +101,12 @@ export interface UpdateNotebookRequest {
   archived?: boolean
   password?: string
   creator_name?: string
+}
+
+export interface NotebookPasswordUpdateRequest {
+  action: 'set' | 'change' | 'remove'
+  password?: string
+  current_password?: string
 }
 
 export interface NotebookDeletePreview {

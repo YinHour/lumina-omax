@@ -3,6 +3,7 @@ import type { AxiosResponse } from 'axios'
 import apiClient from './client'
 import { 
   SourceListResponse, 
+  SourceListPaginatedResponse,
   SourceDetailResponse, 
   SourceResponse,
   SourceStatusResponse,
@@ -19,7 +20,7 @@ export const sourcesApi = {
     sort_by?: 'created' | 'updated'
     sort_order?: 'asc' | 'desc'
   }) => {
-    const response = await apiClient.get<SourceListResponse[]>('/sources', { params })
+    const response = await apiClient.get<SourceListPaginatedResponse>('/sources', { params })
     return response.data
   },
 
@@ -72,8 +73,12 @@ export const sourcesApi = {
     return response.data
   },
 
-  delete: async (id: string) => {
-    await apiClient.delete(`/sources/${id}`)
+  delete: async (id: string, adminPassword?: string) => {
+    const config: Record<string, unknown> = {}
+    if (adminPassword) {
+      config.headers = { 'X-Admin-Password': adminPassword }
+    }
+    await apiClient.delete(`/sources/${id}`, config)
   },
 
   status: async (id: string) => {

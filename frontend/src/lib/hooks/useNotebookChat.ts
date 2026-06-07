@@ -245,7 +245,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         context,
         model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
         enable_web_search: enableWebSearch
-      })
+      }, abortController.signal)
 
       if (!response) {
         throw new Error('No response body')
@@ -340,6 +340,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       // Refetch current session to get updated data and persistence
       await refetchCurrentSession()
     } catch (err: unknown) {
+      // AbortError is user-initiated cancellation, not a real error
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return
+      }
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
       console.error('Error sending message:', error)
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))

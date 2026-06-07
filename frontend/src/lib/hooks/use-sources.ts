@@ -18,7 +18,7 @@ const NOTEBOOK_SOURCES_PAGE_SIZE = 30
 export function useSources(notebookId?: string) {
   return useQuery({
     queryKey: QUERY_KEYS.sources(notebookId),
-    queryFn: () => sourcesApi.list({ notebook_id: notebookId }),
+    queryFn: () => sourcesApi.list({ notebook_id: notebookId }).then(d => d.items),
     enabled: !!notebookId,
     staleTime: 5 * 1000, // 5 seconds - more responsive for real-time source updates
     refetchOnWindowFocus: true, // Refetch when user comes back to the tab
@@ -35,7 +35,7 @@ export function useNotebookSources(notebookId: string) {
   const query = useInfiniteQuery({
     queryKey: QUERY_KEYS.sourcesInfinite(notebookId),
     queryFn: async ({ pageParam = 0 }) => {
-      const data = await sourcesApi.list({
+      const result = await sourcesApi.list({
         notebook_id: notebookId,
         limit: NOTEBOOK_SOURCES_PAGE_SIZE,
         offset: pageParam,
@@ -43,8 +43,8 @@ export function useNotebookSources(notebookId: string) {
         sort_order: 'desc',
       })
       return {
-        sources: data,
-        nextOffset: data.length === NOTEBOOK_SOURCES_PAGE_SIZE ? pageParam + data.length : undefined,
+        sources: result.items,
+        nextOffset: result.items.length === NOTEBOOK_SOURCES_PAGE_SIZE ? pageParam + result.items.length : undefined,
       }
     },
     initialPageParam: 0,
@@ -189,12 +189,12 @@ export function useDeleteSource() {
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: (id: string) => sourcesApi.delete(id),
-    onSuccess: (_, id) => {
+    mutationFn: ({ id, password }: { id: string; password?: string }) => sourcesApi.delete(id, password),
+    onSuccess: (_, variables) => {
       // Invalidate ALL sources queries (both general and notebook-specific)
       queryClient.invalidateQueries({ queryKey: ['sources'] })
       // Also invalidate the specific source
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.source(id) })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.source(variables.id) })
       
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('sourcesUpdated'))

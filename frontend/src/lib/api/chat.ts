@@ -47,7 +47,7 @@ export const chatApi = {
   },
 
   // Messaging with streaming
-  sendMessage: async (data: SendNotebookChatMessageRequest) => {
+  sendMessage: async (data: SendNotebookChatMessageRequest, signal?: AbortSignal) => {
     let token = null
     if (typeof window !== 'undefined') {
       const authStorage = localStorage.getItem('auth-storage')
@@ -73,7 +73,8 @@ export const chatApi = {
         'Content-Type': 'application/json',
         ...(token && { 'Authorization': `Bearer ${token}` })
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal,
     }).then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)

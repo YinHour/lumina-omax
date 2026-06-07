@@ -239,6 +239,11 @@ export default function SearchPage() {
   }, [searchMutation])
 
   // Auto-trigger search/ask when arriving with URL params
+  const handleSearchRef = useRef(handleSearch)
+  handleSearchRef.current = handleSearch
+  const handleAskRef = useRef(handleAsk)
+  handleAskRef.current = handleAsk
+
   useEffect(() => {
     // Skip if already triggered or no query
     if (hasAutoTriggeredRef.current || !urlQuery) return
@@ -247,13 +252,13 @@ export default function SearchPage() {
     if (urlMode === 'ask' && modelsLoading) return
 
     if (urlMode === 'search') {
-      handleSearch()
+      handleSearchRef.current()
       hasAutoTriggeredRef.current = true
     } else if (urlMode === 'ask' && modelDefaults?.default_chat_model) {
-      handleAsk()
+      handleAskRef.current()
       hasAutoTriggeredRef.current = true
     }
-  }, [urlQuery, urlMode, modelsLoading, modelDefaults, handleSearch, handleAsk])
+  }, [urlQuery, urlMode, modelsLoading, modelDefaults])
 
   // Handle URL param changes while on page (e.g., from command palette again)
   useEffect(() => {

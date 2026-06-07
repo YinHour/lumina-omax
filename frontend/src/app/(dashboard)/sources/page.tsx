@@ -10,7 +10,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
-import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown, Loader2 } from 'lucide-react'
+import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowUpDown, Loader2, Search } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
@@ -39,6 +39,9 @@ export default function SourcesPage() {
   // Pagination state
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  const [total, setTotal] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeSearchQuery, setActiveSearchQuery] = useState('')
   const PAGE_SIZE = 30
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -56,10 +59,12 @@ export default function SourcesPage() {
         offset: (page - 1) * PAGE_SIZE,
         sort_by: sortBy,
         sort_order: sortOrder,
+        title_contains: activeSearchQuery || undefined,
       })
 
-      setSources(data)
-      setHasMore(data.length === PAGE_SIZE)
+      setSources(data.items)
+      setTotal(data.total)
+      setHasMore(data.items.length === PAGE_SIZE)
     } catch (err) {
       console.error('Failed to fetch sources:', err)
       setError(t.sources.failedToLoad)
@@ -67,7 +72,13 @@ export default function SourcesPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, sortBy, sortOrder, t.sources.failedToLoad])
+  }, [page, sortBy, sortOrder, activeSearchQuery, t.sources.failedToLoad])
+
+  // Reset page when search is submitted
+  useEffect(() => {
+    setPage(1)
+    setSelectedIds(new Set())
+  }, [activeSearchQuery])
 
   // Initial load and when sort changes
   useEffect(() => {
@@ -95,10 +106,12 @@ export default function SourcesPage() {
           offset: (page - 1) * PAGE_SIZE,
           sort_by: sortBy,
           sort_order: sortOrder,
+          title_contains: activeSearchQuery || undefined,
         })
         
-        setSources(data)
-        setHasMore(data.length === PAGE_SIZE)
+        setSources(data.items)
+        setTotal(data.total)
+        setHasMore(data.items.length === PAGE_SIZE)
       } catch (err) {
         console.error('Failed to poll sources:', err)
       }
@@ -106,7 +119,7 @@ export default function SourcesPage() {
 
     const interval = setInterval(pollSources, 5000)
     return () => clearInterval(interval)
-  }, [page, sortBy, sortOrder, loading])
+  }, [page, sortBy, sortOrder, loading, activeSearchQuery])
 
   useEffect(() => {
     // Focus the table when component mounts or sources change
@@ -250,14 +263,8 @@ export default function SourcesPage() {
   const handleDeleteConfirm = async () => {
     if (!deleteDialog.source) return
 
-    const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
-    if (masterPassword && deletePassword !== masterPassword) {
-      setDeletePasswordError(t.sources.incorrectPassword)
-      return
-    }
-
     try {
-      await sourcesApi.delete(deleteDialog.source.id)
+      await sourcesApi.delete(deleteDialog.source.id, deletePassword || undefined)
       toast.success(t.sources.deleteSuccess)
       // Remove the deleted source from the list
       setSources(prev => prev.filter(s => s.id !== deleteDialog.source?.id))
@@ -270,17 +277,11 @@ export default function SourcesPage() {
   }
 
   const handleBatchDeleteConfirm = async () => {
-    const masterPassword = process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD
-    if (masterPassword && batchDeletePassword !== masterPassword) {
-      setBatchDeletePasswordError(t.sources.incorrectPassword)
-      return
-    }
-
     setIsBatchDeleting(true)
     let successCount = 0
     let failCount = 0
 
-    const promises = Array.from(selectedIds).map(id => sourcesApi.delete(id))
+    const promises = Array.from(selectedIds).map(id => sourcesApi.delete(id, batchDeletePassword || undefined))
     const results = await Promise.allSettled(promises)
     
     results.forEach(result => {
@@ -322,6 +323,38 @@ export default function SourcesPage() {
   }
 
   if (sources.length === 0 && page === 1) {
+    if (activeSearchQuery) {
+      return (
+        <AppShell>
+          <div className="flex flex-col h-full w-full max-w-none px-6 py-6">
+            <div className="mb-6 flex-shrink-0">
+              <h1 className="text-3xl font-bold">{t.sources.allSources}</h1>
+              <div className="relative mt-4 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={t.sources.filterSources || (language.startsWith('zh') ? '筛选来源...' : 'Filter sources...')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setActiveSearchQuery(searchQuery)
+                    }
+                  }}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <EmptyState
+              icon={Search}
+              title={t.sources.noSourcesMatchSearch || (language.startsWith('zh') ? '未找到匹配的来源' : 'No sources match your search')}
+              description={t.common.tryDifferentSearch}
+            />
+          </div>
+        </AppShell>
+      )
+    }
     return (
       <AppShell>
         <EmptyState
@@ -341,6 +374,22 @@ export default function SourcesPage() {
           <p className="mt-2 text-muted-foreground">
             {t.sources.allSourcesDesc}
           </p>
+          <div className="relative mt-4 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t.sources.filterSources || (language.startsWith('zh') ? '筛选来源...' : 'Filter sources...')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setActiveSearchQuery(searchQuery)
+                }
+              }}
+              className="pl-10"
+            />
+          </div>
         </div>
 
         <div ref={scrollContainerRef} className="flex-1 rounded-md border overflow-auto">
@@ -533,7 +582,14 @@ export default function SourcesPage() {
             {t.sources.prevPage}
           </Button>
           <span className="text-sm text-muted-foreground">
-            {t.sources.pageOf.replace('{page}', page.toString())}
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+              return t.sources.pageOfTotal
+                ? t.sources.pageOfTotal.replace('{page}', page.toString()).replace('{total}', totalPages.toString()).replace('{count}', total.toString())
+                : (language.startsWith('zh')
+                  ? `第 ${page}/${totalPages} 页，共 ${total} 条`
+                  : `Page ${page} of ${totalPages}, ${total} items`)
+            })()}
           </span>
           <Button 
             variant="outline" 
@@ -560,7 +616,7 @@ export default function SourcesPage() {
             </DialogDescription>
           </DialogHeader>
           
-          {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
+          {(
             <div className="space-y-2 py-4">
               <p className="text-sm font-medium">
                 {t.sources.enterPassword}
@@ -587,7 +643,7 @@ export default function SourcesPage() {
               )}
             </div>
           )}
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialog({ open: false, source: null })}>
               {t.common?.cancel ?? 'Cancel'}
@@ -616,7 +672,7 @@ export default function SourcesPage() {
             </DialogDescription>
           </DialogHeader>
           
-          {process.env.NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD && (
+          {(
             <div className="space-y-2 py-4">
               <p className="text-sm font-medium">
                 {t.sources.enterPassword}
@@ -644,7 +700,7 @@ export default function SourcesPage() {
               )}
             </div>
           )}
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setBatchDeleteDialog(false)} disabled={isBatchDeleting}>
               {t.common?.cancel ?? 'Cancel'}

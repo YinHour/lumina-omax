@@ -4,7 +4,7 @@ import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useToast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
-import { CreateNotebookRequest, UpdateNotebookRequest, NotebookAggregateRequest } from '@/lib/types/api'
+import { CreateNotebookRequest, UpdateNotebookRequest, NotebookAggregateRequest, NotebookPasswordUpdateRequest } from '@/lib/types/api'
 
 export function useNotebooks(archived?: boolean) {
   return useQuery({
@@ -125,6 +125,38 @@ export function useDeleteNotebook() {
       toast({
         title: t.common.success,
         description: t.notebooks.deleteSuccess,
+      })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: t.common.error,
+        description: t(getApiErrorKey(error, t.common.error)),
+        variant: 'destructive',
+      })
+    },
+  })
+}
+
+export function useUpdateNotebookPassword() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const { t } = useTranslation()
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: NotebookPasswordUpdateRequest }) =>
+      notebooksApi.updatePassword(id, data),
+    onSuccess: (_, { id, data }) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebook(id) })
+      const description =
+        data.action === 'set'
+          ? t.notebooks.passwordSetSuccess
+          : data.action === 'remove'
+            ? t.notebooks.passwordRemovedSuccess
+            : t.notebooks.passwordChangedSuccess
+      toast({
+        title: t.common.success,
+        description,
       })
     },
     onError: (error: unknown) => {
