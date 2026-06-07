@@ -5,7 +5,7 @@ import { NotebookResponse } from '@/lib/types/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MoreHorizontal, Archive, ArchiveRestore, Trash2, FileText, StickyNote, Lock, User } from 'lucide-react'
+import { MoreHorizontal, Archive, ArchiveRestore, Trash2, FileText, StickyNote, KeyRound, Lock, User } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import { NotebookDeleteDialog } from './NotebookDeleteDialog'
+import { ManageNotebookPasswordDialog } from '@/components/notebooks/ManageNotebookPasswordDialog'
 import { useState } from 'react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
@@ -24,7 +25,9 @@ interface NotebookCardProps {
 
 export function NotebookCard({ notebook }: NotebookCardProps) {
   const { t, language } = useTranslation()
+  const [menuOpen, setMenuOpen] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const router = useRouter()
   const updateNotebook = useUpdateNotebook()
 
@@ -61,7 +64,7 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                 )}
               </div>
               
-              <DropdownMenu>
+              <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
@@ -86,9 +89,18 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                       </>
                     )}
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuOpen(false)
+                    setShowPasswordDialog(true)
+                  }}>
+                    <KeyRound className="h-4 w-4 mr-2" />
+                    {t.notebooks.passwordSettings || 'Password'}
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation()
+                      setMenuOpen(false)
                       setShowDeleteDialog(true)
                     }}
                     className="text-red-600"
@@ -151,6 +163,13 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
         onOpenChange={setShowDeleteDialog}
         notebookId={notebook.id}
         notebookName={notebook.name}
+        hasPassword={!!notebook.password}
+      />
+
+      <ManageNotebookPasswordDialog
+        open={showPasswordDialog}
+        onOpenChange={setShowPasswordDialog}
+        notebookId={notebook.id}
         hasPassword={!!notebook.password}
       />
     </>

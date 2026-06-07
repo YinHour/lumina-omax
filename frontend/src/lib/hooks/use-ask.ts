@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
@@ -127,7 +127,15 @@ export function useAsk() {
     }
   }, [t])
 
-  return {
+  const stopStreaming = useCallback(() => {
+    const { abortController } = useAskStore.getState()
+    if (abortController) {
+      abortController.abort()
+    }
+    useAskStore.getState().setStreaming(false)
+  }, [])
+
+  return useMemo(() => ({
     isStreaming: store.isStreaming,
     strategy: store.strategy,
     answers: store.answers,
@@ -136,12 +144,6 @@ export function useAsk() {
     sendAsk,
     reset: store.clearState,
     clearState: store.clearState,
-    stopStreaming: () => {
-      const { abortController } = useAskStore.getState()
-      if (abortController) {
-        abortController.abort()
-      }
-      useAskStore.getState().setStreaming(false)
-    }
-  }
+    stopStreaming,
+  }), [store.isStreaming, store.strategy, store.answers, store.finalAnswer, store.error, sendAsk, store.clearState, stopStreaming])
 }

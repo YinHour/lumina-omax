@@ -132,11 +132,13 @@ export function useSourceChat(sourceId: string) {
     setIsStreaming(true)
 
     try {
+      const controller = new AbortController()
+      abortControllerRef.current = controller
       const response = await sourceChatApi.sendMessage(sourceId, sessionId, {
         message,
         model_override: modelOverride,
         enable_web_search: enableWebSearch
-      })
+      }, controller.signal)
 
       if (!response) {
         throw new Error('No response body')
@@ -234,6 +236,9 @@ export function useSourceChat(sourceId: string) {
         }
       }
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return
+      }
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
       console.error('Error sending message:', error)
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from dotenv import dotenv_values
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from loguru import logger
 
 from api.models import (
@@ -11,9 +11,11 @@ from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
     NotebookDeleteResponse,
+    NotebookPasswordUpdate,
     NotebookResponse,
     NotebookUpdate,
 )
+from api.routers.auth import get_current_user_from_state
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import InvalidInputError
@@ -106,14 +108,18 @@ async def get_notebooks(
 
 
 @router.post("/notebooks", response_model=NotebookResponse)
-async def create_notebook(notebook: NotebookCreate):
+async def create_notebook(
+    notebook: NotebookCreate,
+    current_user: dict = Depends(get_current_user_from_state),
+):
     """Create a new notebook."""
     try:
         new_notebook = Notebook(
             name=notebook.name,
             description=notebook.description,
             password=notebook.password,
-            creator_name=notebook.creator_name,
+            creator_name=notebook.creator_name or current_user.get("display_name"),
+            created_by=current_user.get("id"),
         )
         await new_notebook.save()
 
@@ -128,6 +134,7 @@ async def create_notebook(notebook: NotebookCreate):
             note_count=0,  # New notebook has no notes
             password=new_notebook.password,
             creator_name=new_notebook.creator_name,
+            created_by=new_notebook.created_by,
             is_aggregated=new_notebook.is_aggregated or False,
             aggregated_notebooks=[],
         )
@@ -141,7 +148,10 @@ async def create_notebook(notebook: NotebookCreate):
 
 
 @router.post("/notebooks/aggregate", response_model=NotebookResponse)
-async def aggregate_notebooks(request: NotebookAggregateRequest):
+async def aggregate_notebooks(
+    request: NotebookAggregateRequest,
+    current_user: dict = Depends(get_current_user_from_state),
+):
     """Aggregate multiple notebooks into a new one."""
     try:
         # 1. Verify passwords and existence of all notebooks
@@ -165,7 +175,8 @@ async def aggregate_notebooks(request: NotebookAggregateRequest):
             name=request.name,
             description=request.description,
             password=request.password,
-            creator_name=request.creator_name,
+            creator_name=request.creator_name or current_user.get("display_name"),
+            created_by=current_user.get("id"),
             is_aggregated=True,
         )
         await new_notebook.save()
@@ -214,6 +225,7 @@ async def aggregate_notebooks(request: NotebookAggregateRequest):
                 note_count=nb_res.get("note_count", 0),
                 password=nb_res.get("password"),
                 creator_name=nb_res.get("creator_name"),
+                created_by=nb_res.get("created_by"),
                 is_aggregated=nb_res.get("is_aggregated", False),
             )
             
@@ -297,8 +309,9 @@ async def get_notebook(notebook_id: str):
             source_count=nb.get("source_count", 0),
             note_count=nb.get("note_count", 0),
             password=nb.get("password"),
-            creator_name=nb.get("creator_name"),
-            is_aggregated=nb.get("is_aggregated", False),
+                creator_name=nb.get("creator_name"),
+                created_by=nb.get("created_by"),
+                is_aggregated=nb.get("is_aggregated", False),
             aggregated_notebooks=nb.get("aggregated_notebooks", []),
         )
     except HTTPException:
@@ -365,6 +378,7 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
                 note_count=nb.get("note_count", 0),
                 password=nb.get("password"),
                 creator_name=nb.get("creator_name"),
+                created_by=nb.get("created_by"),
                 is_aggregated=nb.get("is_aggregated", False),
                 aggregated_notebooks=nb.get("aggregated_notebooks", []),
             )
@@ -538,4 +552,48 @@ async def delete_notebook(
         logger.error(f"Error deleting notebook {notebook_id}: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error deleting notebook: {str(e)}"
+        )
+
+
+@router.patch("/notebooks/{notebook_id}/password")
+async def manage_notebook_password(
+    notebook_id: str,
+    body: NotebookPasswordUpdate,
+    current_user: dict = Depends(get_current_user_from_state),
+):
+    """Set, change, or remove notebook password (only the creator or admin can manage)."""
+    try:
+        notebook = await Notebook.get(notebook_id)
+        if not notebook:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        user_id = current_user.get("id")
+        is_admin = current_user.get("role") == "admin"
+
+        if notebook.created_by and notebook.created_by != user_id and not is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the notebook creator or an admin can manage the password",
+            )
+
+        if body.action == "set":
+            notebook.password = body.password
+        elif body.action == "change":
+            notebook.password = body.password
+        elif body.action == "remove":
+            notebook.password = None
+
+        if notebook.created_by is None:
+            notebook.created_by = user_id
+
+        await notebook.save()
+
+        return {"action": body.action, "has_password": notebook.password is not None}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error managing notebook password {notebook_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error managing notebook password: {str(e)}"
         )

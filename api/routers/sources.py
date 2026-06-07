@@ -5,11 +5,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
+from dotenv import dotenv_values
 from fastapi import (
     APIRouter,
     Depends,
     File,
     Form,
+    Header,
     HTTPException,
     Query,
     UploadFile,
@@ -23,6 +25,7 @@ from api.models import (
     AssetModel,
     CreateSourceInsightRequest,
     InsightCreationResponse,
+    PaginatedSourceListResponse,
     SourceCreate,
     SourceInsightResponse,
     SourceListResponse,
@@ -151,7 +154,7 @@ def parse_source_form_data(
     return source_data, file
 
 
-@router.get("/sources", response_model=List[SourceListResponse])
+@router.get("/sources", response_model=PaginatedSourceListResponse)
 async def get_sources(
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
     title_contains: Optional[str] = Query(None, description="Filter sources by title substring"),
@@ -240,7 +243,7 @@ async def get_sources(
 
         # Query sources - include command field with FETCH
         query = f"""
-            SELECT id, asset, created, title, updated, topics, command, uploader_name,
+            SELECT id, asset, created, title, updated, topics, command, uploader_name, uploaded_by,
             {origin_notebook_id_field}
             {origin_notebook_name_field}
             {imported_at_field}
@@ -255,6 +258,14 @@ async def get_sources(
             FETCH command
         """
         result = await repo_query(query, params)
+
+        count_query = f"""
+            SELECT count() FROM source
+            {where_clause}
+            GROUP ALL
+        """
+        count_result = await repo_query(count_query, params)
+        total = count_result[0]["count"] if count_result else 0
 
         # Convert result to response model
         # Command data is already fetched via FETCH command clause
@@ -314,10 +325,11 @@ async def get_sources(
                     origin_notebook_name=row.get("origin_notebook_name"),
                     imported_at=str(row["imported_at"]) if row.get("imported_at") else None,
                     uploader_name=row.get("uploader_name"),
+                    uploaded_by=str(row["uploaded_by"]) if row.get("uploaded_by") else None,
                 )
             )
 
-        return response_list
+        return PaginatedSourceListResponse(items=response_list, total=total)
     except HTTPException:
         raise
     except Exception as e:
@@ -795,6 +807,7 @@ async def get_source(source_id: str):
             origin_notebook_id=source.origin_notebook_id,
             origin_notebook_name=origin_notebook_name,
             uploader_name=source.uploader_name,
+            uploaded_by=str(source.uploaded_by) if source.uploaded_by else None,
         )
     except HTTPException:
         raise
@@ -1094,12 +1107,34 @@ async def check_duplicate_filenames(filenames: List[str]):
 
 
 @router.delete("/sources/{source_id}")
-async def delete_source(source_id: str):
-    """Delete a source."""
+async def delete_source(
+    source_id: str,
+    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
+):
+    """Delete a source. Admin password required only for sources referenced by multiple notebooks."""
     try:
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
+
+        # Count how many notebooks reference this source
+        ref_count_result = await repo_query(
+            "SELECT count() FROM reference WHERE in = $source_id GROUP ALL",
+            {"source_id": ensure_record_id(source.id or source_id)},
+        )
+        ref_count = ref_count_result[0]["count"] if ref_count_result else 0
+
+        # Require admin password only for multi-notebook sources
+        if ref_count > 1:
+            master_pwd = os.environ.get("OPEN_NOTEBOOK_PASSWORD")
+            if not master_pwd:
+                env_vals = dotenv_values(Path(".env"))
+                master_pwd = env_vals.get("OPEN_NOTEBOOK_PASSWORD")
+            if master_pwd and (not x_admin_password or x_admin_password != master_pwd):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Admin password required to delete a source shared across notebooks",
+                )
 
         await source.delete()
 

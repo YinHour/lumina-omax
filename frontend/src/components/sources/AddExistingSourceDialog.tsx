@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useDebounce } from 'use-debounce'
 import { Search, Link2, LoaderIcon, FileText, Link as LinkIcon, Upload } from 'lucide-react'
 import {
   Dialog,
@@ -36,11 +35,9 @@ export function AddExistingSourceDialog({
 }: AddExistingSourceDialogProps) {
   const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([])
   const [allSources, setAllSources] = useState<SourceListResponse[]>([])
-  const [filteredSources, setFilteredSources] = useState<SourceListResponse[]>([])
-  const [isSearching, setIsSearching] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   // Get sources already in this notebook
   const { data: currentNotebookSources } = useSources(notebookId)
@@ -53,7 +50,7 @@ export function AddExistingSourceDialog({
 
   const loadAllSources = useCallback(async () => {
     try {
-      setIsSearching(true)
+      setIsLoading(true)
       // Use sources API directly to get all sources (max 100 per API limit)
       const sources = await sourcesApi.list({
         limit: 100,
@@ -62,60 +59,30 @@ export function AddExistingSourceDialog({
         sort_order: 'desc',
       })
 
-      setAllSources(sources)
-      setFilteredSources(sources)
+      setAllSources(sources.items)
     } catch (error) {
       console.error('Error loading sources:', error)
     } finally {
-      setIsSearching(false)
+      setIsLoading(false)
     }
   }, [])
 
-  const performSearch = useCallback(async () => {
-    if (!debouncedSearchQuery.trim()) {
-      // Empty query - show all sources
-      setFilteredSources(allSources)
-      setIsSearching(false)
-      return
-    }
+  // Client-side filtering (same simple approach as the notebooks page).
+  // Supports CJK/English input in real time with no debounce, no Enter key,
+  // and no server round-trip.
+  const filteredSources = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return allSources
+    return allSources.filter(s => (s.title || '').toLowerCase().includes(q))
+  }, [allSources, searchQuery])
 
-    try {
-      setIsSearching(true)
-      const sources = await sourcesApi.list({
-        title_contains: debouncedSearchQuery,
-        limit: 100,
-        offset: 0,
-        sort_by: 'created',
-        sort_order: 'desc',
-      })
-
-      setFilteredSources(sources)
-    } catch (error) {
-      console.error('Error searching sources:', error)
-      // On error, fall back to showing all sources
-      setFilteredSources(allSources)
-    } finally {
-      setIsSearching(false)
-    }
-  }, [debouncedSearchQuery, allSources])
-
-  // Load all sources initially
+  // Load all sources initially and reset query when opening
   useEffect(() => {
     if (open) {
+      setSearchQuery('')
       loadAllSources()
     }
   }, [open, loadAllSources])
-
-  // Filter sources when search query changes
-  useEffect(() => {
-    if (!debouncedSearchQuery) {
-      setFilteredSources(allSources)
-      setIsSearching(false)
-      return
-    }
-
-    performSearch()
-  }, [debouncedSearchQuery, allSources, performSearch])
 
   const handleToggleSource = (sourceId: string) => {
     setSelectedSourceIds(prev =>
@@ -187,22 +154,48 @@ export function AddExistingSourceDialog({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
-            {isSearching && (
+            {isLoading && (
               <LoaderIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
             )}
           </div>
 
+          {/* Select All */}
+          {filteredSources.length > 0 && (() => {
+            const selectableSources = filteredSources.filter(s => !currentSourceIds.has(s.id))
+            if (selectableSources.length === 0) return null
+            const allSelected = selectableSources.every(s => selectedSourceIds.includes(s.id))
+            const someSelected = selectableSources.some(s => selectedSourceIds.includes(s.id))
+            return (
+              <div
+                className="flex items-center gap-2 px-1 cursor-pointer select-none"
+                onClick={() => {
+                  if (allSelected) {
+                    setSelectedSourceIds(prev => prev.filter(id => !selectableSources.some(s => s.id === id)))
+                  } else {
+                    setSelectedSourceIds(prev => [...new Set([...prev, ...selectableSources.map(s => s.id)])])
+                  }
+                }}
+              >
+                <Checkbox checked={allSelected ? true : someSelected ? 'indeterminate' : false} className="pointer-events-none" />
+                <span className="text-sm text-muted-foreground">
+                  {allSelected ? t.sources.deselectAll : t.sources.selectAll}
+                </span>
+              </div>
+            )
+          })()}
+
           {/* Source List */}
           <ScrollArea className="h-[400px] border rounded-md">
-            {isSearching && filteredSources.length === 0 ? (
+            {isLoading && allSources.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground">
                 <LoaderIcon className="h-12 w-12 mb-2 animate-spin" />
                 <p>{t.common.loading}</p>
               </div>
             ) : filteredSources.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground">
-                <FileText className="h-12 w-12 mb-2 opacity-50" />
-                <p>{t.sources.noNotebooksFound}</p>
+              <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground gap-2">
+                <Search className="h-12 w-12 mb-2 opacity-50" />
+                <p>{t.sources.noSourcesMatchSearch}</p>
+                <p className="text-xs">{t.common.tryDifferentSearch}</p>
               </div>
             ) : (
               <div className="space-y-2 p-4">
@@ -249,7 +242,7 @@ export function AddExistingSourceDialog({
           </ScrollArea>
 
           {/* Truncation Warning */}
-          {allSources.length >= 100 && !debouncedSearchQuery && (
+          {allSources.length >= 100 && !searchQuery && (
             <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md">
               {t.sources.showingFirst100}
             </div>

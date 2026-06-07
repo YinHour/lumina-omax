@@ -44,6 +44,7 @@ interface SourceCardProps {
   className?: string
   showRemoveFromNotebook?: boolean
   currentNotebookId?: string
+  currentUserId?: string | null
   contextMode?: ContextMode
   onContextModeChange?: (mode: ContextMode) => void
 }
@@ -138,10 +139,13 @@ export function SourceCard({
   className,
   showRemoveFromNotebook = false,
   currentNotebookId,
+  currentUserId,
   contextMode,
   onContextModeChange
 }: SourceCardProps) {
   const { t } = useTranslation()
+  const isOwnSource = !showRemoveFromNotebook || (currentUserId && source.uploaded_by === currentUserId)
+  const isMultiRef = (source.notebook_count || 0) > 1
   const statusConfigMap = getStatusConfig(t)
   
   // Only fetch status for sources that might have async processing
@@ -378,7 +382,7 @@ export function SourceCard({
                 </>
               )}
 
-              {(!showRemoveFromNotebook || (currentNotebookId && source.origin_notebook_id === currentNotebookId)) && (
+              {isOwnSource && (
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation()

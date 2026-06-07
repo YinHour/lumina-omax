@@ -15,11 +15,13 @@ from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 
 class Notebook(ObjectModel):
     table_name: ClassVar[str] = "notebook"
+    nullable_fields: ClassVar[set[str]] = {"password"}
     name: str
     description: str = ""
     archived: Optional[bool] = False
     password: Optional[str] = None
     creator_name: Optional[str] = None
+    created_by: Optional[str] = None
     is_aggregated: Optional[bool] = False
     hidden_sources: Optional[List[Any]] = Field(default_factory=list)
     hidden_notes: Optional[List[Any]] = Field(default_factory=list)
@@ -593,12 +595,13 @@ class Source(ObjectModel):
         elif self.asset and self.asset.file_path:
             logger.info(f"File deletion skipped for source {self.id} due to auto_delete_files setting")
 
-        # Delete associated embeddings and insights to prevent orphaned records
+        # Delete associated embeddings, insights, and references to prevent orphaned records
         try:
             source_id = ensure_record_id(self.id)
             query = """
             DELETE source_embedding WHERE source = $source_id;
             DELETE source_insight WHERE source = $source_id;
+            DELETE reference WHERE in = $source_id;
             """
             
             if os.environ.get("ENABLE_KNOWLEDGE_GRAPH", "false").lower() == "true":

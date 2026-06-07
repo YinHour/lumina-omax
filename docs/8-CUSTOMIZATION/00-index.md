@@ -693,4 +693,234 @@
 
 ---
 
-> 最后更新：2026-06-03 | 新增 §17（登录页布局优化与 UI 多语言治理），分支 `en_ui_optima_0603`。"
+## 18. 用户反馈驱动优化（新增 2026-06-05 ~ 2026-06-07）
+
+基于《Lumina™ AI 科研助手试用反馈》多轮迭代，涵盖来源搜索、弹窗交互、密码管理、删源规则、流式稳定性等 P0/P1 级体验优化。分支 `enhance_sourcepage_optim_0605`。
+
+---
+
+### 18.1 来源页面搜索与分页
+
+**用户问题**：来源页面缺少搜索按钮，无总页码/总条数显示。
+
+#### API 分页响应重构
+
+- `api/models.py` — 新增 `PaginatedSourceListResponse(items: List[SourceListResponse], total: int)`，替代裸数组返回
+- `api/routers/sources.py` — `GET /sources` 返回 `{ items, total }`，额外执行 `SELECT count() FROM source ... GROUP ALL` 查询总数。`response_model` 从 `List[SourceListResponse]` 改为 `PaginatedSourceListResponse`
+- **决策**：选方案 C（包裹响应体），前端所有 8 处 `sourcesApi.list()` 调用点同步适配 `.items`
+
+#### 前端搜索与分页展示
+
+- `frontend/src/lib/types/api.ts` — 新增 `SourceListPaginatedResponse` 类型
+- `frontend/src/lib/api/sources.ts` — `list()` 返回类型适配
+- `frontend/src/lib/hooks/use-sources.ts` — `useSources` / `useNotebookSources` 适配 `data.items`
+- `frontend/src/components/sources/AddExistingSourceDialog.tsx` — 适配 `.items`；后改为客户端实时过滤（`useMemo` + `includes()`，与笔记本筛选实现对齐）
+- `frontend/src/components/podcasts/GeneratePodcastDialog.tsx` — 适配 `.items`
+- `frontend/src/app/(dashboard)/sources/page.tsx`：
+  - 搜索框（回车触发服务端 `title_contains`）
+  - 分页显示「第 X/Y 页，共 Z 条」
+  - 搜索无结果时区分「暂无来源」和「搜索无匹配」，显示「未找到匹配的来源」+「尝试使用不同的搜索词」
+- `frontend/src/lib/locales/en-US/index.ts` / `zh-CN/index.ts` — 新增 `filterSources`、`pageOfTotal`、`noSourcesMatchSearch`、`selectAll`、`deselectAll`
+- **决策**：全局页搜索采用回车触发（非 debounce/实时），避免中文输入法打断和性能问题。弹窗内采用纯客户端过滤（已全量加载最多 100 条），与笔记本筛选模式一致
+
+---
+
+### 18.2 弹窗关闭后页面卡死（Pointer Events 残留修复）
+
+**用户问题**：弹窗操作（输入密码、修改密码、取消关闭）后回到页面，鼠标点击任何地方无反应。
+
+#### 根因分析
+
+- Radix UI Dialog/AlertDialog 关闭动画结束后偶发 `pointer-events: none` 残留在 `<body>` 上
+- 多处输入框的 `e.nativeEvent.stopImmediatePropagation()` 干扰 Radix 内部事件生命周期，导致清理逻辑不触发
+- DropdownMenu + Dialog 叠层切换时序加剧问题
+
+#### 全局兜底修复
+
+- `frontend/src/components/common/PointerEventsGuard.tsx` — **新增组件**：`MutationObserver` 监控 `<body>` style 变化，检测到孤立 `pointer-events: none` 且 DOM 中无 `[data-state="open"]` 时自动清除。用 `requestAnimationFrame` 避开 Radix 自身设置 `data-state` 的时序。额外在 `pointerdown` 时再检查一次作为最后兜底
+- `frontend/src/app/layout.tsx` — `<ConnectionGuard>` 内注入 `PointerEventsGuard`
+- `frontend/src/components/ui/dialog.tsx` — `Dialog` / `DialogContent` 卸载时 + `onOpenChange(false)` 双重清理 `document.body.style.removeProperty('pointer-events')`（含 `setTimeout(0)` 覆盖动画异步关闭时序）
+- `frontend/src/components/ui/alert-dialog.tsx` — 同上
+
+#### 移除高风险事件拦截
+
+以下文件中的 `e.nativeEvent.stopImmediatePropagation()` 改为仅保留 `e.stopPropagation()`：
+
+- `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx`
+- `frontend/src/app/(dashboard)/sources/page.tsx`（2 处）
+- `frontend/src/components/sources/AddExistingSourceDialog.tsx`
+- `frontend/src/components/notebooks/ManageNotebookPasswordDialog.tsx`（2 处）
+
+**决策**：在弹窗基础层做全局修复而非各页面单独补丁。`stopImmediatePropagation` 仅用于阻断向 Radix 内部事件系统传播，不再用于输入框的 Enter 键冲突场景。
+
+---
+
+### 18.3 上下文提示硬编码英文修复
+
+**用户问题**：中文界面下聊天栏出现 "No sources or notes included in context. Toggle icons on cards to include them."
+
+- `frontend/src/components/common/ContextIndicator.tsx` — 全 7 处硬编码英文 → i18n：
+  - `Context:` → `上下文：`
+  - `Insights for {n} source(s)` → `{n} 个来源的见解`
+  - `{n} full source(s)` → `{n} 个来源全文`
+  - `{n} full note(s)` → `{n} 个笔记全文`
+  - `{n} tokens` → `{n} 令牌`
+  - `{n} chars` → `{n} 字符`
+  - 空上下文提示 → `上下文中未包含来源或笔记。点击卡片上的图标进行切换。`
+- `frontend/src/lib/locales/en-US/index.ts` / `zh-CN/index.ts` — `sources` 区段新增 6 个 `context*` 键
+- **决策**：中文不拼接英文复数 `(s)` 后缀，直接在 key 中包含
+
+---
+
+### 18.4 笔记本密码全生命周期管理
+
+**用户问题**：仅新建时可设密码，已建笔记本无法增、改、撤销密码；创建者名称需手动填写。
+
+#### 后端
+
+- `open_notebook/domain/notebook.py` — Notebook 模型新增 `created_by: Optional[str]`（存用户 record ID）；`password` 加入 `nullable_fields: ClassVar[set[str]] = {"password"}`（否则 `None` 被 `_prepare_save_data` 过滤，撤销不生效）
+- `api/models.py` — 新增 `NotebookPasswordUpdate(action: set/change/remove, password?, current_password?)` schema；`NotebookResponse` 新增 `created_by`
+- `api/routers/notebooks.py`：
+  - 创建/聚合端点新增 `Depends(get_current_user_from_state)`，自动填入 `created_by = current_user["id"]`
+  - `creator_name` 为空时自动取 `current_user.display_name`
+  - 新增 `PATCH /notebooks/{id}/password` 端点，权限：`created_by == user.id` 或 `role == "admin"`；历史笔记本（`created_by == null`）首次设密者自动成为 owner；创建者改密码无需输入当前密码
+
+#### 前端
+
+- `frontend/src/lib/types/api.ts` — 新增 `NotebookPasswordUpdateRequest`；`NotebookResponse` 新增 `created_by`
+- `frontend/src/lib/api/notebooks.ts` — 新增 `updatePassword(notebookId, data)`
+- `frontend/src/lib/hooks/use-notebooks.ts` — 新增 `useUpdateNotebookPassword`，按 action 区分成功文案
+- `frontend/src/components/notebooks/ManageNotebookPasswordDialog.tsx` — **新增组件**：三 Tab 弹窗（设密码 / 改密码 / 撤销密码），含密码确认 + 长度校验
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx` — 磁贴「...」菜单新增「密码」入口，打开前先关闭 DropdownMenu 避免叠层冲突
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookHeader.tsx` — 详情页顶部新增密码入口按钮
+- `frontend/src/components/notebooks/CreateNotebookDialog.tsx` — 移除 `creator_name` 输入框（后端自动取当前用户）
+- `frontend/src/lib/locales/en-US/index.ts` / `zh-CN/index.ts` — `notebooks` 区段新增 20 个密码相关键
+
+**决策**：密码不加密（现有系统保持纯文本），权限基于创建者身份而非密码验证。修改密码无需输入当前密码（已通过身份认证）。`nullable_fields` 机制是让 `password = None` 能被 SurrealDB MERGE 写为 null 的唯一方式。
+
+---
+
+### 18.5 笔记本内删除来源三规则
+
+**用户问题**：删除来源不分所有权和引用情况，自己的源也需管理员密码。
+
+#### 三种场景
+
+| 场景 | SourceCard | 弹窗 | 后端 |
+|------|:---:|------|------|
+| 自己创建 + 未被其他笔记本引用 | 显示「删除」 | 简单确认，无密码 | `ref_count = 1`，放行 |
+| 别人的源 | 仅显示「移除」 | 不触发删除 | 前端不展示删除按钮 |
+| 自己创建 + 被多笔记本引用 | 显示「删除」 | 需管理员密码 | `ref_count > 1`，校验 `X-Admin-Password` |
+
+#### 后端
+
+- `api/routers/sources.py` — `GET /sources` SELECT 新增 `uploaded_by`；`DELETE /sources/{id}` 先查 `SELECT count() FROM reference WHERE in = $source_id`，`<= 1` 免密码，`> 1` 需 `OPEN_NOTEBOOK_PASSWORD`
+- `api/models.py` — `SourceListResponse` / `SourceResponse` 新增 `uploaded_by` 字段
+- `open_notebook/domain/notebook.py` — `Source.delete()` 新增 `DELETE reference WHERE in = $source_id_str`，防止悬空引用导致其他笔记本加载报错
+
+#### 前端
+
+- `frontend/src/lib/types/api.ts` — `SourceListResponse` 新增 `uploaded_by`
+- `frontend/src/components/sources/SourceCard.tsx` — 新增 `currentUserId` prop；`isOwnSource = uploaded_by === currentUserId`；别人源不显示删除按钮
+- `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx` — 从 auth store 取 `user.id`；按 `notebook_count > 1` 决定弹窗是否含密码输入
+- `api/routers/auth.py` — `get_current_user_from_state` 依赖注入至 notebook create/aggregate 端点
+
+**决策**：前后端双重校验（前端 UI 隐藏 + 后端 403 拒绝）。`notebook_count` 为 SurrealDB 聚合计算值，不在 Source 模型上持久化。
+
+---
+
+### 18.6 管理员密码统一为后端校验
+
+**用户问题**：删除源时输入管理员密码无效。
+
+**根因**：前端取 `NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD`，后端登录用 `OPEN_NOTEBOOK_PASSWORD`，两个值不一致。
+
+#### 解决方案（选 B 方案——后端校验）
+
+- `api/routers/sources.py` — `DELETE /sources/{id}` 读取 `X-Admin-Password` header，与 `OPEN_NOTEBOOK_PASSWORD` 比对
+- `frontend/src/lib/api/sources.ts` — `delete(id, password?)` 通过 `X-Admin-Password` header 发送密码
+- `frontend/src/lib/hooks/use-sources.ts` — `useDeleteSource` mutation 改为接受 `{ id, password }` 对象
+- `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx` — 去除客户端 `NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD` 比对
+- `frontend/src/app/(dashboard)/sources/page.tsx` — 单删 + 批量删同步改传后端
+- 所有删除弹窗密码框从 `{env && (` 条件渲染改为始终显示
+
+**决策**：统一维护一个密码（`OPEN_NOTEBOOK_PASSWORD`），前端不再持有密码值。`NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD` 逐步废弃。
+
+---
+
+### 18.7 移动端切 Tab 中断回答修复
+
+**用户问题**：手机端从聊天切到来源再切回，AI 回答中断；点停止按钮控制台报 `AbortError`。
+
+#### 修复
+
+- `frontend/src/app/(dashboard)/notebooks/[id]/page.tsx` — 移动端 Tab 从条件渲染 `{activeTab === 'chat' && <ChatColumn />}` 改为 CSS `hidden` 控制显隐，ChatColumn 始终挂载，切页不再中断流式回答
+- `frontend/src/lib/api/chat.ts` — `sendMessage` 新增 `signal?: AbortSignal` 参数，传给 `fetch()`
+- `frontend/src/lib/api/source-chat.ts` — 同上
+- `frontend/src/lib/hooks/useNotebookChat.ts` — 传入 `abortController.signal` 到 `chatApi.sendMessage`；catch 块 `AbortError`（`DOMException.name === 'AbortError'`）直接 `return`，不弹错误 toast、不删消息
+- `frontend/src/lib/hooks/useSourceChat.ts` — 同上，且补全 AbortController 创建（之前仅声明 ref 但从未 new 实例）
+- **决策**：移动端三 Tab 全部保持挂载（CSS 隐藏替代条件渲染），牺牲少量 DOM 开销换取流式会话不中断的用户体验
+
+---
+
+### 18.8 SearchPage 渲染循环修复
+
+**用户问题**：搜索页面控制台报 `[useTranslation] INFINITE LOOP DETECTED on key: "searchPage"`。
+
+#### 根因
+
+- `useAsk()` 每次渲染返回新对象（内联 `stopStreaming` 函数 + 未 memo 的返回值）
+- TanStack Query `useMutation()` 返回新引用使 `handleSearch` 每次重建
+- Auto-trigger effect 的 deps 含 `handleSearch`/`handleAsk` → 每渲染都执行
+- SSE 流式中 Zustand store 每 chunk 更新触发渲染 → effect 连锁执行 → 1000+ 次 `t.searchPage` 访问
+
+#### 修复
+
+- `frontend/src/lib/hooks/use-ask.ts` — `stopStreaming` 改为 `useCallback(fn, [])`；返回值整体 `useMemo` 包裹，按 store 字段拆分 deps
+- `frontend/src/app/(dashboard)/search/page.tsx` — auto-trigger effect 用 `handleSearchRef`/`handleAskRef` 透传回调，从 deps 中移除 `handleSearch` 和 `handleAsk`
+
+**决策**：不改变 SSE 流式渲染频率（业务需要实时更新），仅消除不必要的 effect 重复执行。
+
+---
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `api/models.py` | `PaginatedSourceListResponse`、`NotebookPasswordUpdate`、`SourceListResponse`/`SourceResponse` + `uploaded_by`、`NotebookResponse` + `created_by` |
+| `api/routers/sources.py` | GET /sources 返回 `{items, total}`、SELECT + `uploaded_by`、DELETE 引用计数 + `X-Admin-Password` 校验 |
+| `api/routers/notebooks.py` | 创建/聚合端点自动 `created_by`+`creator_name`；新增 `PATCH /password` |
+| `open_notebook/domain/notebook.py` | Notebook + `created_by`、+ `nullable_fields`；Source.delete() + reference 清理 |
+| `frontend/src/components/ui/dialog.tsx` | `onOpenChange` 兜底清理 pointer-events |
+| `frontend/src/components/ui/alert-dialog.tsx` | 同上 |
+| `frontend/src/components/common/PointerEventsGuard.tsx` | **新文件** — MutationObserver 全局守卫 |
+| `frontend/src/components/common/ContextIndicator.tsx` | 7 处硬编码 → i18n |
+| `frontend/src/app/layout.tsx` | 注入 PointerEventsGuard |
+| `frontend/src/lib/types/api.ts` | `SourceListPaginatedResponse`、`NotebookPasswordUpdateRequest`、`SourceListResponse` + `uploaded_by`、`NotebookResponse` + `created_by` |
+| `frontend/src/lib/api/sources.ts` | `list()` 返回类型；`delete(id, password?)` 传 header |
+| `frontend/src/lib/api/notebooks.ts` | + `updatePassword()` |
+| `frontend/src/lib/api/chat.ts` | `sendMessage` + `signal` 参数 |
+| `frontend/src/lib/api/source-chat.ts` | 同上 |
+| `frontend/src/lib/hooks/use-sources.ts` | `useSources`/`useNotebookSources` 适配 `.items`；`useDeleteSource` 接受 `{id, password}` |
+| `frontend/src/lib/hooks/use-notebooks.ts` | + `useUpdateNotebookPassword` |
+| `frontend/src/lib/hooks/use-ask.ts` | `stopStreaming` → `useCallback`；返回值 → `useMemo` |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | 传 signal 到 fetch；catch AbortError 静默 |
+| `frontend/src/lib/hooks/useSourceChat.ts` | 同上 + AbortController 实例化补全 |
+| `frontend/src/app/(dashboard)/sources/page.tsx` | 搜索框 + 分页 + 密码传后端 |
+| `frontend/src/app/(dashboard)/search/page.tsx` | auto-trigger effect ref 重构 |
+| `frontend/src/app/(dashboard)/notebooks/[id]/page.tsx` | 移动端 tab CSS hidden |
+| `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx` | 删源三规则 + 传密码 |
+| `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx` | 「...」菜单密码入口 |
+| `frontend/src/app/(dashboard)/notebooks/components/NotebookHeader.tsx` | 密码入口按钮 |
+| `frontend/src/components/sources/SourceCard.tsx` | `currentUserId` prop + 所有权判定 |
+| `frontend/src/components/sources/AddExistingSourceDialog.tsx` | 客户端实时过滤 + 全选按钮 |
+| `frontend/src/components/sources/AddSourceDialog.tsx` | 适配 `.items` |
+| `frontend/src/components/notebooks/ManageNotebookPasswordDialog.tsx` | **新文件** |
+| `frontend/src/components/notebooks/CreateNotebookDialog.tsx` | 移除 creator_name 输入框 |
+| `frontend/src/components/podcasts/GeneratePodcastDialog.tsx` | 适配 `.items` |
+| `frontend/src/lib/locales/en-US/index.ts` | 新增 `sources`/`notebooks` 区段 30+ 键 |
+| `frontend/src/lib/locales/zh-CN/index.ts` | 同上 |
+
+---
+
+> 最后更新：2026-06-07 | 新增 §18（用户反馈驱动优化），分支 `enhance_sourcepage_optim_0605`。

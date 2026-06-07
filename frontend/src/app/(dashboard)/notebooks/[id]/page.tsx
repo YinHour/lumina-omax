@@ -266,9 +266,9 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
                 </Tabs>
               </div>
 
-              {/* Mobile: Show only active tab */}
+              {/* Mobile: Show only active tab (all stay mounted for chat streaming persistence) */}
               <div className="flex-1 overflow-hidden lg:hidden">
-                {mobileActiveTab === 'sources' && (
+                <div className={cn(mobileActiveTab !== 'sources' && 'hidden')}>
                   <SourcesColumn
                     sources={sources}
                     isLoading={sourcesLoading}
@@ -282,8 +282,8 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
                     isFetchingNextPage={isFetchingNextPage}
                     fetchNextPage={fetchNextPage}
                   />
-                )}
-                {mobileActiveTab === 'notes' && (
+                </div>
+                <div className={cn(mobileActiveTab !== 'notes' && 'hidden')}>
                   <NotesColumn
                     notes={notes}
                     isLoading={notesLoading}
@@ -292,15 +292,15 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
                     onContextModeChange={(noteId, mode) => handleContextModeChange(noteId, mode, 'note')}
                     onBulkContextModeChange={(mode) => handleBulkContextModeChange(mode, 'note')}
                   />
-                )}
-                {mobileActiveTab === 'chat' && (
+                </div>
+                <div className={cn(mobileActiveTab !== 'chat' && 'hidden')}>
                   <ChatColumn
                     notebookId={notebookId}
                     contextSelections={contextSelections}
                     sources={sources}
                     sourcesLoading={sourcesLoading}
                   />
-                )}
+                </div>
               </div>
             </>
           )}

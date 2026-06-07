@@ -7,9 +7,18 @@ import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 
 function AlertDialog({
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+  const handleOpenChange = (open: boolean) => {
+    if (!open && typeof document !== 'undefined') {
+      document.body.style.removeProperty('pointer-events')
+      setTimeout(() => document.body.style.removeProperty('pointer-events'), 0)
+    }
+    onOpenChange?.(open)
+  }
+
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" onOpenChange={handleOpenChange} {...props} />
 }
 
 function AlertDialogTrigger({
@@ -48,6 +57,13 @@ function AlertDialogContent({
   className,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  React.useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.style.removeProperty('pointer-events')
+      }
+    }
+  }, [])
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
