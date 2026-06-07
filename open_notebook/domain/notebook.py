@@ -601,7 +601,7 @@ class Source(ObjectModel):
             query = """
             DELETE source_embedding WHERE source = $source_id;
             DELETE source_insight WHERE source = $source_id;
-            DELETE reference WHERE in = $source_id_str;
+            DELETE reference WHERE in = $source_id;
             """
             
             if os.environ.get("ENABLE_KNOWLEDGE_GRAPH", "false").lower() == "true":

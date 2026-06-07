@@ -24,7 +24,6 @@ class NotebookUpdate(BaseModel):
 class NotebookPasswordUpdate(BaseModel):
     action: Literal["set", "change", "remove"] = Field(..., description="Action: set, change, or remove password")
     password: Optional[str] = Field(None, description="New password (required for set/change)")
-    current_password: Optional[str] = Field(None, description="Current password (required for change/remove)")
 
     @model_validator(mode="after")
     def validate_action_requirements(self):

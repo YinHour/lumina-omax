@@ -872,7 +872,7 @@
 - `useAsk()` 每次渲染返回新对象（内联 `stopStreaming` 函数 + 未 memo 的返回值）
 - TanStack Query `useMutation()` 返回新引用使 `handleSearch` 每次重建
 - Auto-trigger effect 的 deps 含 `handleSearch`/`handleAsk` → 每渲染都执行
-- SSE 流式中 Zstand store 每 chunk 更新触发渲染 → effect 连锁执行 → 1000+ 次 `t.searchPage` 访问
+- SSE 流式中 Zustand store 每 chunk 更新触发渲染 → effect 连锁执行 → 1000+ 次 `t.searchPage` 访问
 
 #### 修复
 
