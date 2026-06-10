@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+type Color = [number, number, number]
 
 function extractFlatBlock(source: string, selector: string) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -12,6 +13,61 @@ function extractFlatBlock(source: string, selector: string) {
 
   expect(match, `Expected a flat ${selector} block`).not.toBeNull()
   return match![1]
+}
+
+function parseOklchVariable(block: string, variable: string): Color {
+  const match = block.match(
+    new RegExp(
+      `--${variable}:\\s*oklch\\(\\s*([\\d.]+)\\s+([\\d.]+)\\s+([\\d.]+)\\s*\\);`
+    )
+  )
+
+  expect(match, `Expected --${variable} to use a numeric OKLCH value`).not.toBeNull()
+  return match!.slice(1).map(Number) as Color
+}
+
+function oklchToSrgb([lightness, chroma, hue]: Color): Color {
+  const angle = (hue * Math.PI) / 180
+  const a = chroma * Math.cos(angle)
+  const b = chroma * Math.sin(angle)
+  const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3
+  const linearRgb: Color = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ]
+
+  return linearRgb.map((channel) => {
+    const encoded =
+      channel <= 0.0031308
+        ? 12.92 * channel
+        : 1.055 * channel ** (1 / 2.4) - 0.055
+    return Math.min(1, Math.max(0, encoded))
+  }) as Color
+}
+
+function composite(foreground: Color, background: Color, alpha: number): Color {
+  return foreground.map(
+    (channel, index) => channel * alpha + background[index] * (1 - alpha)
+  ) as Color
+}
+
+function relativeLuminance(color: Color) {
+  const [red, green, blue] = color.map((channel) =>
+    channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4
+  )
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+}
+
+function contrastRatio(first: Color, second: Color) {
+  const luminances = [relativeLuminance(first), relativeLuminance(second)].sort(
+    (a, b) => b - a
+  )
+  return (luminances[0] + 0.05) / (luminances[1] + 0.05)
 }
 
 describe('global design tokens', () => {
@@ -56,10 +112,30 @@ describe('global design tokens', () => {
     }
   })
 
-  it('uses the accessible light success color', () => {
+  it('keeps light success treatments at WCAG AA contrast', () => {
     const lightTheme = extractFlatBlock(css, ':root')
+    const success = oklchToSrgb(parseOklchVariable(lightTheme, 'success'))
+    const successForeground = oklchToSrgb(
+      parseOklchVariable(lightTheme, 'success-foreground')
+    )
+    const backgrounds = ['background', 'card'].map((variable) => [
+      variable,
+      oklchToSrgb(parseOklchVariable(lightTheme, variable)),
+    ]) as [string, Color][]
+    const ratios = [
+      ['filled success', contrastRatio(success, successForeground)],
+      ...backgrounds.flatMap(([name, background]) => [
+        [`success text on ${name}`, contrastRatio(success, background)],
+        [
+          `success text on 14% success over ${name}`,
+          contrastRatio(success, composite(success, background, 0.14)),
+        ],
+      ]),
+    ] as [string, number][]
 
-    expect(lightTheme).toContain('--success: oklch(0.54 0.12 153);')
+    for (const [use, ratio] of ratios) {
+      expect(ratio, use).toBeGreaterThanOrEqual(4.5)
+    }
   })
 
   it('removes legacy hover scaling', () => {
