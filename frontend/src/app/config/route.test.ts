@@ -9,7 +9,7 @@ describe('runtime config route', () => {
     delete process.env.NEXT_PUBLIC_API_URL
   })
 
-  it('uses the standard API port when auto-detecting the public URL', async () => {
+  it('uses relative API paths when no public API URL is configured', async () => {
     const request = new NextRequest('http://example.test/config', {
       headers: { host: 'example.test:8502' },
     })
@@ -17,7 +17,7 @@ describe('runtime config route', () => {
     const response = await GET(request)
 
     await expect(response.json()).resolves.toEqual({
-      apiUrl: 'http://example.test:5055',
+      apiUrl: '',
     })
   })
 

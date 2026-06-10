@@ -1110,7 +1110,7 @@ MiniMax 确认工作日高峰时段会动态调度和阶段性限流，实际错
 
 ```text
 uv run pytest tests/test_vision_descriptions.py -q
-17 passed, 6 warnings
+18 passed, 6 warnings
 
 uv run ruff check open_notebook/graphs/source.py tests/test_vision_descriptions.py
 All checks passed
@@ -1127,6 +1127,22 @@ All checks passed
 3. **知识图谱大输出截断**：Excel 文档曾出现单次生成约 802 条关系后 JSON 截断，末条 relation 缺少 `type`，导致整个 `KnowledgeGraphSchema` 校验失败并错误记录为 0/0 成功。该问题尚未完成修复，后续应采用分 sheet/分块、限制实体关系数量、局部恢复、失败块拆分重试，并禁止将 0/0 记录为成功。
 4. **供应商专项参数**：`VISION_REASONING_EFFORT`、`VISION_IMAGE_DETAIL` 等参数是否能经 Esperanto 透传，仍需结合供应商和库版本验证，不能仅通过 `.env` 配置即视为生效。
 5. **回归样本集**：应将当前两份 PDF、一份 Excel 及其抽取图片固化为评测集，对类型准确率、事实覆盖、数值准确率、格式合规率、失败率和单图耗时持续回归。
+
+---
+
+### 19.10 Mac Studio 局域网源码部署安全调整
+
+用户当前采用源码方式运行：Mac Studio 上启动 SurrealDB、API、worker 和 Next.js，局域网用户仅通过 `http://<Mac-IP>:3001` 访问。
+
+- `Makefile`：
+  - SurrealDB 端口改为 `127.0.0.1:8001:8000`，不再向局域网直接暴露数据库
+  - frontend 不再注入浏览器可见的 `API_URL=http://localhost:5056`
+  - 仅设置 `INTERNAL_API_URL=http://127.0.0.1:5056`，由 Next.js 服务端代理 API
+- `frontend/src/app/config/route.ts` — 未显式设置 `API_URL` 时返回空地址，使浏览器使用相对 `/api` 路径
+- `docker-compose.parallel.yml` — 同步将 SurrealDB 映射限制到宿主机回环地址
+- 保留 `ws://127.0.0.1:8001/rpc`：本地进程连接本机数据库不需要 TLS；Sourcery 的 `wss://` 告警不适用于该受限内部连接
+
+**决策**：局域网仅开放前端端口 3001；API 默认保留在本机回环地址，由 Next.js 代理；SurrealDB 仅允许 Mac Studio 本机访问。
 
 ---
 
@@ -1147,7 +1163,11 @@ All checks passed
 | `tests/test_vision_descriptions.py` | Vision 解析、降级、重试、超时与 Excel 裁剪测试 |
 | `frontend/src/components/source/SourceDetailContent.test.tsx` | 来源详情下载交互测试 |
 | `frontend/src/lib/stores/navigation-store.test.ts` | 来源导航状态测试 |
+| `frontend/src/app/config/route.ts` | 未配置外部 API 地址时使用相对 `/api` 路径 |
+| `frontend/src/app/config/route.test.ts` | 局域网源码部署 API 路径回归测试 |
+| `Makefile` | 本地数据库回环绑定及前端内部 API 代理配置 |
+| `docker-compose.parallel.yml` | SurrealDB 宿主机端口限制为 `127.0.0.1` |
 
 ---
 
-> 最后更新：2026-06-10 | 新增 §19（源解析下载与 Vision 图片描述工程化）。当前 Vision 模型选择 MiniMax-M3；下一轮优先处理领域 Prompt 动态路由和知识图谱大输出截断。
+> 最后更新：2026-06-10 | 新增 §19（源解析下载、Vision 图片描述工程化及 Mac Studio 局域网源码部署安全调整）。当前 Vision 模型选择 MiniMax-M3；下一轮优先处理领域 Prompt 动态路由和知识图谱大输出截断。

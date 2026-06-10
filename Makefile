@@ -15,7 +15,7 @@ PLATFORMS := linux/amd64,linux/arm64
 
 database:
 	docker run -d --name surrealdb-v2 \
-		-p 8001:8000 \
+		-p 127.0.0.1:8001:8000 \
 		-v ./surreal_data_v2:/mydata \
 		-e SURREAL_EXPERIMENTAL_GRAPHQL=true \
 		surrealdb/surrealdb:v2 \
@@ -23,10 +23,10 @@ database:
 
 run:
 	@echo "⚠️  Warning: Starting frontend only. For full functionality, use 'make start-all'"
-	cd frontend && API_URL=http://localhost:5056 INTERNAL_API_URL=http://localhost:5056 npm run dev -- -H 0.0.0.0 -p 3001
+	cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001
 
 frontend:
-	cd frontend && API_URL=http://localhost:5056 INTERNAL_API_URL=http://localhost:5056 npm run dev -- -H 0.0.0.0 -p 3001
+	cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001
 
 # Verify 参考文献 auto-numbering (run on your machine; requires Node/npm in PATH)
 frontend-test-bib:
@@ -167,7 +167,7 @@ start-all:
 	@echo "🚀 Starting Lumiton·Omax v2 (Database + API + Worker + Frontend)..."
 	@echo "📊 Starting SurrealDB (port 8001)..."
 	@docker run -d --name surrealdb-v2 \
-		-p 8001:8000 \
+		-p 127.0.0.1:8001:8000 \
 		-v ./surreal_data_v2:/mydata \
 		-e SURREAL_EXPERIMENTAL_GRAPHQL=true \
 		surrealdb/surrealdb:v2 \
@@ -187,7 +187,7 @@ start-all:
 	docker logs -f surrealdb-v2 2>&1 | tee logs/surrealdb.log | while IFS= read -r line; do printf '\033[35m[ DB]\033[0m %s\n' "$$line"; done & \
 	LOG_SERVICE=api uv run run_api.py 2>&1 | while IFS= read -r line; do printf '\033[34m[API]\033[0m %s\n' "$$line"; done & \
 	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands 2>&1 | while IFS= read -r line; do printf '\033[33m[WRK]\033[0m %s\n' "$$line"; done & \
-	(cd frontend && API_URL=http://localhost:5056 INTERNAL_API_URL=http://localhost:5056 npm run dev -- -H 0.0.0.0 -p 3001) 2>&1 | tee logs/frontend.log | while IFS= read -r line; do printf '\033[32m[WEB]\033[0m %s\n' "$$line"; done & \
+	(cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001) 2>&1 | tee logs/frontend.log | while IFS= read -r line; do printf '\033[32m[WEB]\033[0m %s\n' "$$line"; done & \
 	wait
 
 stop-all:
