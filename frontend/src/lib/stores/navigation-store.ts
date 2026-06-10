@@ -60,11 +60,11 @@ export const useNavigationStore = create<NavigationState>()(
           const isStale = Date.now() - returnTo.preserveState.timestamp > 3600000
           if (isStale) {
             set({ returnTo: undefined })
-            return 'Back to Sources'
+            return ''
           }
         }
 
-        return returnTo?.label || 'Back to Sources'
+        return returnTo?.label || ''
       }
     }),
     {

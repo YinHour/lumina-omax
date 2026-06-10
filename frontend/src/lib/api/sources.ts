@@ -112,6 +112,18 @@ export const sourcesApi = {
     })
   },
 
+  downloadMarkdown: async (id: string): Promise<AxiosResponse<Blob>> => {
+    return apiClient.get(`/sources/${id}/download/markdown`, {
+      responseType: 'blob',
+    })
+  },
+
+  downloadPackage: async (id: string): Promise<AxiosResponse<Blob>> => {
+    return apiClient.get(`/sources/${id}/download/package`, {
+      responseType: 'blob',
+    })
+  },
+
   checkDuplicates: async (filenames: string[]): Promise<string[]> => {
     const response = await apiClient.post<{ duplicates: string[] }>(
       '/sources/check-duplicates',

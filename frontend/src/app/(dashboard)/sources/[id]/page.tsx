@@ -9,12 +9,14 @@ import { useSourceChat } from '@/lib/hooks/useSourceChat'
 import { ChatPanel } from '@/components/source/ChatPanel'
 import { useNavigation } from '@/lib/hooks/use-navigation'
 import { SourceDetailContent } from '@/components/source/SourceDetailContent'
+import { useTranslation } from '@/lib/hooks/use-translation'
 
 export default function SourceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const resolvedParams = use(params)
   const sourceId = resolvedParams?.id ? decodeURIComponent(resolvedParams.id) : ''
   const navigation = useNavigation()
+  const { t } = useTranslation()
 
   // Initialize source chat
   const chat = useSourceChat(sourceId)
@@ -36,7 +38,7 @@ export default function SourceDetailPage({ params }: { params: Promise<{ id: str
           className="mb-4"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          {navigation.getReturnLabel()}
+          {navigation.getReturnLabel() || t.sources.backToSources}
         </Button>
       </div>
 
