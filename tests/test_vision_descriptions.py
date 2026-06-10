@@ -10,6 +10,7 @@ from open_notebook.graphs.source import (
     _safe_figure_description,
     _structured_vision_description,
     _trim_excel_empty_table_rows,
+    _vision_concurrency,
     _vision_model_inference_kwargs,
 )
 
@@ -282,6 +283,12 @@ def test_vision_model_kwargs_avoid_ollama_options_for_other_providers(monkeypatc
     }
     assert "num_ctx" not in kwargs
     assert "num_predict" not in kwargs
+
+
+def test_vision_concurrency_falls_back_for_invalid_env(monkeypatch):
+    monkeypatch.setenv("VISION_CONCURRENCY", "auto")
+
+    assert _vision_concurrency() == 6
 
 
 def test_transient_vision_error_detects_minimax_520():

@@ -90,6 +90,10 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _vision_concurrency() -> int:
+    return max(1, _env_int("VISION_CONCURRENCY", 6))
+
+
 def _is_transient_vision_error(error: BaseException) -> bool:
     """Return whether a vision call error is worth retrying."""
     if isinstance(error, TimeoutError):
@@ -1239,7 +1243,7 @@ async def content_process(state: SourceState) -> dict:
 
                         vision_lc = vision_model.to_langchain()
                         mime_map = {'.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp', '.bmp': 'bmp'}
-                        concurrency = max(1, int(os.environ.get("VISION_CONCURRENCY", "6")))
+                        concurrency = _vision_concurrency()
                         semaphore = asyncio.Semaphore(concurrency)
 
                         async def _describe_one(img_file: str) -> tuple[str, str]:
