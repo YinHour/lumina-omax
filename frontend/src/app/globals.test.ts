@@ -56,6 +56,12 @@ describe('global design tokens', () => {
     }
   })
 
+  it('uses the accessible light success color', () => {
+    const lightTheme = extractFlatBlock(css, ':root')
+
+    expect(lightTheme).toContain('--success: oklch(0.54 0.12 153);')
+  })
+
   it('removes legacy hover scaling', () => {
     expect(css).not.toContain('scale-[1.02]')
     expect(css).not.toContain('transform: translateY(-1px)')
