@@ -123,18 +123,24 @@ describe('global design tokens', () => {
       oklchToSrgb(parseOklchVariable(lightTheme, variable)),
     ]) as [string, Color][]
     const ratios = [
-      ['filled success', contrastRatio(success, successForeground)],
+      ['filled success', contrastRatio(success, successForeground), 4.5],
       ...backgrounds.flatMap(([name, background]) => [
-        [`success text on ${name}`, contrastRatio(success, background)],
+        [`success text on ${name}`, contrastRatio(success, background), 4.5],
         [
           `success text on 14% success over ${name}`,
           contrastRatio(success, composite(success, background, 0.14)),
+          4.5,
+        ],
+        [
+          `success text on 20% success over ${name}`,
+          contrastRatio(success, composite(success, background, 0.2)),
+          4.7,
         ],
       ]),
-    ] as [string, number][]
+    ] as [string, number, number][]
 
-    for (const [use, ratio] of ratios) {
-      expect(ratio, use).toBeGreaterThanOrEqual(4.5)
+    for (const [use, ratio, minimum] of ratios) {
+      expect(ratio, use).toBeGreaterThanOrEqual(minimum)
     }
   })
 
