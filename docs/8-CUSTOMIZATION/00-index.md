@@ -923,4 +923,251 @@
 
 ---
 
-> 最后更新：2026-06-07 | 新增 §18（用户反馈驱动优化），分支 `enhance_sourcepage_optim_0605`。
+## 19. 源解析下载与 Vision 图片描述工程化（新增 2026-06-08 ~ 2026-06-10）
+
+本轮围绕“文档解析结果可交付、图片描述可用、外部 Vision 服务失败时任务可继续”展开。PDF、DOC、PPT 仍通过 MinerU 抽取，Excel 保持独立解析链路；所有抽取图片均进入 Vision 描述流程，不再因尺寸或清晰度门禁而直接跳过。
+
+---
+
+### 19.1 源详情页操作语义与国际化修复
+
+**用户问题**：源详情页顶部存在英文硬编码 `Back to Sources`、`file`，标题右侧上传图标点击无响应且含义不明确。
+
+- `frontend/src/app/(dashboard)/sources/[id]/page.tsx` — 返回来源列表文案改为 i18n
+- `frontend/src/components/source/SourceDetailContent.tsx`：
+  - 来源类型显示改为本地化文案
+  - 移除无实际上传行为的误导性上传图标，改用符合文件语义的图标
+  - 整理顶部操作区，为解析结果下载入口提供一致布局
+- 9 个 locale 文件同步补充翻译键：`bn-IN`、`en-US`、`fr-FR`、`it-IT`、`ja-JP`、`pt-BR`、`ru-RU`、`zh-CN`、`zh-TW`
+
+**决策**：无交互行为的图标不能作为装饰性按钮保留；源详情页新增文案必须覆盖全部现有语言，不能只修复中英文。
+
+---
+
+### 19.2 解析结果 Markdown 与离线 ZIP 下载
+
+#### 后端
+
+`api/routers/sources.py` 新增两个端点：
+
+- `GET /sources/{source_id}/download/markdown`
+  - 下载 `Source.full_text`
+  - 输出 UTF-8 Markdown
+  - 文件名使用清理后的“来源标题.md”
+- `GET /sources/{source_id}/download/package`
+  - ZIP 根目录使用来源标题
+  - 包含“来源标题.md”和 `images/` 下全部抽取图片
+  - 将 Markdown 中的 `/api/uploads/images/{source_id}/...` 重写为 `images/...`
+  - 解压后可直接使用 Markdown Preview 查看带图文档
+
+#### 前端
+
+- `frontend/src/lib/api/sources.ts` — 新增 Markdown、ZIP 下载 API
+- `frontend/src/components/source/SourceDetailContent.tsx` — 新增下载菜单、加载态和错误提示
+- 各 locale 文件补充下载相关翻译键
+
+**决策**：`Source.full_text` 是解析完成后的 Markdown 主存储；ZIP 下载必须改写图片引用，避免离开 Lumina OMax 服务后图片失效。
+
+---
+
+### 19.3 文档图片抽取与上下文传递
+
+#### PDF / DOC / PPT
+
+- 继续由 MinerU 负责正文和图片抽取
+- 图片保存至来源专属目录，并在 Markdown 中保留引用
+- 每张图片在文档级描述阶段获得页码、附近文本、来源类型等上下文
+
+#### Excel
+
+Excel 不经过 MinerU，由 `openpyxl` 独立处理：
+
+- 抽取工作表中的嵌入图片
+- 记录 sheet 名称、图片锚点单元格、宽度和高度
+- 从锚点附近提取表头、当前行和相邻文本，作为 Vision 输入上下文
+- 图片描述和表格 Markdown 合并进同一个 `Source.full_text`
+
+**决策**：PDF/Office 与 Excel 保持两条抽取链路，但共用后续的图片描述协议、结果清洗和 Markdown 输出格式，避免重复维护两套 Vision 规则。
+
+---
+
+### 19.4 Vision Prompt、结构化结果与用户可读降级
+
+`open_notebook/graphs/source.py` 新增和完善：
+
+- `FigureContext` — 统一承载页码、sheet、单元格、表头、行文本、附近正文和图片尺寸
+- `VisionDescription` / `VisionDescriptionResult` — 使用 Pydantic 约束模型返回结构
+- 图片类型覆盖：
+  - `hpht_curve`
+  - `analytical_spectrum`
+  - `lab_photo`
+  - `performance_comparison`
+  - `mechanism_schematic`
+  - `embedded_table_or_screenshot`
+  - `unknown`
+- 结构化字段覆盖可读性、置信度、描述级别、可确认信息、提取值、不确定项和领域解释
+- 默认使用简体中文描述；英文界面通过 `Accept-Language` 传递语言要求
+
+#### 输出清洗与容错
+
+- 清除 thinking/reasoning 标记、Prompt 回显和分析过程泄漏
+- 从混合文本中提取 JSON，并进行 schema 校验
+- 对截断或局部损坏的 JSON 尽量恢复可用字段
+- 最终 Markdown 不展示 JSON 碎片和内部诊断词
+- 低清晰度图片仍要求模型描述可辨识内容，不再直接归为“不描述”
+- 低置信度时保留实物状态、曲线趋势等定性事实，过滤不可靠的定量数值
+- Vision 完全失败时保留原图，并使用面向用户的简短提示，不暴露 `invalid_json`、`reasoning_leakage`、`quality_hint` 等内部状态
+
+**决策**：质量控制由“拒绝描述”改为“尽量描述 + 明确不确定性”。用户接受低质量图片存在误差，因此系统应优先保留信息，而不是输出技术性占位文本。
+
+---
+
+### 19.5 Vision 模型评测与当前选择
+
+使用同一批油田化学实验报告，对 Gemma 4、Qwen 3.7 Plus、MiniMax-M3、Step 3.7 Flash、Doubao Seed 2.0 Pro 进行了对比。
+
+| 模型 | 主要表现 | 主要问题 |
+|------|----------|----------|
+| Gemma 4 31B（本地 Ollama） | 可本地运行，隐私性好 | 单图约 90 秒，吞吐低，格式稳定性一般 |
+| Qwen 3.7 Plus | 部分图片能给出较丰富内容 | 推理过程泄漏、重复分析、断裂 JSON 和臆测较多 |
+| MiniMax-M3 | 综合描述、复合表格截图和领域信息提取最好 | 高峰期存在动态限流和 500/520 错误 |
+| Step 3.7 Flash | 本轮模型中速度最快 | HPHT 类型误判、JSON 碎片和定量臆测偏多 |
+| Doubao Seed 2.0 Pro | 输出较整洁、措辞保守 | 表格数据提取较弱，领域过拟合仍存在 |
+
+**当前选择**：Vision LLM 使用 **MiniMax-M3**。代码仍保留 OpenAI-compatible 多供应商能力，便于后续切换和回归评测。
+
+#### 推理参数
+
+| 场景 | 参数 |
+|------|------|
+| Ollama | `VISION_NUM_CTX=2048`、`VISION_NUM_PREDICT=384`、`VISION_TEMPERATURE=0` |
+| OpenAI-compatible 云模型 | `VISION_MAX_TOKENS=384`、`VISION_TEMPERATURE=0` |
+
+**决策**：`num_ctx`、`num_predict` 是 Ollama 参数，云模型使用 `max_tokens`；不能把同一组底层参数无差别传给所有供应商。
+
+---
+
+### 19.6 MiniMax 并发、超时与重试
+
+MiniMax 确认工作日高峰时段会动态调度和阶段性限流，实际错误可能表现为：
+
+```text
+500 server_error: unknown error, 520 (1000)
+```
+
+该错误不能只按标准 HTTP 429 处理。`open_notebook/graphs/source.py` 增加：
+
+- `VISION_CONCURRENCY` — Vision 并发数，本机当前建议 MiniMax 使用 `2`
+- `VISION_TIMEOUT_SECONDS` — 单图调用超时，默认 `120`
+- `VISION_MAX_RETRIES` — 最大重试次数，默认 `2`
+- `VISION_RETRY_BASE_DELAY_SECONDS` — 指数退避基数，默认 `3` 秒
+- 对 429、500、502、503、504、520、timeout、connection error 和 rate limit 文本进行瞬时错误识别
+- 使用 semaphore 控制并发
+- 单图失败只生成该图片的降级描述，不再阻塞整个来源解析
+- 日志记录图片总数、完成数、重试和最终失败原因
+
+`.env.example` 已补充上述配置说明；本地测试环境将 Vision 并发从 6 降至 2。
+
+**决策**：外部 Vision API 的 5xx 视为可恢复故障。稳定完成整份文档比追求瞬时最大并发更重要。
+
+---
+
+### 19.7 Excel 图片尺寸判断与空白表格裁剪
+
+**用户问题**：
+
+1. Markdown 声称 Figure 2 / Figure 3 “图片较小”，实际预览尺寸约为 897×658、895×563
+2. 每个 sheet 尾部包含大量空白 Markdown 表格行，影响阅读并浪费后续 LLM token
+
+#### 修复
+
+- 图片尺寸从 Excel 嵌入对象读取，并传入 Vision 上下文
+- 仅在宽度 `< 160` 或高度 `< 120` 时提示图片较小
+- 已知尺寸较大的图片在模型失败时改为“模型未能稳定识别”，不再误报尺寸问题
+- 新增 `_trim_excel_empty_table_rows()`，删除全为空的 Markdown 表格行
+- 保留 `_sanitize_excel_table_newlines()`，避免单元格换行破坏 Markdown 表格结构
+
+#### 实测
+
+同一 Excel 解析结果：
+
+- 处理前：850 行，49,646 字符
+- 处理后：318 行，31,636 字符
+- 删除：532 行，18,010 字符
+
+**决策**：Excel 的有效范围不能完全依赖带格式单元格范围；进入 `Source.full_text` 前必须做空行裁剪，减少无效上下文。
+
+---
+
+### 19.8 测试与验证
+
+- `tests/test_vision_descriptions.py` — 新增 Vision JSON 提取、截断恢复、推理泄漏清理、低置信度降级、520 重试、超时和 Excel 空行裁剪测试
+- `tests/test_sources_api.py` — 增加 Markdown/ZIP 下载和图片路径重写测试
+- `frontend/src/components/source/SourceDetailContent.test.tsx` — 覆盖源详情页下载操作
+- `frontend/src/lib/stores/navigation-store.test.ts` — 覆盖来源详情导航状态
+
+本轮最后一次针对 Vision 模块的验证结果：
+
+```text
+uv run pytest tests/test_vision_descriptions.py -q
+18 passed, 6 warnings
+
+uv run ruff check open_notebook/graphs/source.py tests/test_vision_descriptions.py
+All checks passed
+```
+
+警告为既有 Pydantic/依赖弃用提示，不影响本轮测试结果。修改代码或环境变量后需重启 API 和 worker；前端相关改动需重启 frontend。历史 `Source.full_text` 不会自动重写，需要重新解析来源才能看到新结果。
+
+---
+
+### 19.9 已知问题与后续方向
+
+1. **领域 Prompt 仍偏窄**：当前提示词对油井水泥、固井和 HPHT 曲线权重较高，在缓膨微球、调剖剂、堵水剂等报告中可能错误套用“水泥浆/固井”解释。后续应根据标题、章节和附近正文动态选择“油井水泥外加剂”或“油田调剖堵水材料”等领域子 Prompt。
+2. **局部 JSON 恢复仍可优化**：少数截断响应会进入“模型返回格式不完整”降级。后续可加强字段级恢复，并统一为更自然的用户文案。
+3. **知识图谱大输出截断**：Excel 文档曾出现单次生成约 802 条关系后 JSON 截断，末条 relation 缺少 `type`，导致整个 `KnowledgeGraphSchema` 校验失败并错误记录为 0/0 成功。该问题尚未完成修复，后续应采用分 sheet/分块、限制实体关系数量、局部恢复、失败块拆分重试，并禁止将 0/0 记录为成功。
+4. **供应商专项参数**：`VISION_REASONING_EFFORT`、`VISION_IMAGE_DETAIL` 等参数是否能经 Esperanto 透传，仍需结合供应商和库版本验证，不能仅通过 `.env` 配置即视为生效。
+5. **回归样本集**：应将当前两份 PDF、一份 Excel 及其抽取图片固化为评测集，对类型准确率、事实覆盖、数值准确率、格式合规率、失败率和单图耗时持续回归。
+
+---
+
+### 19.10 Mac Studio 局域网源码部署安全调整
+
+用户当前采用源码方式运行：Mac Studio 上启动 SurrealDB、API、worker 和 Next.js，局域网用户仅通过 `http://<Mac-IP>:3001` 访问。
+
+- `Makefile`：
+  - SurrealDB 端口改为 `127.0.0.1:8001:8000`，不再向局域网直接暴露数据库
+  - frontend 不再注入浏览器可见的 `API_URL=http://localhost:5056`
+  - 仅设置 `INTERNAL_API_URL=http://127.0.0.1:5056`，由 Next.js 服务端代理 API
+- `frontend/src/app/config/route.ts` — 未显式设置 `API_URL` 时返回空地址，使浏览器使用相对 `/api` 路径
+- `docker-compose.parallel.yml` — 同步将 SurrealDB 映射限制到宿主机回环地址
+- 保留 `ws://127.0.0.1:8001/rpc`：本地进程连接本机数据库不需要 TLS；Sourcery 的 `wss://` 告警不适用于该受限内部连接
+
+**决策**：局域网仅开放前端端口 3001；API 默认保留在本机回环地址，由 Next.js 代理；SurrealDB 仅允许 Mac Studio 本机访问。
+
+---
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `api/routers/sources.py` | 来源语言传递；Markdown/ZIP 下载；离线图片路径重写 |
+| `commands/source_commands.py` | source command 传递界面语言 |
+| `open_notebook/graphs/source.py` | 图片上下文、Vision Prompt、结构化解析、清洗降级、并发重试、Excel 图片与空行处理 |
+| `.env.example` | Vision 并发、超时、重试及 Ollama/云模型参数说明 |
+| `frontend/src/app/(dashboard)/sources/[id]/page.tsx` | 返回来源列表文案国际化 |
+| `frontend/src/components/source/SourceDetailContent.tsx` | 顶部图标语义修复、来源类型本地化、解析结果下载菜单 |
+| `frontend/src/lib/api/sources.ts` | Markdown/ZIP 下载 API |
+| `frontend/src/lib/stores/navigation-store.ts` | 来源详情导航状态调整 |
+| `frontend/src/lib/locales/*/index.ts` | 9 种语言的来源详情与下载文案 |
+| `tests/test_sources_api.py` | 下载接口与 ZIP 内容测试 |
+| `tests/test_vision_descriptions.py` | Vision 解析、降级、重试、超时与 Excel 裁剪测试 |
+| `frontend/src/components/source/SourceDetailContent.test.tsx` | 来源详情下载交互测试 |
+| `frontend/src/lib/stores/navigation-store.test.ts` | 来源导航状态测试 |
+| `frontend/src/app/config/route.ts` | 未配置外部 API 地址时使用相对 `/api` 路径 |
+| `frontend/src/app/config/route.test.ts` | 局域网源码部署 API 路径回归测试 |
+| `Makefile` | 本地数据库回环绑定及前端内部 API 代理配置 |
+| `docker-compose.parallel.yml` | SurrealDB 宿主机端口限制为 `127.0.0.1` |
+
+---
+
+> 最后更新：2026-06-10 | 新增 §19（源解析下载、Vision 图片描述工程化及 Mac Studio 局域网源码部署安全调整）。当前 Vision 模型选择 MiniMax-M3；下一轮优先处理领域 Prompt 动态路由和知识图谱大输出截断。

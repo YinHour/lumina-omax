@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getApiUrl } from '@/lib/config'
+import i18n from '@/lib/i18n'
 
 interface AuthState {
   isAuthenticated: boolean
@@ -123,9 +124,11 @@ export const useAuthStore = create<AuthState>()(
               const errData = await response.json()
               errorMessage = errData.detail || errorMessage
             } catch {}
-            
-            if (response.status === 401 && errorMessage === 'Authentication failed') {
-              errorMessage = 'Invalid username or password. Please try again.'
+
+            if (errorMessage === 'AUTH_INVALID_CREDENTIALS') {
+              errorMessage = i18n.t('auth.invalidCredentials')
+            } else if (response.status === 401 && errorMessage === 'Authentication failed') {
+              errorMessage = i18n.t('auth.invalidCredentials')
             } else if (response.status === 403 && errorMessage === 'Authentication failed') {
               errorMessage = 'Access denied. Please check your credentials.'
             } else if (response.status >= 500) {

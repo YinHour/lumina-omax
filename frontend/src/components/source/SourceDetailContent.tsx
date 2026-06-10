@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { isAxiosError } from 'axios'
+import { isAxiosError, type AxiosResponse } from 'axios'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -46,7 +46,7 @@ import {
 } from '@/components/ui/select'
 import {
   Link as LinkIcon,
-  Upload,
+  FileText,
   AlignLeft,
   ExternalLink,
   Download,
@@ -96,6 +96,8 @@ export function SourceDetailContent({
   const [copied, setCopied] = useState(false)
   const [isEmbedding, setIsEmbedding] = useState(false)
   const [isDownloadingFile, setIsDownloadingFile] = useState(false)
+  const [isDownloadingMarkdown, setIsDownloadingMarkdown] = useState(false)
+  const [isDownloadingPackage, setIsDownloadingPackage] = useState(false)
   const [fileAvailable, setFileAvailable] = useState<boolean | null>(null)
   const [selectedInsight, setSelectedInsight] = useState<SourceInsightResponse | null>(null)
   const [insightToDelete, setInsightToDelete] = useState<string | null>(null)
@@ -267,6 +269,22 @@ export function SourceDetailContent({
     return value.replace(/^["']|["']$/g, '')
   }
 
+  const saveBlobResponse = (response: AxiosResponse<Blob>, fallbackName: string) => {
+    const filenameFromHeader = parseContentDisposition(
+      response.headers?.['content-disposition'] as string | undefined
+    )
+    const filename = filenameFromHeader || fallbackName
+
+    const blobUrl = window.URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(blobUrl)
+  }
+
   const handleDownloadFile = async () => {
     if (!source?.asset?.file_path || isDownloadingFile || fileAvailable === false) {
       return
@@ -275,20 +293,8 @@ export function SourceDetailContent({
     try {
       setIsDownloadingFile(true)
       const response = await sourcesApi.downloadFile(source.id)
-      const filenameFromHeader = parseContentDisposition(
-        response.headers?.['content-disposition'] as string | undefined
-      )
       const fallbackName = extractFilename(source.asset.file_path, `source-${source.id}`)
-      const filename = filenameFromHeader || fallbackName
-
-      const blobUrl = window.URL.createObjectURL(response.data)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(blobUrl)
+      saveBlobResponse(response, fallbackName)
       setFileAvailable(true)
       toast.success(t.common.success)
     } catch (err) {
@@ -304,18 +310,57 @@ export function SourceDetailContent({
     }
   }
 
-  const getSourceIcon = () => {
-    if (!source) return null
-    if (source.asset?.url) return <LinkIcon className="h-5 w-5" />
-    if (source.asset?.file_path) return <Upload className="h-5 w-5" />
-    return <AlignLeft className="h-5 w-5" />
+  const handleDownloadMarkdown = async () => {
+    if (!source?.full_text || isDownloadingMarkdown) {
+      return
+    }
+
+    try {
+      setIsDownloadingMarkdown(true)
+      const response = await sourcesApi.downloadMarkdown(source.id)
+      saveBlobResponse(response, `${source.title || source.id}.md`)
+      toast.success(t.common.success)
+    } catch (err) {
+      console.error('Failed to download markdown:', err)
+      toast.error(t.common.error)
+    } finally {
+      setIsDownloadingMarkdown(false)
+    }
   }
 
-  const getSourceType = () => {
-    if (!source) return 'unknown'
+  const handleDownloadPackage = async () => {
+    if (!source?.full_text || isDownloadingPackage) {
+      return
+    }
+
+    try {
+      setIsDownloadingPackage(true)
+      const response = await sourcesApi.downloadPackage(source.id)
+      saveBlobResponse(response, `${source.title || source.id}.zip`)
+      toast.success(t.common.success)
+    } catch (err) {
+      console.error('Failed to download markdown package:', err)
+      toast.error(t.common.error)
+    } finally {
+      setIsDownloadingPackage(false)
+    }
+  }
+
+  type SourceType = 'link' | 'file' | 'text'
+
+  const getSourceType = (): SourceType => {
+    if (!source) return 'text'
     if (source.asset?.url) return 'link'
     if (source.asset?.file_path) return 'file'
     return 'text'
+  }
+
+  const getSourceIcon = () => {
+    if (!source) return null
+    const sourceType = getSourceType()
+    if (sourceType === 'link') return <LinkIcon className="h-4 w-4" aria-hidden="true" />
+    if (sourceType === 'file') return <FileText className="h-4 w-4" aria-hidden="true" />
+    return <AlignLeft className="h-4 w-4" aria-hidden="true" />
   }
 
   const handleCopyUrl = useCallback(() => {
@@ -406,9 +451,11 @@ export function SourceDetailContent({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {getSourceIcon()}
             <Badge variant="secondary" className="text-sm">
-              {getSourceType()}
+              <span className="inline-flex items-center gap-1.5">
+                {getSourceIcon()}
+                {t.sources.type[getSourceType()]}
+              </span>
             </Badge>
 
             {/* Chat with source button - only in modal */}
@@ -419,13 +466,32 @@ export function SourceDetailContent({
               </Button>
             )}
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label={t.sources.moreActions}>
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {source.full_text?.trim() && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={handleDownloadMarkdown}
+                      disabled={isDownloadingMarkdown}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {isDownloadingMarkdown ? t.sources.preparing : t.sources.downloadMarkdown}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={handleDownloadPackage}
+                      disabled={isDownloadingPackage}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {isDownloadingPackage ? t.sources.preparing : t.sources.downloadMarkdownPackage}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 {source.asset?.file_path && (
                   <>
                     <DropdownMenuItem

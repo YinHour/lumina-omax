@@ -1,9 +1,13 @@
 import asyncio
 import os
+import re
 import uuid
+import zipfile
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any, List, Optional
+from urllib.parse import quote, unquote
 
 from dotenv import dotenv_values
 from fastapi import (
@@ -14,9 +18,10 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
 
@@ -42,6 +47,67 @@ from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
+
+
+_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+
+
+def _safe_download_basename(title: Optional[str]) -> str:
+    """Return a filesystem-friendly base filename for generated downloads."""
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (title or "").strip())
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .-_")
+    return cleaned or "source"
+
+
+def _source_images_dir(source_id: str) -> str:
+    safe_source_id = str(source_id).split(":")[-1]
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(project_root, "data", "uploads", "images", safe_source_id)
+
+
+def _content_disposition_filename(filename: str) -> str:
+    return f"attachment; filename*=UTF-8''{quote(filename)}"
+
+
+def _rewrite_markdown_image_links_for_package(markdown: str, source_id: str) -> str:
+    safe_source_id = str(source_id).split(":")[-1]
+    image_path_re = re.compile(
+        rf"(?P<prefix>/api/uploads/images/{re.escape(safe_source_id)}/)(?P<name>[^)\"'\s>]+|[^)\"'>]+)"
+    )
+
+    def _replace(match: re.Match[str]) -> str:
+        filename = os.path.basename(unquote(match.group("name")).strip())
+        return f"images/{filename}"
+
+    return image_path_re.sub(_replace, markdown)
+
+
+def _build_source_markdown_package(
+    source_id: str,
+    title: Optional[str],
+    markdown: str,
+    images_dir: str,
+) -> bytes:
+    base_name = _safe_download_basename(title)
+    packaged_markdown = _rewrite_markdown_image_links_for_package(markdown, source_id)
+    buffer = BytesIO()
+
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        root = base_name
+        archive.writestr(f"{root}/{base_name}.md", packaged_markdown)
+
+        if os.path.isdir(images_dir):
+            for filename in sorted(os.listdir(images_dir)):
+                if not filename.lower().endswith(_IMAGE_EXTENSIONS):
+                    continue
+                image_path = os.path.realpath(os.path.join(images_dir, filename))
+                safe_root = os.path.realpath(images_dir)
+                if not image_path.startswith(safe_root + os.sep):
+                    continue
+                if os.path.isfile(image_path):
+                    archive.write(image_path, f"{root}/images/{filename}")
+
+    return buffer.getvalue()
 
 
 def generate_unique_filename(original_filename: str, upload_folder: str) -> str:
@@ -339,6 +405,7 @@ async def get_sources(
 
 @router.post("/sources", response_model=SourceResponse)
 async def create_source(
+    request: Request,
     form_data: tuple[SourceCreate, Optional[UploadFile]] = Depends(
         parse_source_form_data
     ),
@@ -346,6 +413,10 @@ async def create_source(
 ):
     """Create a new source with support for both JSON and multipart form data."""
     source_data, upload_file = form_data
+
+    # Read language preference from Accept-Language header
+    accept_lang = request.headers.get("accept-language", "")
+    language = accept_lang.split(",")[0].strip().split(";")[0] if accept_lang else None
 
     # Initialize file_path before try block so exception handlers can reference it
     file_path = None
@@ -502,6 +573,7 @@ async def create_source(
                     notebook_ids=source_data.notebooks,
                     transformations=transformation_ids,
                     embed=source_data.embed,
+                    language=language,
                 )
 
                 command_id = await CommandService.submit_command_job(
@@ -586,6 +658,7 @@ async def create_source(
                     notebook_ids=source_data.notebooks,
                     transformations=transformation_ids,
                     embed=source_data.embed,
+                    language=language,
                 )
 
                 # Run in thread pool to avoid blocking the event loop
@@ -846,6 +919,61 @@ async def download_source_file(source_id: str):
         raise HTTPException(status_code=500, detail="Failed to download source file")
 
 
+@router.get("/sources/{source_id}/download/markdown")
+async def download_source_markdown(source_id: str):
+    """Download the processed source content as a Markdown file."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        if not source.full_text or not source.full_text.strip():
+            raise HTTPException(status_code=404, detail="Source has no processed content")
+
+        filename = f"{_safe_download_basename(source.title)}.md"
+        content = source.full_text.encode("utf-8")
+        return Response(
+            content=content,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": _content_disposition_filename(filename)},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading markdown for source {source_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to download source markdown")
+
+
+@router.get("/sources/{source_id}/download/package")
+async def download_source_markdown_package(source_id: str):
+    """Download processed Markdown plus extracted images as a ZIP package."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        if not source.full_text or not source.full_text.strip():
+            raise HTTPException(status_code=404, detail="Source has no processed content")
+
+        safe_source_id = str(source.id or source_id).split(":")[-1]
+        title = _safe_download_basename(source.title)
+        package = _build_source_markdown_package(
+            source_id=safe_source_id,
+            title=title,
+            markdown=source.full_text,
+            images_dir=_source_images_dir(safe_source_id),
+        )
+        filename = f"{title}.zip"
+        return StreamingResponse(
+            BytesIO(package),
+            media_type="application/zip",
+            headers={"Content-Disposition": _content_disposition_filename(filename)},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading markdown package for source {source_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to download source package")
+
+
 @router.get("/sources/{source_id}/status", response_model=SourceStatusResponse)
 async def get_source_status(source_id: str):
     """Get processing status for a source."""
@@ -953,9 +1081,13 @@ async def update_source(source_id: str, source_update: SourceUpdate):
 
 
 @router.post("/sources/{source_id}/retry", response_model=SourceResponse)
-async def retry_source_processing(source_id: str):
+async def retry_source_processing(request: Request, source_id: str):
     """Retry processing for a failed or stuck source."""
     try:
+        # Read language preference from Accept-Language header
+        accept_lang = request.headers.get("accept-language", "")
+        language = accept_lang.split(",")[0].strip().split(";")[0] if accept_lang else None
+
         # First, verify source exists
         source = await Source.get(source_id)
         if not source:
@@ -1020,6 +1152,7 @@ async def retry_source_processing(source_id: str):
                 notebook_ids=notebook_ids,
                 transformations=[],  # Use default transformations on retry
                 embed=True,  # Always embed on retry
+                language=language,
             )
 
             command_id = await CommandService.submit_command_job(

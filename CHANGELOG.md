@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-06-08
+
+### Added
+- Parallel deployment support: docker-compose.parallel.yml with offset ports for running multiple versions side-by-side on the same host
+- .env.parallel with isolated SurrealDB data directory and service ports
+
+### Changed
+- Version bump to 1.9.6
+
 ## [1.8.4] - 2026-04-09
 
 ### Security
