@@ -16,9 +16,9 @@ const nextConfig: NextConfig = {
   // Next.js handles internal routing to the API backend
   async rewrites() {
     // INTERNAL_API_URL: Where Next.js server-side should proxy API requests
-    // Default: http://localhost:5056 (v2 offset port)
+    // Default: http://localhost:5055 (standard container and local API port)
     // Override for multi-container: INTERNAL_API_URL=http://api-service:5055
-    const internalApiUrl = process.env.INTERNAL_API_URL || 'http://localhost:5056'
+    const internalApiUrl = process.env.INTERNAL_API_URL || 'http://localhost:5055'
 
     console.log(`[Next.js Rewrites] Proxying /api/* to ${internalApiUrl}/api/*`)
 

@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - .env.parallel with isolated SurrealDB data directory and service ports
 
 ### Changed
-- Version bump to 1.8.7
+- Version bump to 1.9.6
 
 ## [1.8.4] - 2026-04-09
 

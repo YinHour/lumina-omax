@@ -1257,21 +1257,21 @@ async def content_process(state: SourceState) -> dict:
                                     image_url=f"/api/uploads/images/{safe_source_id}/{img_file}",
                                 )
                             try:
-                                with open(img_path, "rb") as f:
-                                    img_data = base64.b64encode(f.read()).decode("utf-8")
-                                ext = os.path.splitext(img_file)[1].lower()
-                                mime_type = mime_map.get(ext, 'jpeg')
-                                vision_prompt = _build_vision_prompt(
-                                    state.get("language"),
-                                    context,
-                                )
-
-                                msg = HumanMessage(content=[
-                                    {"type": "text", "text": vision_prompt},
-                                    {"type": "image_url", "image_url": {"url": f"data:image/{mime_type};base64,{img_data}"}}
-                                ])
-
                                 async with semaphore:
+                                    with open(img_path, "rb") as f:
+                                        img_data = base64.b64encode(f.read()).decode("utf-8")
+                                    ext = os.path.splitext(img_file)[1].lower()
+                                    mime_type = mime_map.get(ext, 'jpeg')
+                                    vision_prompt = _build_vision_prompt(
+                                        state.get("language"),
+                                        context,
+                                    )
+
+                                    msg = HumanMessage(content=[
+                                        {"type": "text", "text": vision_prompt},
+                                        {"type": "image_url", "image_url": {"url": f"data:image/{mime_type};base64,{img_data}"}}
+                                    ])
+
                                     response = await _invoke_vision_with_retries(
                                         lambda: vision_lc.ainvoke([msg])
                                     )
