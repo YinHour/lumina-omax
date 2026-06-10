@@ -4,23 +4,56 @@ import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
 
+function extractFlatBlock(source: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = source.match(
+    new RegExp(`(?:^|\\n)${escapedSelector}\\s*\\{([^{}]*)\\}`)
+  )
+
+  expect(match, `Expected a flat ${selector} block`).not.toBeNull()
+  return match![1]
+}
+
 describe('global design tokens', () => {
   it('defines warm semantic status and surface tokens', () => {
-    expect(css).toContain('--color-highlight: var(--highlight);')
-    expect(css).toContain(
+    const theme = extractFlatBlock(css, '@theme inline')
+
+    expect(theme).toContain('--color-highlight: var(--highlight);')
+    expect(theme).toContain(
       '--color-highlight-foreground: var(--highlight-foreground);'
     )
-    expect(css).toContain('--color-success: var(--success);')
-    expect(css).toContain('--color-warning: var(--warning);')
+    expect(theme).toContain('--color-success: var(--success);')
+    expect(theme).toContain(
+      '--color-success-foreground: var(--success-foreground);'
+    )
+    expect(theme).toContain('--color-warning: var(--warning);')
+    expect(theme).toContain(
+      '--color-warning-foreground: var(--warning-foreground);'
+    )
     expect(css).toContain('--shadow-surface:')
     expect(css).toContain('--motion-standard: 180ms;')
   })
 
   it('provides both warm light and dark theme values', () => {
-    expect(css).toMatch(/:root\s*{[\s\S]*--background:\s*oklch\(/)
-    expect(css).toMatch(/\.dark\s*{[\s\S]*--background:\s*oklch\(/)
-    expect(css).toContain('--highlight:')
-    expect(css).toContain('--sidebar-accent:')
+    const lightTheme = extractFlatBlock(css, ':root')
+    const darkTheme = extractFlatBlock(css, '.dark')
+    const colorVariables = [
+      'background',
+      'highlight',
+      'highlight-foreground',
+      'success',
+      'success-foreground',
+      'warning',
+      'warning-foreground',
+    ]
+
+    for (const theme of [lightTheme, darkTheme]) {
+      for (const variable of colorVariables) {
+        expect(theme).toMatch(
+          new RegExp(`--${variable}:\\s*oklch\\([^;]+\\);`)
+        )
+      }
+    }
   })
 
   it('removes legacy hover scaling', () => {
