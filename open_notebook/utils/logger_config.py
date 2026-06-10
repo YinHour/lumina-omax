@@ -21,6 +21,8 @@ def setup_logging():
     logger.remove()
     
     log_level = os.environ.get("LOG_LEVEL", "DEBUG")
+    service_name = os.environ.get("LOG_SERVICE", "open_notebook")
+    log_filename = f"{service_name}.log"
     
     # Add console handler
     logger.add(
@@ -37,14 +39,14 @@ def setup_logging():
         log_dir.mkdir(exist_ok=True)
         
         logger.add(
-            str(log_dir / "open_notebook.log"),
+            str(log_dir / log_filename),
             rotation="10 MB",
             retention="30 days",
             level=log_level,
             enqueue=True,  # Important for multiprocess/async safety
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
         )
-        logger.info(f"File logging configured: {log_dir / 'open_notebook.log'}")
+        logger.info(f"File logging configured: {log_dir / log_filename}")
     except Exception as e:
         logger.error(f"Failed to configure file logging: {e}")
         

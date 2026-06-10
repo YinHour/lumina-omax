@@ -41,6 +41,7 @@ from api.routers import (
 )
 from api.routers import commands as commands_router
 from open_notebook.database.async_migrate import AsyncMigrationManager
+from open_notebook.database.repository import close_database_pool
 from open_notebook.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -51,8 +52,8 @@ from open_notebook.exceptions import (
     OpenNotebookError,
     RateLimitError,
 )
-from open_notebook.utils.office_converter import get_libreoffice_command_info
 from open_notebook.utils.encryption import get_secret_from_env
+from open_notebook.utils.office_converter import get_libreoffice_command_info
 
 # Import commands to register them in the API process
 try:
@@ -126,7 +127,8 @@ async def lifespan(app: FastAPI):
     # Yield control to the application
     yield
 
-    # Shutdown: cleanup if needed
+    # Shutdown: close database connection pools
+    await close_database_pool()
     logger.info("API shutdown complete")
 
 

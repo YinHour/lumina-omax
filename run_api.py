@@ -7,6 +7,8 @@ import os
 import sys
 from pathlib import Path
 
+os.environ.setdefault("LOG_SERVICE", "api")
+
 import uvicorn
 from loguru import logger
 
@@ -21,7 +23,7 @@ sys.path.insert(0, str(current_dir))
 if __name__ == "__main__":
     # Default configuration
     host = os.getenv("API_HOST", "127.0.0.1")
-    port = int(os.getenv("API_PORT", "5055"))
+    port = int(os.getenv("API_PORT", "5056"))
     reload = os.getenv("API_RELOAD", "true").lower() == "true"
 
     print(f"Starting Lumiton·Omax API server on {host}:{port}")

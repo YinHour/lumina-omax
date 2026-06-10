@@ -247,13 +247,13 @@ async def login_user(req: UserLoginRequest, request: Request):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="AUTH_INVALID_CREDENTIALS",
         )
 
     if not verify_password(req.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="AUTH_INVALID_CREDENTIALS",
         )
 
     if user.status == "pending":

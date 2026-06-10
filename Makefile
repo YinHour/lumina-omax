@@ -1,6 +1,7 @@
 .PHONY: run frontend frontend-test-bib check ruff database lint api start-all stop-all status clean-cache worker worker-start worker-stop worker-restart
 .PHONY: docker-buildx-prepare docker-buildx-clean docker-buildx-reset
 .PHONY: docker-push docker-push-latest docker-release docker-build-local tag export-docs
+.PHONY: parallel-up parallel-down parallel-status
 
 # Get version from pyproject.toml
 VERSION := $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
@@ -13,14 +14,19 @@ GHCR_IMAGE := ghcr.io/lfnovo/open-notebook
 PLATFORMS := linux/amd64,linux/arm64
 
 database:
-	docker compose up -d surrealdb
+	docker run -d --name surrealdb-v2 \
+		-p 8001:8000 \
+		-v ./surreal_data_v2:/mydata \
+		-e SURREAL_EXPERIMENTAL_GRAPHQL=true \
+		surrealdb/surrealdb:v2 \
+		start --log info --user root --pass root rocksdb:/mydata/mydatabase.db
 
 run:
 	@echo "⚠️  Warning: Starting frontend only. For full functionality, use 'make start-all'"
-	cd frontend && npm run dev -- -H 0.0.0.0
+	cd frontend && INTERNAL_API_URL=http://localhost:5056 npm run dev -- -H 0.0.0.0 -p 3001
 
 frontend:
-	cd frontend && npm run dev -- -H 0.0.0.0
+	cd frontend && INTERNAL_API_URL=http://localhost:5056 npm run dev -- -H 0.0.0.0 -p 3001
 
 # Verify 参考文献 auto-numbering (run on your machine; requires Node/npm in PATH)
 frontend-test-bib:
@@ -57,7 +63,7 @@ docker-build-local:
 		-t $(DOCKERHUB_IMAGE):local \
 		.
 	@echo "✅ Built $(DOCKERHUB_IMAGE):$(VERSION) and $(DOCKERHUB_IMAGE):local"
-	@echo "Run with: docker run -p 5055:5055 -p 3000:3000 $(DOCKERHUB_IMAGE):local"
+	@echo "Run with: docker run -p 5056:5055 -p 3001:3000 $(DOCKERHUB_IMAGE):local"
 
 # Build and push version tags ONLY (no latest) for both regular and single images
 docker-push: docker-buildx-prepare
@@ -138,7 +144,7 @@ full:
 
 
 api:
-	uv run --env-file .env run_api.py
+	LOG_SERVICE=api uv run --env-file .env run_api.py
 
 .PHONY: worker worker-start worker-stop worker-restart
 
@@ -146,7 +152,7 @@ worker: worker-start
 
 worker-start:
 	@echo "Starting surreal-commands worker..."
-	uv run --env-file .env surreal-commands-worker --import-modules commands
+	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands
 
 worker-stop:
 	@echo "Stopping surreal-commands worker..."
@@ -158,42 +164,52 @@ worker-restart: worker-stop
 
 # === Service Management ===
 start-all:
-	@echo "🚀 Starting Lumiton·Omax (Database + API + Worker + Frontend)..."
-	@echo "📊 Starting SurrealDB..."
-	@docker compose -f docker-compose.yml up -d surrealdb
+	@echo "🚀 Starting Lumiton·Omax v2 (Database + API + Worker + Frontend)..."
+	@echo "📊 Starting SurrealDB (port 8001)..."
+	@docker run -d --name surrealdb-v2 \
+		-p 8001:8000 \
+		-v ./surreal_data_v2:/mydata \
+		-e SURREAL_EXPERIMENTAL_GRAPHQL=true \
+		surrealdb/surrealdb:v2 \
+		start --log info --user root --pass root rocksdb:/mydata/mydatabase.db 2>/dev/null || docker start surrealdb-v2
 	@python -c "import time; time.sleep(3)"
-	@echo "🔧 Starting API backend..."
-	@uv run run_api.py &
-	@python -c "import time; time.sleep(3)"
-	@echo "⚙️ Starting background worker..."
-	@uv run --env-file .env surreal-commands-worker --import-modules commands &
-	@python -c "import time; time.sleep(2)"
-	@echo "🌐 Starting Next.js frontend..."
-	@echo "✅ All services started!"
-	@echo "📱 Frontend: http://localhost:3000"
-	@echo "🔗 API: http://localhost:5055"
-	@echo "📚 API Docs: http://localhost:5055/docs"
-	@cd frontend && npm run dev -- -H 0.0.0.0
-# @cd frontend && npm run build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && PORT=3000 HOSTNAME=0.0.0.0 node .next/standalone/server.js
+	@mkdir -p logs
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  DB     8001 → logs/surrealdb.log"
+	@echo "  API    :5056 → logs/api.log"
+	@echo "  Worker       → logs/worker.log"
+	@echo "  Web    :3001 → logs/frontend.log"
+	@echo "  Ctrl+C stops all"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@trap 'kill 0; exit 0' INT TERM; \
+	docker logs -f surrealdb-v2 2>&1 | tee logs/surrealdb.log | while IFS= read -r line; do printf '\033[35m[ DB]\033[0m %s\n' "$$line"; done & \
+	LOG_SERVICE=api uv run run_api.py 2>&1 | while IFS= read -r line; do printf '\033[34m[API]\033[0m %s\n' "$$line"; done & \
+	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands 2>&1 | while IFS= read -r line; do printf '\033[33m[WRK]\033[0m %s\n' "$$line"; done & \
+	cd frontend && INTERNAL_API_URL=http://localhost:5056 npm run dev -- -H 0.0.0.0 -p 3001 2>&1 | tee ../../logs/frontend.log | while IFS= read -r line; do printf '\033[32m[WEB]\033[0m %s\n' "$$line"; done & \
+	wait
+
 stop-all:
-	@echo "🛑 Stopping all Lumiton·Omax services..."
+	@echo "🛑 Stopping all Lumiton·Omax v2 services..."
 	@pkill -f "next dev" || true
 	@pkill -f "node .next/standalone/server.js" || true
 	@pkill -f "surreal-commands-worker" || true
 	@pkill -f "run_api.py" || true
 	@pkill -f "uvicorn api.main:app" || true
-	@docker compose down
+	@pkill -f "docker logs.*surrealdb-v2" || true
+	@docker stop surrealdb-v2 2>/dev/null || true
 	@echo "✅ All services stopped!"
 
 status:
-	@echo "📊 Lumiton·Omax Service Status:"
-	@echo "Database (SurrealDB):"
-	@docker compose ps surrealdb 2>/dev/null || echo "  ❌ Not running"
-	@echo "API Backend:"
+	@echo "📊 Lumiton·Omax v2 Service Status:"
+	@echo "Database (SurrealDB port 8001):"
+	@docker ps --filter name=surrealdb-v2 --format "  ✅ Running" 2>/dev/null || echo "  ❌ Not running"
+	@echo "API Backend (port 5056):"
 	@pgrep -f "run_api.py\|uvicorn api.main:app" >/dev/null && echo "  ✅ Running" || echo "  ❌ Not running"
 	@echo "Background Worker:"
 	@pgrep -f "surreal-commands-worker" >/dev/null && echo "  ✅ Running" || echo "  ❌ Not running"
-	@echo "Next.js Frontend:"
+	@echo "Next.js Frontend (port 3001):"
 	@pgrep -f "next dev" >/dev/null && echo "  ✅ Running" || echo "  ❌ Not running"
 
 # === Documentation Export ===
@@ -213,3 +229,19 @@ clean-cache:
 	@find . -name "*.pyo" -type f -delete 2>/dev/null || true
 	@find . -name "*.pyd" -type f -delete 2>/dev/null || true
 	@echo "✅ Cache directories cleaned!"
+
+# === Parallel Deployment (v2 alongside legacy) ===
+parallel-up:
+	@echo "🚀 Starting Lumiton·Omax v2 (parallel instance)..."
+	docker compose -f docker-compose.parallel.yml --env-file .env.parallel up -d
+	@echo "✅ v2 is running on:"
+	@echo "   Frontend: http://localhost:8503"
+	@echo "   API:      http://localhost:5056/docs"
+	@echo "   SurrealDB: ws://localhost:8001/rpc"
+
+parallel-down:
+	@echo "🛑 Stopping Lumiton·Omax v2..."
+	docker compose -f docker-compose.parallel.yml --env-file .env.parallel down
+
+parallel-status:
+	docker compose -f docker-compose.parallel.yml --env-file .env.parallel ps
