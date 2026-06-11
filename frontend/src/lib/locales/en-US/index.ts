@@ -271,6 +271,8 @@ export const enUS = {
     deleteExclusiveSourcesLabel: "Delete exclusive sources",
     keepExclusiveSourcesLabel: "Unlink and keep them",
     activeNotebooks: "Active Notebooks",
+    aggregatedNotebooks: "Aggregated Notebooks",
+    aggregateNotebook: "Aggregate Notebook",
     archivedNotebooks: "Archived Notebooks",
     notFound: "Notebook not found",
     notFoundDesc: "The requested notebook does not exist.",

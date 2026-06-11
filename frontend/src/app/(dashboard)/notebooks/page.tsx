@@ -80,7 +80,7 @@ export default function NotebooksPage() {
       <NotebookList
         notebooks={filteredAggregated}
         isLoading={isLoading}
-        title="聚合的笔记本"
+        title={t.notebooks.aggregatedNotebooks}
         collapsible
         defaultExpanded
         emptyTitle={isSearching ? t.common.noMatches : undefined}
@@ -130,7 +130,7 @@ export default function NotebooksPage() {
                 onClick={() => setAggregateDialogOpen(true)}
               >
                 <Layers className="size-4" />
-                聚合笔记本
+                {t.notebooks.aggregateNotebook}
               </Button>
               <Button onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="size-4" />

@@ -238,6 +238,8 @@ export const zhTW = {
     deleteExclusiveSourcesLabel: "刪除專屬來源",
     keepExclusiveSourcesLabel: "取消關聯並保留",
     activeNotebooks: "活動中的筆記本",
+    aggregatedNotebooks: "聚合的筆記本",
+    aggregateNotebook: "聚合筆記本",
     archivedNotebooks: "封存的筆記本",
     notFound: "未找到筆記本",
     notFoundDesc: "請求的筆記本不存在。",

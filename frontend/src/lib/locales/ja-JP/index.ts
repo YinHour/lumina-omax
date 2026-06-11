@@ -238,6 +238,8 @@ export const jaJP = {
     deleteExclusiveSourcesLabel: "専用ソースを削除",
     keepExclusiveSourcesLabel: "リンク解除して保持",
     activeNotebooks: "アクティブなノートブック",
+    aggregatedNotebooks: "集約ノートブック",
+    aggregateNotebook: "ノートブックを集約",
     archivedNotebooks: "アーカイブ済みノートブック",
     notFound: "ノートブックが見つかりません",
     notFoundDesc: "指定されたノートブックは存在しません。",

@@ -238,6 +238,8 @@ export const itIT = {
     deleteExclusiveSourcesLabel: "Elimina fonti esclusive",
     keepExclusiveSourcesLabel: "Scollega e mantieni",
     activeNotebooks: "Quaderni attivi",
+    aggregatedNotebooks: "Quaderni aggregati",
+    aggregateNotebook: "Aggrega quaderno",
     archivedNotebooks: "Quaderni archiviati",
     notFound: "Quaderno non trovato",
     notFoundDesc: "Il quaderno richiesto non esiste.",

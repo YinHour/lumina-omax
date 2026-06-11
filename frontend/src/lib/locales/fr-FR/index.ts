@@ -238,6 +238,8 @@ export const frFR = {
     deleteExclusiveSourcesLabel: "Supprimer les sources exclusives",
     keepExclusiveSourcesLabel: "Délier et les conserver",
     activeNotebooks: "Carnets actifs",
+    aggregatedNotebooks: "Carnets agrégés",
+    aggregateNotebook: "Agréger un carnet",
     archivedNotebooks: "Carnets archivés",
     notFound: "Carnet introuvable",
     notFoundDesc: "Le carnet demandé n'existe pas.",

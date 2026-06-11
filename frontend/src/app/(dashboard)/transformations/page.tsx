@@ -32,7 +32,12 @@ export default function TransformationsPage() {
           title={t.transformations.title}
           description={t.transformations.desc}
           actions={
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              aria-label={t.common.refresh}
+            >
               <RefreshCw className="h-4 w-4" />
             </Button>
           }

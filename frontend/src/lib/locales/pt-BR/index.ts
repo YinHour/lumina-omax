@@ -238,6 +238,8 @@ export const ptBR = {
     deleteExclusiveSourcesLabel: "Excluir fontes exclusivas",
     keepExclusiveSourcesLabel: "Desvincular e manter",
     activeNotebooks: "Cadernos Ativos",
+    aggregatedNotebooks: "Cadernos Agregados",
+    aggregateNotebook: "Agregar Caderno",
     archivedNotebooks: "Cadernos Arquivados",
     notFound: "Caderno não encontrado",
     notFoundDesc: "O caderno solicitado não existe.",

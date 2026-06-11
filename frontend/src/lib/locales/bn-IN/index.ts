@@ -238,6 +238,8 @@ export const bnIN = {
     deleteExclusiveSourcesLabel: "এক্সক্লুসিভ উৎসগুলি মুছে ফেলুন",
     keepExclusiveSourcesLabel: "আনলিংক করে রাখুন",
     activeNotebooks: "সক্রিয় নোটবুক",
+    aggregatedNotebooks: "সমন্বিত নোটবুক",
+    aggregateNotebook: "নোটবুক সমন্বিত করুন",
     archivedNotebooks: "আর্কাইভ নোটবুক",
     notFound: "নোটবুক খুঁজে পাওয়া যায়নি",
     notFoundDesc: "অনুরোধ করা নোটবুক অস্তিত্ব নেই।",

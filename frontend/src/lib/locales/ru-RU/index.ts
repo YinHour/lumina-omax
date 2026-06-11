@@ -238,6 +238,8 @@ export const ruRU = {
     deleteExclusiveSourcesLabel: "Удалить эксклюзивные источники",
     keepExclusiveSourcesLabel: "Отвязать и сохранить",
     activeNotebooks: "Активные блокноты",
+    aggregatedNotebooks: "Агрегированные блокноты",
+    aggregateNotebook: "Агрегировать блокнот",
     archivedNotebooks: "Архивные блокноты",
     notFound: "Блокнот не найден",
     notFoundDesc: "Запрошенный блокнот не существует.",

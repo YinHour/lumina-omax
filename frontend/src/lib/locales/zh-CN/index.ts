@@ -271,6 +271,8 @@ export const zhCN = {
     deleteExclusiveSourcesLabel: "删除专属来源",
     keepExclusiveSourcesLabel: "取消关联并保留",
     activeNotebooks: "活动的笔记本",
+    aggregatedNotebooks: "聚合的笔记本",
+    aggregateNotebook: "聚合笔记本",
     archivedNotebooks: "归档的笔记本",
     notFound: "未找到笔记本",
     notFoundDesc: "请求的笔记本不存在。",
