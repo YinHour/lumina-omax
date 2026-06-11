@@ -42,6 +42,7 @@ import {
   Wrench,
   Command,
   HelpCircle,
+  X,
 } from 'lucide-react'
 
 interface NavItem { name: string; href: string; icon: typeof Book; adminOnly?: boolean }
@@ -443,6 +444,16 @@ export function AppSidebar({
             <DialogPrimitive.Title className="sr-only">
               {t.common.navigationLabel}
             </DialogPrimitive.Title>
+            <DialogPrimitive.Close asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t.common.closeNavigation}
+                className="absolute right-3 top-3 z-10 text-sidebar-foreground hover:bg-sidebar-accent md:hidden"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </DialogPrimitive.Close>
             {renderSidebarContent(true)}
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>

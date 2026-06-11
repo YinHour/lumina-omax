@@ -131,6 +131,21 @@ describe('AppSidebar', () => {
     expect(onMobileOpenChange).toHaveBeenCalledWith(false)
   })
 
+  it('provides a visible control to close the mobile navigation', () => {
+    const onMobileOpenChange = vi.fn()
+
+    render(
+      <AppSidebar
+        mobileOpen
+        onMobileOpenChange={onMobileOpenChange}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }))
+
+    expect(onMobileOpenChange).toHaveBeenCalledWith(false)
+  })
+
   it('marks only the longest matching settings route as current', () => {
     vi.mocked(usePathname).mockReturnValue('/settings/api-keys')
     vi.mocked(useAuth).mockReturnValue({
