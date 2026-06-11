@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -10,9 +11,9 @@ const cardVariants = cva(
       variant: {
         default: "border-border/90 bg-card shadow-xs",
         interactive:
-          "cursor-pointer border-border/90 bg-card shadow-xs hover:border-primary/25 hover:bg-card hover:shadow-[var(--shadow-surface)]",
+          "cursor-pointer border-border/90 bg-card shadow-xs hover:border-primary/25 hover:bg-card hover:shadow-[var(--shadow-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
         selected:
-          "border-primary/40 bg-accent/55 ring-1 ring-primary/15",
+          "border-primary/40 bg-accent/55 ring-1 ring-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
         insight:
           "border-highlight/55 bg-highlight/12 shadow-xs",
       },
@@ -26,14 +27,20 @@ const cardVariants = cva(
 function Card({
   className,
   variant,
+  asChild = false,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof cardVariants>) {
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof cardVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot : "div"
+
   return (
-    <div
+    <Comp
+      {...props}
       data-slot="card"
       data-variant={variant ?? "default"}
       className={cn(cardVariants({ variant }), className)}
-      {...props}
     />
   )
 }
