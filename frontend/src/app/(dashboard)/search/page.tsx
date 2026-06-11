@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -26,7 +28,7 @@ import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
 import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
 
 export default function SearchPage() {
-  const { t, language } = useTranslation()
+  const { t } = useTranslation()
   // URL params
   const searchParams = useSearchParams()
   const urlQuery = searchParams?.get('q') || ''
@@ -288,10 +290,17 @@ export default function SearchPage() {
 
   return (
     <AppShell>
-      <div className="flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6">
-        <h1 className="shrink-0 text-xl md:text-2xl font-bold mb-4 md:mb-6">{t.searchPage.askAndSearch}</h1>
+      <PageContainer
+        width="full"
+        scroll={false}
+        className="flex h-full min-h-0 flex-col gap-5"
+      >
+        <PageHeader
+          className="shrink-0"
+          title={t.searchPage.askAndSearch}
+        />
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full flex-1 min-h-0 space-y-6 overflow-hidden">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="min-h-0 flex-1 space-y-6 overflow-hidden">
           <div className="shrink-0 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.searchPage.chooseAMode}</p>
             <TabsList aria-label={t.common.accessibility.searchKB} className="w-full max-w-xl">
@@ -640,7 +649,7 @@ export default function SearchPage() {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
+      </PageContainer>
     </AppShell>
   )
 }

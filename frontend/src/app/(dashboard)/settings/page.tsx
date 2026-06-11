@@ -1,6 +1,8 @@
 'use client'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { SettingsForm } from './components/SettingsForm'
 import { UserApprovalDashboard } from './components/UserApprovalDashboard'
 import { useSettings } from '@/lib/hooks/use-settings'
@@ -14,21 +16,18 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6">
-          <div className="max-w-4xl">
-            <div className="flex items-center gap-4 mb-6">
-              <h1 className="text-2xl font-bold">{t.navigation.settings}</h1>
-              <Button variant="outline" size="sm" onClick={() => refetch()}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <SettingsForm />
-            <UserApprovalDashboard />
-          </div>
-        </div>
-      </div>
+      <PageContainer width="readable" className="space-y-6">
+        <PageHeader
+          title={t.navigation.settings}
+          actions={
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          }
+        />
+        <SettingsForm />
+        <UserApprovalDashboard />
+      </PageContainer>
     </AppShell>
   )
 }

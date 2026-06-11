@@ -3,6 +3,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+const representativePages = [
+  'src/app/(dashboard)/notebooks/page.tsx',
+  'src/app/(dashboard)/transformations/page.tsx',
+  'src/app/(dashboard)/settings/page.tsx',
+  'src/app/(dashboard)/advanced/page.tsx',
+  'src/app/(dashboard)/search/page.tsx',
+]
 type Color = [number, number, number]
 
 function extractFlatBlock(source: string, selector: string) {
@@ -71,6 +78,14 @@ function contrastRatio(first: Color, second: Color) {
 }
 
 describe('global design tokens', () => {
+  it('uses shared page layout primitives on representative pages', () => {
+    for (const page of representativePages) {
+      const source = readFileSync(join(process.cwd(), page), 'utf8')
+      expect(source, page).toContain('PageContainer')
+      expect(source, page).toContain('PageHeader')
+    }
+  })
+
   it('defines warm semantic status and surface tokens', () => {
     const theme = extractFlatBlock(css, '@theme inline')
 
