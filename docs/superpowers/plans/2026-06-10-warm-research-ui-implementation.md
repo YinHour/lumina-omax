@@ -75,7 +75,7 @@
 - Create: `frontend/src/app/globals.test.ts`
 - Modify: `frontend/src/app/globals.css`
 
-- [ ] **Step 1: Write the failing token contract test**
+- [x] **Step 1: Write the failing token contract test**
 
 Create `frontend/src/app/globals.test.ts`:
 
@@ -114,7 +114,7 @@ describe('global design tokens', () => {
 })
 ```
 
-- [ ] **Step 2: Run the token test and verify it fails**
+- [x] **Step 2: Run the token test and verify it fails**
 
 Run:
 
@@ -126,7 +126,7 @@ npm test -- src/app/globals.test.ts
 Expected: FAIL because `--highlight`, status tokens, surface shadow, motion
 token, and reduced-motion rules do not exist, while legacy scaling remains.
 
-- [ ] **Step 3: Add the approved design reference**
+- [x] **Step 3: Add the approved design reference**
 
 Create `DESIGN.md` with this structure and concrete rules:
 
@@ -180,7 +180,7 @@ classes in feature components when a semantic role exists.
 - New user-facing strings must be translated in every locale
 ```
 
-- [ ] **Step 4: Implement the warm semantic tokens**
+- [x] **Step 4: Implement the warm semantic tokens**
 
 Update `frontend/src/app/globals.css`:
 
@@ -307,7 +307,7 @@ color/border/shadow transitions:
 }
 ```
 
-- [ ] **Step 5: Run the token test**
+- [x] **Step 5: Run the token test**
 
 Run:
 
@@ -318,7 +318,7 @@ npm test -- src/app/globals.test.ts
 
 Expected: PASS, 4 tests.
 
-- [ ] **Step 6: Commit the foundation**
+- [x] **Step 6: Commit the foundation**
 
 ```bash
 git add DESIGN.md frontend/src/app/globals.css frontend/src/app/globals.test.ts
@@ -337,7 +337,7 @@ git commit -m "feat: establish warm research design tokens"
 - Modify: `frontend/src/components/ui/checkbox.tsx`
 - Modify: `frontend/src/components/ui/radio-group.tsx`
 
-- [ ] **Step 1: Write failing shared-component tests**
+- [x] **Step 1: Write failing shared-component tests**
 
 Create `frontend/src/components/ui/ui-variants.test.tsx`:
 
@@ -385,7 +385,7 @@ describe('warm research UI variants', () => {
 })
 ```
 
-- [ ] **Step 2: Run the tests and verify they fail**
+- [x] **Step 2: Run the tests and verify they fail**
 
 Run:
 
@@ -397,7 +397,7 @@ npm test -- src/components/ui/ui-variants.test.tsx
 Expected: TypeScript/render failure because `Card` has no `variant`, followed
 by class assertion failures.
 
-- [ ] **Step 3: Implement restrained button styles**
+- [x] **Step 3: Implement restrained button styles**
 
 In `button.tsx`, keep the existing API and replace the base and variant
 classes:
@@ -435,7 +435,7 @@ const buttonVariants = cva(
 )
 ```
 
-- [ ] **Step 4: Add semantic card variants**
+- [x] **Step 4: Add semantic card variants**
 
 Convert `Card` to CVA while preserving all child component exports:
 
@@ -480,7 +480,7 @@ function Card({
 
 Export `cardVariants` with the existing card exports.
 
-- [ ] **Step 5: Unify form-control surfaces**
+- [x] **Step 5: Unify form-control surfaces**
 
 Apply this common shape to `Input`, `Textarea`, and `SelectTrigger`, preserving
 their existing sizes and behavior:
@@ -500,7 +500,7 @@ Update `Checkbox` and `RadioGroupItem` to use `bg-card/70`, a two-pixel
 focus-visible ring, and the same duration without changing their Radix state
 selectors.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -511,7 +511,7 @@ npm test -- src/components/ui/ui-variants.test.tsx
 
 Expected: PASS, 3 tests.
 
-- [ ] **Step 7: Run existing component tests**
+- [x] **Step 7: Run existing component tests**
 
 Run:
 
@@ -522,7 +522,7 @@ npm test -- src/components/common/ConfirmDialog.test.tsx
 
 Expected: PASS with no dialog/button behavior regression.
 
-- [ ] **Step 8: Commit shared controls**
+- [x] **Step 8: Commit shared controls**
 
 ```bash
 git add frontend/src/components/ui/button.tsx \
@@ -550,7 +550,7 @@ git commit -m "feat: unify core UI control styling"
 - Modify: `frontend/src/components/ui/sonner.tsx`
 - Modify: `frontend/src/components/layout/SetupBanner.tsx`
 
-- [ ] **Step 1: Add failing semantic feedback tests**
+- [x] **Step 1: Add failing semantic feedback tests**
 
 Append to `ui-variants.test.tsx`:
 
@@ -573,7 +573,7 @@ it('provides semantic insight and status variants', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run:
 
@@ -585,7 +585,7 @@ npm test -- src/components/ui/ui-variants.test.tsx
 Expected: FAIL because `insight`, `success`, and `warning` variants are not
 defined.
 
-- [ ] **Step 3: Add semantic badge and alert variants**
+- [x] **Step 3: Add semantic badge and alert variants**
 
 Add badge variants:
 
@@ -612,7 +612,7 @@ destructive:
   "border-destructive/40 bg-destructive/8 text-foreground [&>svg]:text-destructive",
 ```
 
-- [ ] **Step 4: Unify floating surfaces**
+- [x] **Step 4: Unify floating surfaces**
 
 Apply these rules without changing Radix behavior:
 
@@ -642,7 +642,7 @@ Change the dialog overlay to `bg-foreground/30 backdrop-blur-[2px]`. Keep
 animation duration within the approved range and retain `pointer-events`
 cleanup.
 
-- [ ] **Step 5: Map Sonner to semantic status tokens**
+- [x] **Step 5: Map Sonner to semantic status tokens**
 
 Set:
 
@@ -663,7 +663,7 @@ style={{
 } as React.CSSProperties}
 ```
 
-- [ ] **Step 6: Replace literal SetupBanner palettes**
+- [x] **Step 6: Replace literal SetupBanner palettes**
 
 Use `variant="destructive"` for missing encryption and `variant="warning"` for
 migration. Remove literal `red-*` and `amber-*` classes:
@@ -697,7 +697,7 @@ migration. Remove literal `red-*` and `amber-*` classes:
 </Alert>
 ```
 
-- [ ] **Step 7: Run focused and existing dialog tests**
+- [x] **Step 7: Run focused and existing dialog tests**
 
 Run:
 
@@ -709,7 +709,7 @@ npm test -- src/components/ui/ui-variants.test.tsx \
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit feedback surfaces**
+- [x] **Step 8: Commit feedback surfaces**
 
 ```bash
 git add frontend/src/components/ui/ui-variants.test.tsx \
@@ -732,7 +732,7 @@ git commit -m "feat: standardize UI feedback surfaces"
 - Create: `frontend/src/components/layout/PageHeader.tsx`
 - Create: `frontend/src/components/layout/PageHeader.test.tsx`
 
-- [ ] **Step 1: Write failing layout tests**
+- [x] **Step 1: Write failing layout tests**
 
 Create `PageHeader.test.tsx`:
 
@@ -769,7 +769,7 @@ describe('page layout primitives', () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -780,7 +780,7 @@ npm test -- src/components/layout/PageHeader.test.tsx
 
 Expected: FAIL because the two modules do not exist.
 
-- [ ] **Step 3: Implement PageContainer**
+- [x] **Step 3: Implement PageContainer**
 
 Create:
 
@@ -823,7 +823,7 @@ export function PageContainer({
 }
 ```
 
-- [ ] **Step 4: Implement PageHeader**
+- [x] **Step 4: Implement PageHeader**
 
 Create:
 
@@ -880,7 +880,7 @@ export function PageHeader({
 }
 ```
 
-- [ ] **Step 5: Run layout tests**
+- [x] **Step 5: Run layout tests**
 
 Run:
 
@@ -891,7 +891,7 @@ npm test -- src/components/layout/PageHeader.test.tsx
 
 Expected: PASS, 2 tests.
 
-- [ ] **Step 6: Commit layout primitives**
+- [x] **Step 6: Commit layout primitives**
 
 ```bash
 git add frontend/src/components/layout/PageContainer.tsx \
@@ -909,7 +909,7 @@ git commit -m "feat: add reusable page layout primitives"
 - Modify: `frontend/src/components/layout/AppSidebar.test.tsx`
 - Modify: every `frontend/src/lib/locales/*/index.ts`
 
-- [ ] **Step 1: Add mobile navigation translation keys**
+- [x] **Step 1: Add mobile navigation translation keys**
 
 Add these properties under `common` in every locale:
 
@@ -933,7 +933,7 @@ zh-CN/index.ts
 zh-TW/index.ts
 ```
 
-- [ ] **Step 2: Write the failing AppShell mobile test**
+- [x] **Step 2: Write the failing AppShell mobile test**
 
 Create `AppShell.test.tsx`:
 
@@ -976,7 +976,7 @@ describe('AppShell', () => {
 })
 ```
 
-- [ ] **Step 3: Extend AppSidebar tests**
+- [x] **Step 3: Extend AppSidebar tests**
 
 Replace the test file's navigation mock with a configurable function:
 
@@ -1016,7 +1016,7 @@ it('closes mobile navigation after following a link', () => {
 })
 ```
 
-- [ ] **Step 4: Run shell/sidebar tests and verify failure**
+- [x] **Step 4: Run shell/sidebar tests and verify failure**
 
 Run:
 
@@ -1029,7 +1029,7 @@ npm test -- src/components/layout/AppShell.test.tsx \
 Expected: FAIL because `AppShell` has no mobile trigger and `AppSidebar` has no
 controlled mobile props or active link semantics.
 
-- [ ] **Step 5: Implement local mobile state in AppShell**
+- [x] **Step 5: Implement local mobile state in AppShell**
 
 Update `AppShell`:
 
@@ -1075,7 +1075,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 ```
 
-- [ ] **Step 6: Convert AppSidebar into a controlled responsive drawer**
+- [x] **Step 6: Convert AppSidebar into a controlled responsive drawer**
 
 Add props:
 
@@ -1147,7 +1147,7 @@ Remove literal teal avatar colors and use
 `bg-primary/12 text-primary`. Remove redundant explicit primary button colors
 already supplied by the shared Button variant.
 
-- [ ] **Step 7: Run shell and sidebar tests**
+- [x] **Step 7: Run shell and sidebar tests**
 
 Run:
 
@@ -1159,7 +1159,7 @@ npm test -- src/components/layout/AppShell.test.tsx \
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit responsive navigation**
+- [x] **Step 8: Commit responsive navigation**
 
 ```bash
 git add frontend/src/components/layout/AppShell.tsx \
@@ -1389,7 +1389,7 @@ git commit -m "feat: adopt shared page layout across core views"
 - Modify: other files returned by the audit command only when they contain
   legacy global helper classes or literal primary overrides.
 
-- [ ] **Step 1: Audit legacy classes and literal palette usage**
+- [x] **Step 1: Audit legacy classes and literal palette usage**
 
 Run:
 
@@ -1401,7 +1401,7 @@ rg -n "sidebar-menu-item|card-hover|scale-\\[|translateY|bg-(blue|indigo|amber|r
 Expected: matches include sidebar toggles, notebook/source cards, SetupBanner
 or feature-specific semantic status colors.
 
-- [ ] **Step 2: Add a failing static regression assertion**
+- [x] **Step 2: Add a failing static regression assertion**
 
 Append to `globals.test.ts`:
 
@@ -1421,7 +1421,7 @@ it('does not use deprecated global interaction helper classes', () => {
 })
 ```
 
-- [ ] **Step 3: Run and verify failure**
+- [x] **Step 3: Run and verify failure**
 
 Run:
 
@@ -1432,7 +1432,7 @@ npm test -- src/app/globals.test.ts
 
 Expected: FAIL while the helper classes remain.
 
-- [ ] **Step 4: Replace helper classes with semantic component variants**
+- [x] **Step 4: Replace helper classes with semantic component variants**
 
 For `NotebookCard`, replace the opening element with:
 
@@ -1455,7 +1455,7 @@ For literal color matches:
 - Replace AI insight/attention amber with `highlight` or `warning`.
 - Replace destructive red with `destructive`.
 
-- [ ] **Step 5: Run the regression test and audit again**
+- [x] **Step 5: Run the regression test and audit again**
 
 Run:
 
@@ -1467,7 +1467,7 @@ rg -n "sidebar-menu-item|card-hover|scale-\\[|translateY" src
 
 Expected: tests PASS; audit has no deprecated interaction helper matches.
 
-- [ ] **Step 6: Run card-adjacent tests**
+- [x] **Step 6: Run card-adjacent tests**
 
 Run:
 
@@ -1478,7 +1478,7 @@ npm test -- src/components/source/SourceDetailContent.test.tsx
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit integration cleanup**
+- [x] **Step 7: Commit integration cleanup**
 
 ```bash
 git add frontend/src/app/globals.test.ts \
@@ -1494,7 +1494,7 @@ git commit -m "refactor: remove legacy UI interaction styles"
 **Files:**
 - Modify only files required to fix regressions caused by Tasks 1-7.
 
-- [ ] **Step 1: Run frontend lint**
+- [x] **Step 1: Run frontend lint**
 
 Run:
 
@@ -1506,7 +1506,7 @@ npm run lint
 Expected: exit 0. Fix only errors introduced or exposed by this work; do not
 perform unrelated refactors.
 
-- [ ] **Step 2: Run the full frontend test suite**
+- [x] **Step 2: Run the full frontend test suite**
 
 Run:
 
@@ -1517,7 +1517,7 @@ npm test
 
 Expected: all tests PASS.
 
-- [ ] **Step 3: Run the production build**
+- [x] **Step 3: Run the production build**
 
 Run:
 
@@ -1529,7 +1529,7 @@ npm run build
 Expected: Next.js production build completes successfully with no TypeScript
 errors.
 
-- [ ] **Step 4: Inspect the final diff**
+- [x] **Step 4: Inspect the final diff**
 
 Run:
 
@@ -1542,7 +1542,7 @@ git diff --stat main...HEAD
 Expected: no whitespace errors; only approved design-system, shared-component,
 layout, locale, representative-page, test, and documentation files changed.
 
-- [ ] **Step 5: Commit verification fixes if needed**
+- [x] **Step 5: Commit verification fixes if needed**
 
 If verification required code changes, stage only frontend source files:
 
@@ -1569,7 +1569,13 @@ make dev
 Expected: Docker Compose starts the database, API, and frontend. Confirm the
 frontend URL printed by the command responds before opening it in Browser.
 
-- [ ] **Step 2: Verify representative desktop pages**
+Status note: attempted on 2026-06-11, but the repository target is currently
+blocked because `make dev` references `docker-compose.dev.yml`, which is not
+present in the workspace. Browser verification continued with the frontend dev
+server plus a local mock API so UI behavior and screenshots could still be
+verified without changing backend/runtime behavior.
+
+- [x] **Step 2: Verify representative desktop pages**
 
 Use the Browser plugin at a desktop viewport of approximately `1440x900`.
 Check:
@@ -1595,7 +1601,7 @@ For each page verify:
 - consistent 12px panel and 8px control geometry;
 - no clipped actions or translated labels.
 
-- [ ] **Step 3: Verify dark theme**
+- [x] **Step 3: Verify dark theme**
 
 Switch to dark theme and repeat notebooks, search, and settings checks.
 Expected:
@@ -1606,7 +1612,7 @@ Expected:
 - borders remain visible but low contrast;
 - dialogs and menus inherit the dark warm surface.
 
-- [ ] **Step 4: Verify tablet and mobile**
+- [x] **Step 4: Verify tablet and mobile**
 
 Check approximately `1024x768` and `390x844`.
 
@@ -1620,7 +1626,7 @@ Expected:
 - search workspace remains operable;
 - dialogs remain within viewport and scroll internally.
 
-- [ ] **Step 5: Verify localization and keyboard behavior**
+- [x] **Step 5: Verify localization and keyboard behavior**
 
 Check Chinese and English:
 
@@ -1633,7 +1639,7 @@ Check Chinese and English:
 Use keyboard navigation to verify visible focus on sidebar links, buttons,
 form controls, tabs, dropdown items, and dialog close controls.
 
-- [ ] **Step 6: Record browser evidence**
+- [x] **Step 6: Record browser evidence**
 
 Capture screenshots for:
 
@@ -1648,7 +1654,7 @@ mobile-navigation-open
 Save them under a temporary verification directory, not as committed product
 assets.
 
-- [ ] **Step 7: Re-run affected tests after visual fixes**
+- [x] **Step 7: Re-run affected tests after visual fixes**
 
 Run:
 
@@ -1661,7 +1667,7 @@ npm run build
 
 Expected: all commands exit 0.
 
-- [ ] **Step 8: Commit browser-found fixes if needed**
+- [x] **Step 8: Commit browser-found fixes if needed**
 
 ```bash
 git add frontend/src
