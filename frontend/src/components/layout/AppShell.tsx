@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
 
 import { AppSidebar } from './AppSidebar'
@@ -15,6 +15,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const { t } = useTranslation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const mobileTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     const desktopQuery = window.matchMedia('(min-width: 768px)')
@@ -37,6 +38,7 @@ export function AppShell({ children }: AppShellProps) {
       <AppSidebar
         mobileOpen={mobileOpen}
         onMobileOpenChange={setMobileOpen}
+        mobileTriggerRef={mobileTriggerRef}
       />
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="flex h-14 shrink-0 items-center border-b border-border/70 bg-background/90 px-3 backdrop-blur md:hidden">
@@ -44,6 +46,7 @@ export function AppShell({ children }: AppShellProps) {
             type="button"
             variant="ghost"
             size="icon"
+            ref={mobileTriggerRef}
             aria-label={t.common.openNavigation}
             onClick={() => setMobileOpen(true)}
           >

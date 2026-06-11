@@ -11,12 +11,15 @@ vi.mock('./AppSidebar', () => ({
   AppSidebar: ({
     mobileOpen,
     onMobileOpenChange,
+    mobileTriggerRef,
   }: {
     mobileOpen: boolean
     onMobileOpenChange: (open: boolean) => void
+    mobileTriggerRef: React.RefObject<HTMLButtonElement | null>
   }) => (
     <div>
       <span>Mobile open: {String(mobileOpen)}</span>
+      <span>Trigger ref provided: {String(Boolean(mobileTriggerRef))}</span>
       <button type="button" onClick={() => onMobileOpenChange(false)}>
         Mock close navigation
       </button>
@@ -33,6 +36,7 @@ describe('AppShell', () => {
     )
 
     expect(screen.getByText('Mobile open: false')).toBeInTheDocument()
+    expect(screen.getByText('Trigger ref provided: true')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
     expect(screen.getByText('Mobile open: true')).toBeInTheDocument()

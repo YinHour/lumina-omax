@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type RefObject } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
@@ -49,6 +49,7 @@ interface NavItem { name: string; href: string; icon: typeof Book; adminOnly?: b
 interface AppSidebarProps {
   mobileOpen: boolean
   onMobileOpenChange: (open: boolean) => void
+  mobileTriggerRef?: RefObject<HTMLButtonElement | null>
 }
 
 const getNavigation = (t: TranslationKeys, isAdmin: boolean): { title: string; items: NavItem[] }[] => {
@@ -86,6 +87,7 @@ type CreateTarget = 'source' | 'notebook'
 export function AppSidebar({
   mobileOpen,
   onMobileOpenChange,
+  mobileTriggerRef,
 }: AppSidebarProps) {
   const { t } = useTranslation()
   const pathname = usePathname()
@@ -268,7 +270,7 @@ export function AppSidebar({
                       data-active={isActive}
                       className={cn(
                         'relative w-full justify-start gap-3 overflow-hidden text-sidebar-foreground sidebar-menu-item before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-transparent',
-                        'data-[active=true]:bg-indigo-50/80 data-[active=true]:text-indigo-700 data-[active=true]:before:bg-indigo-500 dark:data-[active=true]:bg-indigo-950/35 dark:data-[active=true]:text-indigo-200',
+                        'data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:before:bg-sidebar-primary',
                         collapsed && 'justify-center px-2'
                       )}
                     >
@@ -430,6 +432,12 @@ export function AppSidebar({
           <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[1px] md:hidden" />
           <DialogPrimitive.Content
             aria-describedby={undefined}
+            onCloseAutoFocus={(event) => {
+              if (mobileTriggerRef?.current) {
+                event.preventDefault()
+                mobileTriggerRef.current.focus()
+              }
+            }}
             className="app-sidebar fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-xl outline-none md:hidden"
           >
             <DialogPrimitive.Title className="sr-only">

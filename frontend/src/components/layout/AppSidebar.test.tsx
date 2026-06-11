@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { useRef, useState } from 'react'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { usePathname } from 'next/navigation'
 
@@ -157,5 +158,54 @@ describe('AppSidebar', () => {
     expect(screen.getByRole('link', { name: 'Settings' })).not.toHaveAttribute(
       'aria-current'
     )
+  })
+
+  it('restores focus to the mobile opener when the dialog closes', async () => {
+    function SidebarHarness() {
+      const [mobileOpen, setMobileOpen] = useState(false)
+      const mobileTriggerRef = useRef<HTMLButtonElement | null>(null)
+
+      return (
+        <>
+          <button
+            type="button"
+            ref={mobileTriggerRef}
+            onClick={() => setMobileOpen(true)}
+          >
+            Open navigation
+          </button>
+          <AppSidebar
+            mobileOpen={mobileOpen}
+            onMobileOpenChange={setMobileOpen}
+            mobileTriggerRef={mobileTriggerRef}
+          />
+        </>
+      )
+    }
+
+    render(<SidebarHarness />)
+
+    const opener = screen.getByRole('button', { name: 'Open navigation' })
+    fireEvent.click(opener)
+    expect(screen.getByRole('dialog', { name: 'Primary navigation' })).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog', { name: 'Primary navigation' })).not.toBeInTheDocument()
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+
+  it('uses semantic sidebar tokens for active navigation state', () => {
+    render(<AppSidebar {...defaultProps} />)
+
+    const notebooksLink = screen.getByRole('link', { name: 'Notebooks' })
+    const notebooksButton = notebooksLink.querySelector('button')
+
+    expect(notebooksButton).toHaveClass(
+      'data-[active=true]:bg-sidebar-accent',
+      'data-[active=true]:text-sidebar-accent-foreground',
+      'data-[active=true]:before:bg-sidebar-primary'
+    )
+    expect(notebooksButton?.className).not.toContain('indigo')
   })
 })
