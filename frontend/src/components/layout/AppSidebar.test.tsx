@@ -3,6 +3,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { usePathname } from 'next/navigation'
 
 import { AppSidebar } from './AppSidebar'
+import { useAuth } from '@/lib/hooks/use-auth'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 
 vi.mock('next/navigation', () => ({
@@ -65,10 +66,8 @@ describe('AppSidebar', () => {
     render(<AppSidebar {...defaultProps} />)
 
     expect(screen.getByRole('complementary', { name: 'Primary navigation' })).toHaveClass(
-      'w-64',
       'md:w-16'
     )
-    expect(screen.getByTestId('sidebar-brand').parentElement).toHaveClass('md:hidden')
   })
 
   it('marks the active notebooks link as the current page', () => {
@@ -92,10 +91,71 @@ describe('AppSidebar', () => {
       />
     )
 
-    const notebooksLink = screen.getByRole('link', { name: 'Notebooks' })
-    notebooksLink.addEventListener('click', event => event.preventDefault())
-    fireEvent.click(notebooksLink)
+    const dialog = screen.getByRole('dialog', { name: 'Primary navigation' })
+    const notebooksLink = dialog.querySelector<HTMLAnchorElement>('a[href="/notebooks"]')
+    expect(notebooksLink).not.toBeNull()
+    notebooksLink!.addEventListener('click', event => event.preventDefault())
+    fireEvent.click(notebooksLink!)
 
     expect(onMobileOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('only mounts mobile navigation content while the dialog is open', () => {
+    const { rerender } = render(<AppSidebar {...defaultProps} />)
+
+    expect(screen.queryByRole('dialog', { name: 'Primary navigation' })).not.toBeInTheDocument()
+
+    rerender(
+      <AppSidebar
+        mobileOpen
+        onMobileOpenChange={defaultProps.onMobileOpenChange}
+      />
+    )
+
+    expect(screen.getByRole('dialog', { name: 'Primary navigation' })).toBeInTheDocument()
+  })
+
+  it('closes the mobile dialog on Escape', () => {
+    const onMobileOpenChange = vi.fn()
+
+    render(
+      <AppSidebar
+        mobileOpen
+        onMobileOpenChange={onMobileOpenChange}
+      />
+    )
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(onMobileOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('marks only the longest matching settings route as current', () => {
+    vi.mocked(usePathname).mockReturnValue('/settings/api-keys')
+    vi.mocked(useAuth).mockReturnValue({
+      isAuthenticated: true,
+      user: {
+        id: '1',
+        username: 'admin',
+        display_name: 'Admin',
+        role: 'admin',
+        status: 'active',
+      },
+      logout: vi.fn(),
+      isLoading: false,
+      error: null,
+      login: vi.fn(),
+      register: vi.fn(),
+    })
+
+    render(<AppSidebar {...defaultProps} />)
+
+    expect(screen.getByRole('link', { name: 'Models' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+    expect(screen.getByRole('link', { name: 'Settings' })).not.toHaveAttribute(
+      'aria-current'
+    )
   })
 })

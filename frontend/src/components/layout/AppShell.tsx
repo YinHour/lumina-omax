@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Menu } from 'lucide-react'
 
 import { AppSidebar } from './AppSidebar'
@@ -15,6 +15,22 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const { t } = useTranslation()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  useEffect(() => {
+    const desktopQuery = window.matchMedia('(min-width: 768px)')
+    const handleBreakpointChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (event.matches) {
+        setMobileOpen(false)
+      }
+    }
+
+    handleBreakpointChange(desktopQuery)
+    desktopQuery.addEventListener('change', handleBreakpointChange)
+
+    return () => {
+      desktopQuery.removeEventListener('change', handleBreakpointChange)
+    }
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden bg-stone-50/70 dark:bg-background">

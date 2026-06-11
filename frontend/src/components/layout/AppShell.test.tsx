@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AppShell } from './AppShell'
@@ -39,5 +39,45 @@ describe('AppShell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mock close navigation' }))
     expect(screen.getByText('Mobile open: false')).toBeInTheDocument()
+  })
+
+  it('closes mobile navigation when the viewport reaches the desktop breakpoint', () => {
+    let handleBreakpointChange: ((event: { matches: boolean }) => void) | undefined
+    const removeEventListener = vi.fn()
+
+    vi.mocked(window.matchMedia).mockReturnValue({
+      matches: false,
+      media: '(min-width: 768px)',
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn((event, listener) => {
+        if (event === 'change') {
+          handleBreakpointChange = listener as (event: { matches: boolean }) => void
+        }
+      }),
+      removeEventListener,
+      dispatchEvent: vi.fn(),
+    })
+
+    const { unmount } = render(
+      <AppShell>
+        <div>Page content</div>
+      </AppShell>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    expect(screen.getByText('Mobile open: true')).toBeInTheDocument()
+
+    act(() => {
+      handleBreakpointChange?.({ matches: true })
+    })
+    expect(screen.getByText('Mobile open: false')).toBeInTheDocument()
+
+    unmount()
+    expect(removeEventListener).toHaveBeenCalledWith(
+      'change',
+      expect.any(Function)
+    )
   })
 })
