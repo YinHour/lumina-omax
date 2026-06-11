@@ -1179,7 +1179,7 @@ git commit -m "feat: add responsive application navigation"
 - Modify: `frontend/src/app/(dashboard)/advanced/page.tsx`
 - Modify: `frontend/src/app/(dashboard)/search/page.tsx`
 
-- [ ] **Step 1: Add a static adoption check**
+- [x] **Step 1: Add a static adoption check**
 
 Extend `frontend/src/app/globals.test.ts`:
 
@@ -1201,7 +1201,7 @@ it('uses shared page layout primitives on representative pages', () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -1213,7 +1213,7 @@ npm test -- src/app/globals.test.ts
 Expected: FAIL because none of the representative pages imports both layout
 primitives.
 
-- [ ] **Step 3: Migrate the notebook page**
+- [x] **Step 3: Migrate the notebook page**
 
 Replace the outer scroll/padding and heading with:
 
@@ -1278,7 +1278,7 @@ named `activeNotebookSection`, `aggregatedNotebookSection`, and
 `t.common.refresh` already exists in all supported locales and must be used for
 the icon-only refresh button.
 
-- [ ] **Step 4: Migrate transformations, settings, and advanced pages**
+- [x] **Step 4: Migrate transformations, settings, and advanced pages**
 
 Apply these exact mappings:
 
@@ -1296,7 +1296,7 @@ Apply these exact mappings:
 
 Preserve every hook, tab value, form, and action handler.
 
-- [ ] **Step 5: Migrate the fixed-height search page**
+- [x] **Step 5: Migrate the fixed-height search page**
 
 Use `PageContainer` with `scroll={false}`, `width="full"`, and an explicit
 flex layout:
@@ -1344,7 +1344,7 @@ Extract the two existing `TabsContent` blocks into local constants
 `askTabContent` and `searchTabContent` without modifying their children. Do not
 change search state, persistence, model selection, or streaming logic.
 
-- [ ] **Step 6: Run the adoption test**
+- [x] **Step 6: Run the adoption test**
 
 Run:
 
@@ -1355,7 +1355,7 @@ npm test -- src/app/globals.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Run feature-adjacent tests**
+- [x] **Step 7: Run feature-adjacent tests**
 
 Run:
 
@@ -1367,7 +1367,7 @@ npm test -- src/components/search/StreamingResponse.test.tsx \
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit representative page adoption**
+- [x] **Step 8: Commit representative page adoption**
 
 ```bash
 git add frontend/src/app/globals.test.ts \
