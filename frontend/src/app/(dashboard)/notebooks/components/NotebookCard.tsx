@@ -46,9 +46,9 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
   return (
     <>
       <Card 
-        className="group card-hover"
+        variant="interactive"
+        className="group"
         onClick={handleCardClick}
-        style={{ cursor: 'pointer' }}
       >
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">

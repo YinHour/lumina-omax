@@ -175,31 +175,6 @@
     border-color: var(--sidebar-border);
   }
 
-  .sidebar-menu-item,
-  .card-hover {
-    transition:
-      color var(--motion-standard) ease,
-      background-color var(--motion-standard) ease,
-      border-color var(--motion-standard) ease,
-      box-shadow var(--motion-standard) ease,
-      opacity var(--motion-standard) ease;
-  }
-
-  .sidebar-menu-item:hover {
-    background-color: var(--sidebar-accent) !important;
-    box-shadow: var(--shadow-surface);
-  }
-
-  .card-hover {
-    cursor: pointer;
-  }
-
-  .card-hover:hover {
-    background-color: var(--muted) !important;
-    border-color: color-mix(in oklab, var(--primary) 25%, var(--border));
-    box-shadow: var(--shadow-surface);
-  }
-
   /* Ensure clickable cards show pointer cursor */
   .clickable-card {
     cursor: pointer !important;

@@ -10,6 +10,15 @@ const representativePages = [
   'src/app/(dashboard)/advanced/page.tsx',
   'src/app/(dashboard)/search/page.tsx',
 ]
+const interactiveComponents = [
+  'src/components/common/ThemeToggle.tsx',
+  'src/components/common/LanguageToggle.tsx',
+  'src/app/(dashboard)/notebooks/components/NotebookCard.tsx',
+  'src/components/sources/SourceCard.tsx',
+]
+const legacyScaleClass = `scale-${'[1.02]'}`
+const legacyTranslateRule = `transform: translate${'Y'}(-1px)`
+const legacyHelperClasses = ['sidebar-menu' + '-item', 'card' + '-hover']
 type Color = [number, number, number]
 
 function extractFlatBlock(source: string, selector: string) {
@@ -160,8 +169,18 @@ describe('global design tokens', () => {
   })
 
   it('removes legacy hover scaling', () => {
-    expect(css).not.toContain('scale-[1.02]')
-    expect(css).not.toContain('transform: translateY(-1px)')
+    expect(css).not.toContain(legacyScaleClass)
+    expect(css).not.toContain(legacyTranslateRule)
+  })
+
+  it('keeps interactive components off legacy helper classes', () => {
+    for (const component of interactiveComponents) {
+      const source = readFileSync(join(process.cwd(), component), 'utf8')
+
+      for (const legacyClass of legacyHelperClasses) {
+        expect(source, component).not.toContain(legacyClass)
+      }
+    }
   })
 
   it('respects reduced motion', () => {

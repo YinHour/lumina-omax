@@ -269,7 +269,7 @@ export function AppSidebar({
                       variant="ghost"
                       data-active={isActive}
                       className={cn(
-                        'relative w-full justify-start gap-3 overflow-hidden text-sidebar-foreground sidebar-menu-item before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-transparent',
+                        'relative w-full justify-start gap-3 overflow-hidden text-sidebar-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-transparent',
                         'data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:before:bg-sidebar-primary',
                         collapsed && 'justify-center px-2'
                       )}
@@ -397,7 +397,7 @@ export function AppSidebar({
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full justify-center sidebar-menu-item"
+                  className="w-full justify-center"
                   onClick={logout}
                   aria-label={t.common.signOut}
                 >
@@ -409,7 +409,7 @@ export function AppSidebar({
           ) : (
             <Button
               variant="outline"
-              className="w-full justify-start gap-3 sidebar-menu-item"
+              className="w-full justify-start gap-3"
               onClick={logout}
               aria-label={t.common.signOut}
              >
