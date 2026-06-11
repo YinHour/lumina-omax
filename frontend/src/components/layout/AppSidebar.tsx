@@ -45,6 +45,11 @@ import {
 
 interface NavItem { name: string; href: string; icon: typeof Book; adminOnly?: boolean }
 
+interface AppSidebarProps {
+  mobileOpen: boolean
+  onMobileOpenChange: (open: boolean) => void
+}
+
 const getNavigation = (t: TranslationKeys, isAdmin: boolean): { title: string; items: NavItem[] }[] => {
   const manageItems: NavItem[] = [
     { name: t.navigation.models, href: '/settings/api-keys', icon: Bot, adminOnly: true },
@@ -77,7 +82,10 @@ const getNavigation = (t: TranslationKeys, isAdmin: boolean): { title: string; i
 
 type CreateTarget = 'source' | 'notebook'
 
-export function AppSidebar() {
+export function AppSidebar({
+  mobileOpen,
+  onMobileOpenChange,
+}: AppSidebarProps) {
   const { t } = useTranslation()
   const pathname = usePathname()
   const { logout, user } = useAuth()
@@ -105,20 +113,37 @@ export function AppSidebar() {
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div
+      {mobileOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[1px] md:hidden"
+          aria-label={t.common.closeNavigation}
+          onClick={() => onMobileOpenChange(false)}
+        />
+      )}
+      <aside
+        aria-label={t.common.navigationLabel}
         className={cn(
-          'app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300',
-          isCollapsed ? 'w-16' : 'w-64'
+          'app-sidebar fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-xl transition-[transform,width] duration-300 md:static md:z-auto md:translate-x-0 md:shadow-none',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          isCollapsed ? 'md:w-16' : 'md:w-64'
         )}
       >
         <div
           className={cn(
             'flex h-16 items-center group',
-            isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
+            isCollapsed ? 'justify-between px-4 md:justify-center md:px-2' : 'justify-between px-4'
           )}
         >
           {isCollapsed ? (
-            <div className="relative flex items-center justify-center w-full">
+            <>
+              <div className="flex w-full items-center justify-between md:hidden">
+                <Image src="/logo.png" alt="Lumiton Omax Logo" width={28} height={28} className="shrink-0" />
+                <span className="mx-2 flex-1 text-center text-base font-bold whitespace-nowrap text-sidebar-foreground" data-testid="sidebar-brand">
+                  Lumiton·Omax|知涌
+                </span>
+              </div>
+              <div className="relative hidden w-full items-center justify-center md:flex">
               <Image
                 src="/logo.png"
                 alt="Lumiton Omax Logo"
@@ -134,7 +159,8 @@ export function AppSidebar() {
               >
                 <Menu className="h-4 w-4" />
               </Button>
-            </div>
+              </div>
+            </>
           ) : (
             <>
               <Image src="/logo.png" alt="Lumiton Omax Logo" width={28} height={28} className="shrink-0" />
@@ -157,13 +183,13 @@ export function AppSidebar() {
         <nav
           className={cn(
             'flex-1 space-y-1 py-4 overflow-y-auto min-h-0',
-            isCollapsed ? 'px-2' : 'px-3'
+            isCollapsed ? 'px-3 md:px-2' : 'px-3'
           )}
         >
           <div
             className={cn(
               'mb-4',
-              isCollapsed ? 'px-0' : 'px-3'
+              isCollapsed ? 'px-3 md:px-0' : 'px-3'
             )}
           >
             <DropdownMenu open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
@@ -175,10 +201,11 @@ export function AppSidebar() {
                         onClick={() => setCreateMenuOpen(true)}
                         variant="default"
                         size="sm"
-                        className="w-full justify-center px-2 bg-primary hover:bg-primary/90 text-primary-foreground border-0"
+                        className="w-full justify-start md:justify-center md:px-2"
                         aria-label={t.common.create}
                       >
                         <Plus className="h-4 w-4" />
+                        <span className="md:hidden">{t.common.create}</span>
                       </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
@@ -190,7 +217,7 @@ export function AppSidebar() {
                     onClick={() => setCreateMenuOpen(true)}
                     variant="default"
                     size="sm"
-                    className="w-full justify-start bg-primary hover:bg-primary/90 text-primary-foreground border-0"
+                    className="w-full justify-start"
                    >
                     <Plus className="h-4 w-4 mr-2" />
                     {t.common.create}
@@ -233,25 +260,29 @@ export function AppSidebar() {
                 <Separator className="my-3" />
               )}
               <div className="space-y-1">
-                {!isCollapsed && (
-                  <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60">
+                <h3
+                  className={cn(
+                    'mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60',
+                    isCollapsed && 'md:hidden'
+                  )}
+                >
                     {section.title}
-                  </h3>
-                )}
+                </h3>
 
                 {section.items.map((item) => {
                   const isActive = pathname?.startsWith(item.href) || false
                   const button = (
                     <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
+                      variant="ghost"
+                      data-active={isActive}
                       className={cn(
-                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
-                        isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                        isCollapsed ? 'justify-center px-2' : 'justify-start'
+                        'relative w-full justify-start gap-3 overflow-hidden text-sidebar-foreground sidebar-menu-item before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-transparent',
+                        'data-[active=true]:bg-indigo-50/80 data-[active=true]:text-indigo-700 data-[active=true]:before:bg-indigo-500 dark:data-[active=true]:bg-indigo-950/35 dark:data-[active=true]:text-indigo-200',
+                        isCollapsed && 'md:justify-center md:px-2'
                       )}
                     >
                       <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.name}</span>}
+                      <span className={cn(isCollapsed && 'md:hidden')}>{item.name}</span>
                     </Button>
                   )
 
@@ -259,7 +290,11 @@ export function AppSidebar() {
                     return (
                       <Tooltip key={item.name}>
                         <TooltipTrigger asChild>
-                          <Link href={item.href}>
+                          <Link
+                            href={item.href}
+                            aria-current={isActive ? 'page' : undefined}
+                            onClick={() => onMobileOpenChange(false)}
+                          >
                             {button}
                           </Link>
                         </TooltipTrigger>
@@ -269,7 +304,12 @@ export function AppSidebar() {
                   }
 
                   return (
-                    <Link key={item.name} href={item.href}>
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      onClick={() => onMobileOpenChange(false)}
+                    >
                       {button}
                     </Link>
                   )
@@ -282,12 +322,16 @@ export function AppSidebar() {
         <div
           className={cn(
             'border-t border-sidebar-border p-3 space-y-2',
-            isCollapsed && 'px-2'
+            isCollapsed && 'md:px-2'
           )}
         >
           {/* Command Palette hint */}
-          {!isCollapsed && (
-            <div className="px-3 py-1.5 text-xs text-sidebar-foreground/60">
+          <div
+            className={cn(
+              'px-3 py-1.5 text-xs text-sidebar-foreground/60',
+              isCollapsed && 'md:hidden'
+            )}
+          >
               <div className="flex items-center justify-between">
                  <span className="flex items-center gap-1.5">
                   <Command className="h-3 w-3" />
@@ -297,16 +341,22 @@ export function AppSidebar() {
                   {isMac ? <span className="text-xs">⌘</span> : <span>Ctrl+</span>}K
                 </kbd>
               </div>
-               <p className="mt-1 text-[10px] text-sidebar-foreground/40">
+              <p className="mt-1 text-[10px] text-sidebar-foreground/40">
                 {t.common.quickActionsDesc}
               </p>
-            </div>
-          )}
+          </div>
 
           {/* User Profile */}
-          {!isCollapsed && user && (
-            <Link href="/profile" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-400 text-xs font-bold">
+          {user && (
+            <Link
+              href="/profile"
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-muted',
+                isCollapsed && 'md:hidden'
+              )}
+              onClick={() => onMobileOpenChange(false)}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-bold">
                 {user.display_name?.charAt(0) || user.username?.charAt(0) || '?'}
               </div>
               <div className="flex-1 min-w-0">
@@ -319,27 +369,33 @@ export function AppSidebar() {
           <div
             className={cn(
               'flex flex-row gap-2',
-              isCollapsed ? 'items-center' : 'items-stretch'
+              isCollapsed ? 'items-stretch md:items-center' : 'items-stretch'
             )}
           >
             {isCollapsed ? (
               <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <ThemeToggle iconOnly />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{t.common.theme}</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <LanguageToggle iconOnly />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{t.common.language}</TooltipContent>
-                </Tooltip>
+                <div className="flex flex-1 gap-2 md:hidden">
+                  <div className="flex-1"><ThemeToggle /></div>
+                  <div className="flex-1"><LanguageToggle /></div>
+                </div>
+                <div className="hidden gap-2 md:flex">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <ThemeToggle iconOnly />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{t.common.theme}</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <LanguageToggle iconOnly />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{t.common.language}</TooltipContent>
+                  </Tooltip>
+                </div>
               </>
             ) : (
               <>
@@ -354,11 +410,12 @@ export function AppSidebar() {
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full justify-center sidebar-menu-item"
+                  className="w-full justify-start gap-3 sidebar-menu-item md:justify-center"
                   onClick={logout}
                   aria-label={t.common.signOut}
                 >
                   <LogOut className="h-4 w-4" />
+                  <span className="md:hidden">{t.common.signOut}</span>
                 </Button>
               </TooltipTrigger>
                <TooltipContent side="right">{t.common.signOut}</TooltipContent>
@@ -375,7 +432,7 @@ export function AppSidebar() {
             </Button>
           )}
         </div>
-      </div>
+      </aside>
     </TooltipProvider>
   )
 }
