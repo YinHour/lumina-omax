@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
+import { Alert } from './alert'
+import { Badge } from './badge'
 import { Button, buttonVariants } from './button'
 import { Card } from './card'
 import { Checkbox } from './checkbox'
@@ -158,5 +160,19 @@ describe('core UI variants', () => {
     expect(
       screen.getByRole('combobox', { name: 'Disabled topic' })
     ).toHaveClass('disabled:pointer-events-none')
+  })
+
+  it('provides semantic insight and status variants', () => {
+    render(
+      <>
+        <Badge variant="insight">AI insight</Badge>
+        <Badge variant="success">Complete</Badge>
+        <Alert variant="warning">Needs attention</Alert>
+      </>
+    )
+
+    expect(screen.getByText('AI insight')).toHaveClass('bg-highlight/18')
+    expect(screen.getByText('Complete')).toHaveClass('bg-success/14')
+    expect(screen.getByRole('alert')).toHaveClass('border-warning/40')
   })
 })
