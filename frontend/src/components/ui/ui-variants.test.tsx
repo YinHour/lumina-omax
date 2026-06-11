@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { Button } from './button'
+import { Button, buttonVariants } from './button'
 import { Card } from './card'
 import { Input } from './input'
 import { Textarea } from './textarea'
@@ -17,6 +17,21 @@ describe('core UI variants', () => {
     )
     expect(button).toHaveClass('duration-200')
     expect(button).not.toHaveClass('transition-all')
+  })
+
+  it('preserves large button sizing for the link variant', () => {
+    render(
+      <Button variant="link" size="lg">
+        Link
+      </Button>
+    )
+
+    const link = screen.getByRole('button', { name: 'Link' })
+    expect(link).toHaveClass('h-10', 'px-6')
+    expect(link).not.toHaveClass('h-auto', 'p-0')
+    expect(buttonVariants({ variant: 'link', size: 'lg' })).not.toMatch(
+      /\b(?:h-auto|p-0)\b/
+    )
   })
 
   it.each(['interactive', 'selected', 'insight'] as const)(
