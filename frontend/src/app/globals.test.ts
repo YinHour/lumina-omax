@@ -10,6 +10,7 @@ const representativePages = [
   'src/app/(dashboard)/advanced/page.tsx',
   'src/app/(dashboard)/search/page.tsx',
 ]
+const rootLayout = 'src/app/layout.tsx'
 const interactiveComponents = [
   'src/components/common/ThemeToggle.tsx',
   'src/components/common/LanguageToggle.tsx',
@@ -112,6 +113,14 @@ describe('global design tokens', () => {
     )
     expect(css).toContain('--shadow-surface:')
     expect(css).toContain('--motion-standard: 180ms;')
+  })
+
+  it('keeps app typography independent from build-time network access', () => {
+    const layout = readFileSync(join(process.cwd(), rootLayout), 'utf8')
+
+    expect(layout).not.toContain('next/font/google')
+    expect(layout).toContain('font-sans')
+    expect(css).toContain('--font-sans: Inter, ui-sans-serif, system-ui')
   })
 
   it('provides both warm light and dark theme values', () => {
