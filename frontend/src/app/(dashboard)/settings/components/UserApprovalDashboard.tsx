@@ -32,6 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { useTranslation } from '@/lib/hooks/use-translation'
 
 interface UserItem {
   id: string
@@ -43,7 +44,9 @@ interface UserItem {
 }
 
 export function UserApprovalDashboard() {
+  const { t } = useTranslation()
   const { token, user } = useAuthStore()
+  const approvalText = t.settings.userApproval
   const [usersList, setUsersList] = useState<UserItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,11 +67,11 @@ export function UserApprovalDashboard() {
       setUsersList(response.data)
     } catch (err: unknown) {
       console.error('Error fetching users:', err)
-      setError(err instanceof Error ? err.message : '获取成员列表失败')
+      setError(err instanceof Error ? err.message : approvalText.fetchFailed)
     } finally {
       setIsLoading(false)
     }
-  }, [token])
+  }, [approvalText.fetchFailed])
 
   const handleUpdateStatus = async (userId: string, targetStatus: 'active' | 'rejected') => {
     setConfirmAction({ userId, status: targetStatus })
@@ -85,10 +88,10 @@ export function UserApprovalDashboard() {
       // Update local state
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, status: updatedUser.status } : u))
       
-      toast.success(targetStatus === 'active' ? '已成功批准该成员账号并激活' : '已拒绝该成员账号申请')
+      toast.success(targetStatus === 'active' ? approvalText.statusApproved : approvalText.statusRejected)
     } catch (err: unknown) {
       console.error('Error updating status:', err)
-      toast.error(err instanceof Error ? err.message : '操作失败')
+      toast.error(err instanceof Error ? err.message : t.common.error)
     }
   }
 
@@ -97,16 +100,16 @@ export function UserApprovalDashboard() {
       const response = await apiClient.put(`/auth/users/${userId}/role`, { role: targetRole })
       const updatedUser = response.data
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: updatedUser.role } : u))
-      toast.success(targetRole === 'admin' ? '已将该成员提升为管理员' : '已取消该成员的管理员权限')
+      toast.success(targetRole === 'admin' ? approvalText.rolePromoted : approvalText.roleRevoked)
     } catch (err: unknown) {
       console.error('Error updating role:', err)
-      toast.error(err instanceof Error ? err.message : '操作失败')
+      toast.error(err instanceof Error ? err.message : t.common.error)
     }
   }
 
   const handleResetPassword = async (userId: string, newPassword: string) => {
     if (!newPassword || newPassword.length < 6) {
-      setResetPwdError('密码长度不能少于6位')
+      setResetPwdError(approvalText.passwordMinLength)
       return
     }
     try {
@@ -114,7 +117,7 @@ export function UserApprovalDashboard() {
       return true
     } catch (err: unknown) {
       console.error('Error resetting password:', err)
-      toast.error(err instanceof Error ? err.message : '操作失败')
+      toast.error(err instanceof Error ? err.message : t.common.error)
       return false
     }
   }
@@ -125,12 +128,12 @@ export function UserApprovalDashboard() {
     setResetPwdError(null)
 
     if (resetPwd.length < 6) {
-      setResetPwdError('密码长度不能少于6位')
+      setResetPwdError(approvalText.passwordMinLength)
       setResetPwdSubmitting(false)
       return
     }
     if (resetPwd !== resetPwdConfirm) {
-      setResetPwdError('两次输入的密码不一致')
+      setResetPwdError(approvalText.passwordMismatch)
       setResetPwdSubmitting(false)
       return
     }
@@ -138,7 +141,7 @@ export function UserApprovalDashboard() {
     const success = await handleResetPassword(resetPwdUserId, resetPwd)
     setResetPwdSubmitting(false)
     if (success) {
-      toast.success('密码已成功重置')
+      toast.success(approvalText.passwordResetSuccess)
       setResetPwdOpen(false)
       setResetPwdUserId(null)
       setResetPwd('')
@@ -169,10 +172,10 @@ export function UserApprovalDashboard() {
         <div className="space-y-1">
           <CardTitle className="text-xl font-bold flex items-center gap-2">
             <Users className="h-5 w-5 text-teal-400" />
-            成员注册审批与账号管理
+            {approvalText.title}
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            批准、拒绝或停用系统成员，保障科研数据资产安全隔离
+            {approvalText.description}
           </CardDescription>
         </div>
         <Button 
@@ -192,10 +195,10 @@ export function UserApprovalDashboard() {
           {(['all', 'pending', 'active', 'rejected'] as const).map((status) => {
             const counts = usersList.filter(u => status === 'all' ? true : u.status === status).length
             const labels = {
-              all: '全部',
-              pending: '待审批',
-              active: '已激活',
-              rejected: '已拒绝'
+              all: approvalText.filters.all,
+              pending: approvalText.filters.pending,
+              active: approvalText.filters.active,
+              rejected: approvalText.filters.rejected,
             }
             const activeColors = {
               all: 'bg-primary text-primary-foreground',
@@ -230,7 +233,7 @@ export function UserApprovalDashboard() {
         ) : filteredUsers.length === 0 ? (
           <div className="text-center py-12 text-sm text-muted-foreground border border-dashed rounded-xl bg-muted/10">
             <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-            没有找到符合筛选条件的成员
+            {approvalText.noMembers}
           </div>
         ) : (
           <div className="divide-y border rounded-xl overflow-hidden bg-background">
@@ -248,13 +251,13 @@ export function UserApprovalDashboard() {
                       variant="ghost"
                       onClick={() => handleUpdateRole(item.id, item.role === 'admin' ? 'user' : 'admin')}
                       className="h-6 px-1.5 text-[10px] gap-1 font-semibold"
-                      title={item.role === 'admin' ? '点击取消管理员权限' : '点击提升为管理员'}
+                      title={item.role === 'admin' ? approvalText.roleRevokeTitle : approvalText.rolePromoteTitle}
                       disabled={item.username === 'admin'}
                     >
                       {item.role === 'admin' ? (
-                        <><ShieldAlert className="h-3 w-3 text-teal-400" /> 管理员</>
+                        <><ShieldAlert className="h-3 w-3 text-teal-400" /> {approvalText.adminRole}</>
                       ) : (
-                        <><Shield className="h-3 w-3 text-muted-foreground" /> 用户</>
+                        <><Shield className="h-3 w-3 text-muted-foreground" /> {approvalText.userRole}</>
                       )}
                     </Button>
                   </div>
@@ -262,7 +265,7 @@ export function UserApprovalDashboard() {
                   {item.created && (
                     <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      <span>注册时间：{item.created}</span>
+                      <span>{approvalText.registeredAt}: {item.created}</span>
                     </div>
                   )}
                 </div>
@@ -272,17 +275,17 @@ export function UserApprovalDashboard() {
                   <div>
                     {item.status === 'pending' && (
                       <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20 text-xs font-semibold">
-                        待审批 (pending)
+                        {approvalText.status.pending}
                       </Badge>
                     )}
                     {item.status === 'active' && (
                       <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs font-semibold">
-                        已激活 (active)
+                        {approvalText.status.active}
                       </Badge>
                     )}
                     {item.status === 'rejected' && (
                       <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20 text-xs font-semibold">
-                        已拒绝 (rejected)
+                        {approvalText.status.rejected}
                       </Badge>
                     )}
                   </div>
@@ -296,7 +299,7 @@ export function UserApprovalDashboard() {
                         onClick={() => handleUpdateStatus(item.id, 'active')}
                         className="h-8 px-2 text-xs font-semibold text-green-600 hover:text-green-700 hover:bg-green-500/5 flex items-center gap-1"
                       >
-                        <UserCheck className="h-3.5 w-3.5" /> 批准并激活
+                        <UserCheck className="h-3.5 w-3.5" /> {approvalText.approveActivate}
                       </Button>
                     )}
                     {item.status === 'pending' && (
@@ -306,7 +309,7 @@ export function UserApprovalDashboard() {
                         onClick={() => handleUpdateStatus(item.id, 'rejected')}
                         className="h-8 px-2 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-500/5 flex items-center gap-1"
                       >
-                        <UserX className="h-3.5 w-3.5" /> 拒绝申请
+                        <UserX className="h-3.5 w-3.5" /> {approvalText.rejectApplication}
                       </Button>
                     )}
                     {item.status === 'active' && (
@@ -316,7 +319,7 @@ export function UserApprovalDashboard() {
                         onClick={() => handleUpdateStatus(item.id, 'rejected')}
                         className="h-8 px-2 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-500/5 flex items-center gap-1"
                       >
-                        <UserX className="h-3.5 w-3.5" /> 禁用账号
+                        <UserX className="h-3.5 w-3.5" /> {approvalText.disableAccount}
                       </Button>
                     )}
                     {item.status === 'active' && (
@@ -331,9 +334,9 @@ export function UserApprovalDashboard() {
                           setResetPwdOpen(true)
                         }}
                         className="h-8 px-2 text-xs font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1"
-                        title="重置密码"
+                        title={approvalText.resetPassword}
                       >
-                        <Key className="h-3.5 w-3.5" /> 重置密码
+                        <Key className="h-3.5 w-3.5" /> {approvalText.resetPassword}
                       </Button>
                     )}
                   </div>
@@ -348,12 +351,12 @@ export function UserApprovalDashboard() {
     <ConfirmDialog
       open={confirmAction !== null}
       onOpenChange={(open) => { if (!open) setConfirmAction(null) }}
-      title={confirmAction?.status === 'active' ? '批准成员账号' : confirmAction?.status === 'rejected' ? '拒绝 / 禁用成员账号' : ''}
+      title={confirmAction?.status === 'active' ? approvalText.confirmApproveTitle : confirmAction?.status === 'rejected' ? approvalText.confirmRejectTitle : ''}
       description={confirmAction?.status === 'active'
-        ? '此操作将激活该成员的账号，该成员将以普通用户身份登录系统。'
-        : '此操作将拒绝该成员的注册申请或禁用其账号，该成员将无法登录系统。'
+        ? approvalText.confirmApproveDesc
+        : approvalText.confirmRejectDesc
       }
-      confirmText={confirmAction?.status === 'active' ? '批准并激活' : '确认操作'}
+      confirmText={confirmAction?.status === 'active' ? approvalText.approveActivate : t.common.confirm}
       confirmVariant={confirmAction?.status === 'active' ? 'default' : 'destructive'}
       onConfirm={executeStatusUpdate}
     />
@@ -363,30 +366,30 @@ export function UserApprovalDashboard() {
     }}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>重置密码</AlertDialogTitle>
-          <AlertDialogDescription>请为该成员设置一个新密码，并确认输入无误。</AlertDialogDescription>
+          <AlertDialogTitle>{approvalText.resetPassword}</AlertDialogTitle>
+          <AlertDialogDescription>{approvalText.resetPasswordDesc}</AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-3 py-2">
           <div>
-            <Label htmlFor="reset-new-password" className="text-sm font-medium">新密码</Label>
+            <Label htmlFor="reset-new-password" className="text-sm font-medium">{approvalText.newPassword}</Label>
             <Input
               id="reset-new-password"
               type="password"
               value={resetPwd}
               onChange={(e) => { setResetPwd(e.target.value); setResetPwdError(null) }}
-              placeholder="请输入至少 6 位的新密码"
+              placeholder={approvalText.newPasswordPlaceholder}
               disabled={resetPwdSubmitting}
               className="mt-1"
             />
           </div>
           <div>
-            <Label htmlFor="reset-confirm-password" className="text-sm font-medium">确认新密码</Label>
+            <Label htmlFor="reset-confirm-password" className="text-sm font-medium">{approvalText.confirmNewPassword}</Label>
             <Input
               id="reset-confirm-password"
               type="password"
               value={resetPwdConfirm}
               onChange={(e) => { setResetPwdConfirm(e.target.value); setResetPwdError(null) }}
-              placeholder="请再次输入新密码"
+              placeholder={approvalText.confirmNewPasswordPlaceholder}
               disabled={resetPwdSubmitting}
               className="mt-1"
             />
@@ -396,9 +399,9 @@ export function UserApprovalDashboard() {
           )}
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={resetPwdSubmitting}>取消</AlertDialogCancel>
+          <AlertDialogCancel disabled={resetPwdSubmitting}>{t.common.cancel}</AlertDialogCancel>
           <AlertDialogAction onClick={executeResetPassword} disabled={resetPwdSubmitting}>
-            {resetPwdSubmitting ? '重置中...' : '确认重置'}
+            {resetPwdSubmitting ? approvalText.resetting : approvalText.confirmReset}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

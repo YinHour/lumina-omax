@@ -17,6 +17,9 @@ const interactiveComponents = [
   'src/app/(dashboard)/notebooks/components/NotebookCard.tsx',
   'src/components/sources/SourceCard.tsx',
 ]
+const settingsApprovalDashboard =
+  'src/app/(dashboard)/settings/components/UserApprovalDashboard.tsx'
+const localeFiles = ['src/lib/locales/en-US/index.ts', 'src/lib/locales/zh-CN/index.ts']
 const legacyScaleClass = `scale-${'[1.02]'}`
 const legacyTranslateRule = `transform: translate${'Y'}(-1px)`
 const legacyHelperClasses = ['sidebar-menu' + '-item', 'card' + '-hover']
@@ -189,6 +192,31 @@ describe('global design tokens', () => {
       for (const legacyClass of legacyHelperClasses) {
         expect(source, component).not.toContain(legacyClass)
       }
+    }
+  })
+
+  it('keeps settings approval panel labels in locale resources', () => {
+    const source = readFileSync(join(process.cwd(), settingsApprovalDashboard), 'utf8')
+    const hardcodedApprovalLabels = [
+      '成员注册审批',
+      '批准、拒绝',
+      '没有找到符合筛选条件',
+      '批准并激活',
+      '拒绝申请',
+      '禁用账号',
+      '重置密码',
+    ]
+
+    expect(source).toContain('t.settings.userApproval')
+    for (const label of hardcodedApprovalLabels) {
+      expect(source).not.toContain(label)
+    }
+
+    for (const localeFile of localeFiles) {
+      const locale = readFileSync(join(process.cwd(), localeFile), 'utf8')
+      expect(locale, localeFile).toContain('userApproval')
+      expect(locale, localeFile).toContain('approveActivate')
+      expect(locale, localeFile).toContain('noMembers')
     }
   })
 
