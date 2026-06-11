@@ -15,13 +15,18 @@ interface PageContainerProps extends React.ComponentProps<'div'> {
 }
 
 export function PageContainer({
+  children,
   className,
   width = 'wide',
   scroll = true,
   ...props
 }: PageContainerProps) {
   return (
-    <div className={cn('min-h-0 flex-1', scroll && 'overflow-y-auto')}>
+    <div
+      {...props}
+      data-slot="page-scroll-area"
+      className={cn('min-h-0 flex-1', scroll && 'overflow-y-auto')}
+    >
       <div
         data-slot="page-container"
         className={cn(
@@ -29,8 +34,9 @@ export function PageContainer({
           widthClasses[width],
           className
         )}
-        {...props}
-      />
+      >
+        {children}
+      </div>
     </div>
   )
 }
