@@ -18,11 +18,11 @@ const badgeVariants = cva(
         outline:
           "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         insight:
-          "border-highlight/45 bg-highlight/18 text-highlight-foreground [a&]:hover:bg-highlight/26",
+          "border-highlight/45 bg-highlight/18 text-highlight-foreground dark:text-foreground [a&]:hover:bg-highlight/26",
         success:
-          "border-success/35 bg-success/14 text-success [a&]:hover:bg-success/20",
+          "border-success/35 bg-success/14 text-success dark:text-foreground [a&]:hover:bg-success/20",
         warning:
-          "border-warning/40 bg-warning/16 text-warning-foreground [a&]:hover:bg-warning/24",
+          "border-warning/40 bg-warning/16 text-warning-foreground dark:text-foreground [a&]:hover:bg-warning/24",
       },
     },
     defaultVariants: {

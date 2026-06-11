@@ -1,14 +1,36 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/lib/stores/theme-store', () => ({
+  useThemeStore: (
+    selector: (state: {
+      theme: 'light'
+      getSystemTheme: () => 'light'
+    }) => unknown
+  ) =>
+    selector({
+      theme: 'light',
+      getSystemTheme: () => 'light',
+    }),
+}))
+
+vi.mock('sonner', () => ({
+  Toaster: ({ richColors }: { richColors?: boolean }) => (
+    <div data-rich-colors={String(richColors)} data-testid="sonner" />
+  ),
+}))
 
 import { Alert } from './alert'
 import { Badge } from './badge'
 import { Button, buttonVariants } from './button'
 import { Card } from './card'
 import { Checkbox } from './checkbox'
+import { Dialog, DialogContent, DialogTitle } from './dialog'
 import { Input } from './input'
+import { Popover, PopoverContent } from './popover'
 import { RadioGroup, RadioGroupItem } from './radio-group'
 import { Select, SelectTrigger, SelectValue } from './select'
+import { Toaster } from './sonner'
 import { Textarea } from './textarea'
 
 describe('core UI variants', () => {
@@ -167,6 +189,7 @@ describe('core UI variants', () => {
       <>
         <Badge variant="insight">AI insight</Badge>
         <Badge variant="success">Complete</Badge>
+        <Badge variant="warning">Caution</Badge>
         <Alert variant="warning">Needs attention</Alert>
       </>
     )
@@ -174,5 +197,48 @@ describe('core UI variants', () => {
     expect(screen.getByText('AI insight')).toHaveClass('bg-highlight/18')
     expect(screen.getByText('Complete')).toHaveClass('bg-success/14')
     expect(screen.getByRole('alert')).toHaveClass('border-warning/40')
+    expect(screen.getByText('AI insight')).toHaveClass('dark:text-foreground')
+    expect(screen.getByText('Complete')).toHaveClass('dark:text-foreground')
+    expect(screen.getByText('Caution')).toHaveClass('dark:text-foreground')
+  })
+
+  it('enables rich Sonner colors for semantic toast variables', () => {
+    render(<Toaster />)
+
+    expect(screen.getByTestId('sonner')).toHaveAttribute(
+      'data-rich-colors',
+      'true'
+    )
+  })
+
+  it('keeps dialog content within the viewport with internal scrolling', () => {
+    render(
+      <Dialog open>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>Dialog heading</DialogTitle>
+          <span>Dialog body</span>
+        </DialogContent>
+      </Dialog>
+    )
+
+    expect(
+      screen.getByText('Dialog body').closest('[data-slot="dialog-content"]')
+    ).toHaveClass(
+      'max-h-[calc(100vh-2rem)]',
+      'overflow-y-auto'
+    )
+  })
+
+  it('uses a rounded floating surface for popovers', () => {
+    render(
+      <Popover open>
+        <PopoverContent>Popover body</PopoverContent>
+      </Popover>
+    )
+
+    expect(screen.getByText('Popover body')).toHaveClass(
+      'rounded-xl',
+      'shadow-[var(--shadow-floating)]'
+    )
   })
 })
