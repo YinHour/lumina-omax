@@ -1170,4 +1170,185 @@ All checks passed
 
 ---
 
-> 最后更新：2026-06-10 | 新增 §19（源解析下载、Vision 图片描述工程化及 Mac Studio 局域网源码部署安全调整）。当前 Vision 模型选择 MiniMax-M3；下一轮优先处理领域 Prompt 动态路由和知识图谱大输出截断。
+## 20. 温暖研究风格 UI 美化与设计系统（新增 2026-06-11）
+
+基于 `en_ui_beautify_0610` 分支，本轮完成全站 UI 风格统一。设计方向确定为 **B. 温暖研究**：靛蓝作为主色、琥珀色作为辅助提示色、现代无衬线字体、适中紧凑布局、克制柔和动效，并采用“设计令牌驱动，渐进改造”的实施方式。
+
+### 设计规范与实施计划
+- `docs/superpowers/specs/2026-06-10-warm-research-ui-design.md` — 记录已确认的视觉方向、色彩语义、空间密度、字体策略、动效原则和可访问性约束
+- `docs/superpowers/plans/2026-06-10-warm-research-ui-implementation.md` — 任务拆分为 9 个阶段：设计令牌、共享控件、反馈表面、布局基础、响应式导航、核心页面迁移、旧样式清理、自动验证、浏览器验证
+- 计划状态已同步：除 `make dev` 全栈启动步骤外，其余 UI 改造和验证项均已完成
+
+**决策**：先建立语义 token 和共享组件能力，再迁移代表性页面，避免一次性大范围重写业务逻辑。
+
+### 全局设计令牌
+- `frontend/src/app/globals.css`：
+  - 新增温暖象牙背景、炭黑前景、靛蓝主色、琥珀高亮、success/warning/destructive 等 OKLCH 语义色
+  - 新增 `--shadow-surface`、`--motion-standard`、reduced motion 支持
+  - 保留 `3xl` 断点，新增系统现代无衬线字体栈，移除 `next/font/google` 构建期外网依赖
+- `frontend/src/app/globals.test.ts`：
+  - 覆盖设计 token 存在性、成功色 WCAG AA 对比度、旧 hover scaling 移除、代表页面采用共享布局、本地化回归等静态合同
+
+**决策**：颜色统一走语义 token；琥珀色只用于 insight/attention，不作为普通按钮或装饰色泛用。
+
+### 共享控件与反馈表面
+- `frontend/src/components/ui/button.tsx` — 统一按钮圆角、focus ring、hover/active 动效和 link 尺寸兼容
+- `frontend/src/components/ui/card.tsx` — 新增 `variant="interactive"` 等语义卡片变体，替代全局 `card-hover`
+- `frontend/src/components/ui/input.tsx`、`textarea.tsx`、`select.tsx`、`checkbox.tsx`、`radio-group.tsx` — 统一表单控件表面、边框、禁用态和 focus ring
+- `frontend/src/components/ui/badge.tsx`、`alert.tsx` — 增加 `insight`、`success`、`warning` 等语义反馈变体
+- `frontend/src/components/ui/dropdown-menu.tsx`、`popover.tsx`、`dialog.tsx`、`sonner.tsx` — 浮层、弹窗、Toast 统一暖色表面和状态色
+- `frontend/src/components/layout/SetupBanner.tsx` — literal red/amber 替换为语义 warning/destructive 反馈
+
+**决策**：控件级样式由组件变体承载，业务组件不再依赖 `sidebar-menu-item`、`card-hover`、`scale-[1.02]` 等全局 helper。
+
+### 布局系统与核心页面迁移
+- `frontend/src/components/layout/PageContainer.tsx` — 新增统一页面容器，支持 `readable`、`wide`、`full` 宽度和可控滚动
+- `frontend/src/components/layout/PageHeader.tsx` — 新增页面标题、描述、操作区布局组件
+- `frontend/src/components/layout/PageHeader.test.tsx` — 覆盖标题层级、操作区、宽度和滚动行为
+- 已迁移代表性页面：
+  - `frontend/src/app/(dashboard)/notebooks/page.tsx`
+  - `frontend/src/app/(dashboard)/transformations/page.tsx`
+  - `frontend/src/app/(dashboard)/settings/page.tsx`
+  - `frontend/src/app/(dashboard)/advanced/page.tsx`
+  - `frontend/src/app/(dashboard)/search/page.tsx`
+- Notebook 页面补齐聚合笔记本等新增操作文案的 i18n key，刷新按钮使用本地化 `aria-label`
+
+**决策**：仅迁移代表性核心页面，保留页面业务 hook、数据请求和状态逻辑不变。
+
+### 响应式导航与移动端可访问性
+- `frontend/src/components/layout/AppShell.tsx` — 移动端导航状态本地化管理，低于 `768px` 显示移动菜单触发器
+- `frontend/src/components/layout/AppSidebar.tsx`：
+  - 桌面侧栏、折叠侧栏和移动抽屉共用导航内容
+  - 当前路由使用最长匹配，`/settings/api-keys` 不再误标 `/settings`
+  - 移动抽屉使用 Radix Dialog，支持 Escape 关闭和焦点恢复
+  - 新增显式“关闭导航”按钮，打开后焦点落到关闭按钮，关闭后回到“打开导航”
+  - active 状态改用 `sidebar-*` 语义 token
+- `frontend/src/components/layout/AppShell.test.tsx`、`AppSidebar.test.tsx` — 覆盖移动触发器、抽屉打开/关闭、路由 active、焦点恢复和关闭按钮
+- 9 种 locale 文件补齐 `openNavigation`、`closeNavigation`、`navigationLabel`、`quickActions` 等导航可访问性文案
+
+**决策**：移动导航不复用桌面 collapsed 状态，避免桌面折叠影响移动抽屉可读性。
+
+### 旧样式冲突清理
+- `frontend/src/components/common/ThemeToggle.tsx`
+- `frontend/src/components/common/LanguageToggle.tsx`
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx`
+- `frontend/src/app/(dashboard)/notebooks/components/NotesColumn.tsx`
+- `frontend/src/components/sources/SourceCard.tsx`
+- `frontend/src/app/globals.css`
+
+上述组件移除 `sidebar-menu-item`、`card-hover`、hover scaling 和旧 `translateY` 动效，改为共享 Button/Card 变体和局部语义类。
+
+**遗留注意**：部分历史 clickable card/div 仍不是完整语义 button/link，本轮仅清理样式冲突，没有扩大为交互语义重构。
+
+### 生产构建稳定性
+- `frontend/src/app/layout.tsx` — 移除 `next/font/google` 的 `Inter` 引入，body 改用 `font-sans`
+- `frontend/package.json` — `build` 改为 `next build --webpack`
+
+原因：Next 16 默认 Turbopack 构建在当前项目/环境中停留在 `Creating an optimized production build ...`；Webpack 路径可稳定完成。构建期访问 Google Fonts 在受限网络下会失败，因此改为本地系统字体栈。
+
+**决策**：优先保证标准 `npm run build` 可重复完成；Turbopack 问题后续可独立排查，不阻塞 UI 分支。
+
+### Settings 审批面板本地化修复
+- `frontend/src/app/(dashboard)/settings/components/UserApprovalDashboard.tsx` — 成员审批标题、描述、筛选、状态、操作按钮、确认弹窗、重置密码弹窗、Toast 全部改用 `t.settings.userApproval`
+- `frontend/src/lib/locales/en-US/index.ts`、`zh-CN/index.ts` — 新增 `settings.userApproval` 文案
+- `frontend/src/app/globals.test.ts` — 新增静态回归测试，禁止审批面板重新硬编码中文审批文案
+
+浏览器验证时发现英文模式下 Settings 审批面板仍显示中文，因此作为本轮 UI/localization 修复收敛。
+
+### 浏览器验证与截图证据
+
+截图保存于临时目录（未提交为产品资产）：
+
+```text
+/var/folders/9_/wy1n8mb54vd0q74fb8k551lm0000gn/T/lumina-ui-verification-2026-06-11
+```
+
+包含：
+
+```text
+notebooks-light-desktop.png
+notebooks-dark-desktop.png
+search-light-tablet.png
+settings-dark-mobile.png
+mobile-navigation-open.png
+```
+
+验证覆盖：
+- `/login`、`/notebooks`、`/sources`、`/search`、`/settings`
+- light/dark 主题
+- 桌面约 `1440×900`
+- tablet 约 `1024×768`
+- mobile 约 `390×844`
+- 中英文切换
+- 移动导航打开、关闭按钮和焦点恢复
+
+### 自动验证结果
+
+最后一轮验证：
+
+```text
+cd frontend && npm run lint
+0 errors, 4 existing warnings
+
+cd frontend && npm test
+17 passed, 1 skipped
+81 tests passed, 9 skipped
+
+cd frontend && npm run build
+exit 0
+```
+
+`npm run build` 仍打印 Next standalone trace copy warning：
+
+```text
+Failed to copy traced files ... page_client-reference-manifest.js
+```
+
+但退出码为 0，未阻塞生产构建。
+
+### 已知阻塞与后续方向
+
+1. **`make dev` 当前不可用**：`Makefile` 中 `dev` 目标引用不存在的 `docker-compose.dev.yml`，并且本地 shell 曾提示 `python: command not found`。本轮 UI 浏览器验证改用 frontend dev server + mock API 完成，未改动全栈启动脚本。
+2. **部分 locale 仅补核心语言**：本轮审批面板完整补了 `en-US` 与 `zh-CN`。由于 `TranslationKeys` 以 `en-US` 为类型源，其他语言未立即阻塞构建；若后续启用严格全 locale 完整性检查，应补齐 `settings.userApproval` 到其余语言。
+3. **Next Turbopack 构建卡住**：已通过 `--webpack` 稳定标准构建；是否恢复 Turbopack 需单独排查 Next 16 与当前配置。
+4. **语义交互债务**：若后续继续做 UI 质量，应优先清理 clickable card/div 的键盘语义，而不是继续添加视觉样式。
+
+**决策**：本轮 UI 美化以设计系统、视觉一致性、响应式可用性和基础可访问性为目标，不改变 API、数据请求、业务 workflow 或状态管理语义。
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `docs/superpowers/specs/2026-06-10-warm-research-ui-design.md` | 温暖研究 UI 设计规范 |
+| `docs/superpowers/plans/2026-06-10-warm-research-ui-implementation.md` | 分阶段实施计划与状态同步 |
+| `frontend/src/app/globals.css` | OKLCH 语义色、字体栈、阴影、动效、旧 helper 移除 |
+| `frontend/src/app/globals.test.ts` | 设计 token、布局采用、旧样式、本地化回归测试 |
+| `frontend/src/app/layout.tsx` | 移除 Google Fonts，使用 `font-sans` |
+| `frontend/package.json` | build 固定到 `next build --webpack` |
+| `frontend/src/components/ui/button.tsx` | 按钮视觉、focus、hover/active 统一 |
+| `frontend/src/components/ui/card.tsx` | Card 语义变体和 interactive 状态 |
+| `frontend/src/components/ui/input.tsx` / `textarea.tsx` / `select.tsx` / `checkbox.tsx` / `radio-group.tsx` | 表单控件表面和焦点态统一 |
+| `frontend/src/components/ui/badge.tsx` / `alert.tsx` / `sonner.tsx` | 语义状态反馈 |
+| `frontend/src/components/ui/dropdown-menu.tsx` / `popover.tsx` / `dialog.tsx` | 浮层与弹窗表面统一 |
+| `frontend/src/components/layout/PageContainer.tsx` | 页面容器 primitive |
+| `frontend/src/components/layout/PageHeader.tsx` | 页面头部 primitive |
+| `frontend/src/components/layout/AppShell.tsx` | 移动导航状态与菜单触发器 |
+| `frontend/src/components/layout/AppSidebar.tsx` | 响应式侧栏、移动抽屉、关闭按钮、active 状态 |
+| `frontend/src/app/(dashboard)/notebooks/page.tsx` | 迁移 PageContainer/PageHeader |
+| `frontend/src/app/(dashboard)/transformations/page.tsx` | 迁移 PageContainer/PageHeader |
+| `frontend/src/app/(dashboard)/settings/page.tsx` | 迁移 PageContainer/PageHeader |
+| `frontend/src/app/(dashboard)/advanced/page.tsx` | 迁移 PageContainer/PageHeader |
+| `frontend/src/app/(dashboard)/search/page.tsx` | 固定高度搜索工作区迁移共享布局 |
+| `frontend/src/components/common/ThemeToggle.tsx` | 移除旧 sidebar helper，使用 Button 变体 |
+| `frontend/src/components/common/LanguageToggle.tsx` | 移除旧 sidebar helper，使用 Button 变体 |
+| `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx` | 使用 interactive Card 变体 |
+| `frontend/src/app/(dashboard)/notebooks/components/NotesColumn.tsx` | 移除旧 card-hover |
+| `frontend/src/components/sources/SourceCard.tsx` | 使用 interactive Card 变体 |
+| `frontend/src/app/(dashboard)/settings/components/UserApprovalDashboard.tsx` | 审批面板文案本地化 |
+| `frontend/src/lib/locales/*/index.ts` | 导航可访问性文案；`en-US`/`zh-CN` 补审批面板文案 |
+| `frontend/src/components/layout/AppShell.test.tsx` / `AppSidebar.test.tsx` / `PageHeader.test.tsx` | 布局、导航和可访问性交互测试 |
+| `frontend/src/components/ui/ui-variants.test.tsx` | 控件和语义反馈变体测试 |
+
+---
+
+> 最后更新：2026-06-11 | 新增 §20（温暖研究风格 UI 美化与设计系统）。当前 UI 美化分支 `en_ui_beautify_0610` 已完成视觉系统、响应式导航、核心页面迁移、验证与截图证据；剩余非 UI 阻塞为 `make dev` 引用缺失的 `docker-compose.dev.yml`。

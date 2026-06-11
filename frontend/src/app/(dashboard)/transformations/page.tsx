@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
+import { PageContainer } from '@/components/layout/PageContainer'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DefaultPromptEditor } from './components/DefaultPromptEditor'
@@ -25,22 +27,21 @@ export default function TransformationsPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold">{t.transformations.title}</h1>
-              <Button variant="outline" size="sm" onClick={() => refetch()}>
-                <RefreshCw className="h-4 w-4" />
+      <PageContainer width="wide" className="space-y-6">
+        <PageHeader
+          title={t.transformations.title}
+          description={t.transformations.desc}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              aria-label={t.common.refresh}
+            >
+              <RefreshCw className="h-4 w-4" />
             </Button>
-          </div>
-        </div>
-
-        <div className="max-w-5xl">
-          <p className="text-muted-foreground">
-            {t.transformations.desc}
-          </p>
-        </div>
+          }
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="space-y-2">
@@ -73,8 +74,7 @@ export default function TransformationsPage() {
             />
           </TabsContent>
         </Tabs>
-        </div>
-      </div>
+      </PageContainer>
     </AppShell>
   )
 }

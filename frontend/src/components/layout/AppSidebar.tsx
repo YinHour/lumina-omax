@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type RefObject } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -41,9 +42,16 @@ import {
   Wrench,
   Command,
   HelpCircle,
+  X,
 } from 'lucide-react'
 
 interface NavItem { name: string; href: string; icon: typeof Book; adminOnly?: boolean }
+
+interface AppSidebarProps {
+  mobileOpen: boolean
+  onMobileOpenChange: (open: boolean) => void
+  mobileTriggerRef?: RefObject<HTMLButtonElement | null>
+}
 
 const getNavigation = (t: TranslationKeys, isAdmin: boolean): { title: string; items: NavItem[] }[] => {
   const manageItems: NavItem[] = [
@@ -77,15 +85,24 @@ const getNavigation = (t: TranslationKeys, isAdmin: boolean): { title: string; i
 
 type CreateTarget = 'source' | 'notebook'
 
-export function AppSidebar() {
+export function AppSidebar({
+  mobileOpen,
+  onMobileOpenChange,
+  mobileTriggerRef,
+}: AppSidebarProps) {
   const { t } = useTranslation()
   const pathname = usePathname()
   const { logout, user } = useAuth()
   const navigation = getNavigation(t, user?.role === 'admin')
+  const activeHref = navigation
+    .flatMap(section => section.items)
+    .filter(item => pathname === item.href || pathname?.startsWith(`${item.href}/`))
+    .sort((left, right) => right.href.length - left.href.length)[0]?.href
   const { isCollapsed, toggleCollapse } = useSidebarStore()
   const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
 
-  const [createMenuOpen, setCreateMenuOpen] = useState(false)
+  const [desktopCreateMenuOpen, setDesktopCreateMenuOpen] = useState(false)
+  const [mobileCreateMenuOpen, setMobileCreateMenuOpen] = useState(false)
   const [isMac, setIsMac] = useState(true) // Default to Mac for SSR
 
   // Detect platform for keyboard shortcut display
@@ -93,7 +110,10 @@ export function AppSidebar() {
     setIsMac(navigator.platform.toLowerCase().includes('mac'))
   }, [])
 
-  const handleCreateSelection = (target: CreateTarget) => {
+  const handleCreateSelection = (
+    target: CreateTarget,
+    setCreateMenuOpen: (open: boolean) => void
+  ) => {
     setCreateMenuOpen(false)
 
     if (target === 'source') {
@@ -103,22 +123,21 @@ export function AppSidebar() {
     }
   }
 
-  return (
-    <TooltipProvider delayDuration={0}>
-      <div
-        className={cn(
-          'app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300',
-          isCollapsed ? 'w-16' : 'w-64'
-        )}
-      >
+  const renderSidebarContent = (mobile: boolean) => {
+    const collapsed = !mobile && isCollapsed
+    const createMenuOpen = mobile ? mobileCreateMenuOpen : desktopCreateMenuOpen
+    const setCreateMenuOpen = mobile ? setMobileCreateMenuOpen : setDesktopCreateMenuOpen
+
+    return (
+      <>
         <div
           className={cn(
             'flex h-16 items-center group',
-            isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
+            collapsed ? 'justify-center px-2' : 'justify-between px-4'
           )}
         >
-          {isCollapsed ? (
-            <div className="relative flex items-center justify-center w-full">
+          {collapsed ? (
+            <div className="relative flex w-full items-center justify-center">
               <Image
                 src="/logo.png"
                 alt="Lumiton Omax Logo"
@@ -141,15 +160,17 @@ export function AppSidebar() {
               <span className="flex-1 text-center text-base font-bold whitespace-nowrap text-sidebar-foreground mx-2" data-testid="sidebar-brand">
                 Lumiton·Omax|知涌
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleCollapse}
-                className="text-sidebar-foreground hover:bg-sidebar-accent shrink-0"
-                data-testid="sidebar-toggle"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
+              {!mobile && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleCollapse}
+                  className="text-sidebar-foreground hover:bg-sidebar-accent shrink-0"
+                  data-testid="sidebar-toggle"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -157,17 +178,17 @@ export function AppSidebar() {
         <nav
           className={cn(
             'flex-1 space-y-1 py-4 overflow-y-auto min-h-0',
-            isCollapsed ? 'px-2' : 'px-3'
+            collapsed ? 'px-2' : 'px-3'
           )}
         >
           <div
             className={cn(
               'mb-4',
-              isCollapsed ? 'px-0' : 'px-3'
+              collapsed ? 'px-0' : 'px-3'
             )}
           >
             <DropdownMenu open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
-              {isCollapsed ? (
+              {collapsed ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <DropdownMenuTrigger asChild>
@@ -175,7 +196,7 @@ export function AppSidebar() {
                         onClick={() => setCreateMenuOpen(true)}
                         variant="default"
                         size="sm"
-                        className="w-full justify-center px-2 bg-primary hover:bg-primary/90 text-primary-foreground border-0"
+                        className="w-full justify-center px-2"
                         aria-label={t.common.create}
                       >
                         <Plus className="h-4 w-4" />
@@ -190,7 +211,7 @@ export function AppSidebar() {
                     onClick={() => setCreateMenuOpen(true)}
                     variant="default"
                     size="sm"
-                    className="w-full justify-start bg-primary hover:bg-primary/90 text-primary-foreground border-0"
+                    className="w-full justify-start"
                    >
                     <Plus className="h-4 w-4 mr-2" />
                     {t.common.create}
@@ -199,14 +220,14 @@ export function AppSidebar() {
               )}
 
               <DropdownMenuContent
-                align={isCollapsed ? 'end' : 'start'}
-                side={isCollapsed ? 'right' : 'bottom'}
+                align={collapsed ? 'end' : 'start'}
+                side={collapsed ? 'right' : 'bottom'}
                 className="w-48"
               >
                 <DropdownMenuItem
                   onSelect={(event) => {
                     event.preventDefault()
-                    handleCreateSelection('source')
+                    handleCreateSelection('source', setCreateMenuOpen)
                   }}
                   className="gap-2"
                 >
@@ -216,7 +237,7 @@ export function AppSidebar() {
                 <DropdownMenuItem
                   onSelect={(event) => {
                     event.preventDefault()
-                    handleCreateSelection('notebook')
+                    handleCreateSelection('notebook', setCreateMenuOpen)
                   }}
                   className="gap-2"
                 >
@@ -233,33 +254,41 @@ export function AppSidebar() {
                 <Separator className="my-3" />
               )}
               <div className="space-y-1">
-                {!isCollapsed && (
-                  <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60">
-                    {section.title}
-                  </h3>
-                )}
+                <h3
+                  className={cn(
+                    'mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60',
+                    collapsed && 'hidden'
+                  )}
+                >
+                  {section.title}
+                </h3>
 
                 {section.items.map((item) => {
-                  const isActive = pathname?.startsWith(item.href) || false
+                  const isActive = item.href === activeHref
                   const button = (
                     <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
+                      variant="ghost"
+                      data-active={isActive}
                       className={cn(
-                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
-                        isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                        isCollapsed ? 'justify-center px-2' : 'justify-start'
+                        'relative w-full justify-start gap-3 overflow-hidden text-sidebar-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-transparent',
+                        'data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:before:bg-sidebar-primary',
+                        collapsed && 'justify-center px-2'
                       )}
                     >
                       <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.name}</span>}
+                      {!collapsed && <span>{item.name}</span>}
                     </Button>
                   )
 
-                  if (isCollapsed) {
+                  if (collapsed) {
                     return (
                       <Tooltip key={item.name}>
                         <TooltipTrigger asChild>
-                          <Link href={item.href}>
+                          <Link
+                            href={item.href}
+                            aria-current={isActive ? 'page' : undefined}
+                            onClick={() => onMobileOpenChange(false)}
+                          >
                             {button}
                           </Link>
                         </TooltipTrigger>
@@ -269,7 +298,12 @@ export function AppSidebar() {
                   }
 
                   return (
-                    <Link key={item.name} href={item.href}>
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      onClick={() => onMobileOpenChange(false)}
+                    >
                       {button}
                     </Link>
                   )
@@ -282,31 +316,41 @@ export function AppSidebar() {
         <div
           className={cn(
             'border-t border-sidebar-border p-3 space-y-2',
-            isCollapsed && 'px-2'
+            collapsed && 'px-2'
           )}
         >
           {/* Command Palette hint */}
-          {!isCollapsed && (
-            <div className="px-3 py-1.5 text-xs text-sidebar-foreground/60">
-              <div className="flex items-center justify-between">
-                 <span className="flex items-center gap-1.5">
+          <div
+            className={cn(
+              'px-3 py-1.5 text-xs text-sidebar-foreground/60',
+              collapsed && 'hidden'
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
                   <Command className="h-3 w-3" />
                   {t.common.quickActions}
-                </span>
-                <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                  {isMac ? <span className="text-xs">⌘</span> : <span>Ctrl+</span>}K
-                </kbd>
-              </div>
-               <p className="mt-1 text-[10px] text-sidebar-foreground/40">
-                {t.common.quickActionsDesc}
-              </p>
+              </span>
+              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                {isMac ? <span className="text-xs">⌘</span> : <span>Ctrl+</span>}K
+              </kbd>
             </div>
-          )}
+            <p className="mt-1 text-[10px] text-sidebar-foreground/40">
+              {t.common.quickActionsDesc}
+            </p>
+          </div>
 
           {/* User Profile */}
-          {!isCollapsed && user && (
-            <Link href="/profile" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-400 text-xs font-bold">
+          {user && (
+            <Link
+              href="/profile"
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-muted',
+                collapsed && 'hidden'
+              )}
+              onClick={() => onMobileOpenChange(false)}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary text-xs font-bold">
                 {user.display_name?.charAt(0) || user.username?.charAt(0) || '?'}
               </div>
               <div className="flex-1 min-w-0">
@@ -319,10 +363,10 @@ export function AppSidebar() {
           <div
             className={cn(
               'flex flex-row gap-2',
-              isCollapsed ? 'items-center' : 'items-stretch'
+              collapsed ? 'items-center' : 'items-stretch'
             )}
           >
-            {isCollapsed ? (
+            {collapsed ? (
               <>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -349,12 +393,12 @@ export function AppSidebar() {
             )}
           </div>
 
-          {isCollapsed ? (
+          {collapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full justify-center sidebar-menu-item"
+                  className="w-full justify-center"
                   onClick={logout}
                   aria-label={t.common.signOut}
                 >
@@ -366,7 +410,7 @@ export function AppSidebar() {
           ) : (
             <Button
               variant="outline"
-              className="w-full justify-start gap-3 sidebar-menu-item"
+              className="w-full justify-start gap-3"
               onClick={logout}
               aria-label={t.common.signOut}
              >
@@ -375,7 +419,55 @@ export function AppSidebar() {
             </Button>
           )}
         </div>
-      </div>
+      </>
+    )
+  }
+
+  return (
+    <TooltipProvider delayDuration={0}>
+      <DialogPrimitive.Root
+        open={mobileOpen}
+        onOpenChange={onMobileOpenChange}
+      >
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[1px] md:hidden" />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            onCloseAutoFocus={(event) => {
+              if (mobileTriggerRef?.current) {
+                event.preventDefault()
+                mobileTriggerRef.current.focus()
+              }
+            }}
+            className="app-sidebar fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-xl outline-none md:hidden"
+          >
+            <DialogPrimitive.Title className="sr-only">
+              {t.common.navigationLabel}
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t.common.closeNavigation}
+                className="absolute right-3 top-3 z-10 text-sidebar-foreground hover:bg-sidebar-accent md:hidden"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </DialogPrimitive.Close>
+            {renderSidebarContent(true)}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+
+      <aside
+        aria-label={t.common.navigationLabel}
+        className={cn(
+          'app-sidebar hidden h-full flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 md:flex',
+          isCollapsed ? 'md:w-16' : 'md:w-64'
+        )}
+      >
+        {renderSidebarContent(false)}
+      </aside>
     </TooltipProvider>
   )
 }

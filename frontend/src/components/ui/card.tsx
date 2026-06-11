@@ -1,16 +1,46 @@
 import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+const cardVariants = cva(
+  "flex flex-col gap-6 rounded-xl border py-6 text-card-foreground transition-[color,background-color,border-color,box-shadow] duration-200",
+  {
+    variants: {
+      variant: {
+        default: "border-border/90 bg-card shadow-xs",
+        interactive:
+          "cursor-pointer border-border/90 bg-card shadow-xs hover:border-primary/25 hover:bg-card hover:shadow-[var(--shadow-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+        selected:
+          "border-primary/40 bg-accent/55 ring-1 ring-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+        insight:
+          "border-highlight/55 bg-highlight/12 shadow-xs",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+function Card({
+  className,
+  variant,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof cardVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot : "div"
+
   return (
-    <div
-      data-slot="card"
-      className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
-        className
-      )}
+    <Comp
       {...props}
+      data-slot="card"
+      data-variant={variant ?? "default"}
+      className={cn(cardVariants({ variant }), className)}
     />
   )
 }
@@ -83,6 +113,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
 
 export {
   Card,
+  cardVariants,
   CardHeader,
   CardFooter,
   CardTitle,

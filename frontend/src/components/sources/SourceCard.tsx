@@ -145,7 +145,6 @@ export function SourceCard({
 }: SourceCardProps) {
   const { t } = useTranslation()
   const isOwnSource = !showRemoveFromNotebook || (currentUserId && source.uploaded_by === currentUserId)
-  const isMultiRef = (source.notebook_count || 0) > 1
   const statusConfigMap = getStatusConfig(t)
   
   // Only fetch status for sources that might have async processing
@@ -230,8 +229,9 @@ export function SourceCard({
 
   return (
     <Card
+      variant="interactive"
       className={cn(
-        'transition-all duration-200 hover:shadow-md group relative cursor-pointer border border-border/60 dark:border-border/40',
+        'group relative border-border/60 dark:border-border/40',
         className
       )}
       onClick={handleCardClick}

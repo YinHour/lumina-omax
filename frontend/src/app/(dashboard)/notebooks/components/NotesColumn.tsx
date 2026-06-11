@@ -139,7 +139,7 @@ export function NotesColumn({
                 {notes.map((note) => (
                   <div
                     key={note.id}
-                    className="p-3 border rounded-lg card-hover group relative cursor-pointer"
+                    className="group relative cursor-pointer rounded-lg border p-3 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-primary/25 hover:shadow-[var(--shadow-surface)]"
                     onClick={() => setEditingNote(note)}
                   >
                     <div className="flex items-start justify-between mb-2">
