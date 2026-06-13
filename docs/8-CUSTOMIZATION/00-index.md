@@ -1785,4 +1785,46 @@ make codex-quick-check
 
 ---
 
-> 最后更新：2026-06-13 | 新增 §22（Codex 本地协作环境优化）。当前分支 `en_local_codex_env_optim_0613` 固化了项目级 Codex 配置、提醒 hook、仓库 skill、验证入口和本机全局偏好；后续可根据命中率再决定是否把提醒型 hook 升级为更严格的检查。
+## 23. 打开笔记本来源筛选与本次聊天引用范围（新增 2026-06-13）
+
+本轮基于 `codex/notebook-source-context-selection` 分支，实现打开笔记本内的来源筛选和筛选结果批量选择。该选择只控制**本次聊天引用哪些来源**，不改变来源是否属于当前笔记本。
+
+### 23.1 行为决策
+
+- 来源栏保留总来源数和当前参与聊天上下文的来源数显示。
+- 来源筛选按标题、文件路径、URL、来源笔记本名和上传者匹配。
+- 筛选框下方新增“全选 / 取消全选”，只作用于当前筛选结果。
+- 来源栏右上角三点菜单仍保留原有全部来源的批量上下文模式设置。
+- 聊天请求层继续通过 `context_config` 显式传递每个来源的上下文模式：选中的来源为 `full content`，未选来源为 `not in`。
+
+**边界**：这不是来源成员管理。取消选择后，来源仍留在笔记本中，只是不参与当前聊天上下文。
+
+### 23.2 已有上限
+
+新增来源流程当前已有 50 个批量上限：
+
+- `frontend/src/components/sources/AddSourceDialog.tsx`
+- `frontend/src/components/sources/steps/SourceTypeStep.tsx`
+
+本轮未把该上限升级为后端 settings 字段；如后续需要管理员可调，应单独扩展 `ContentSettings`、`SettingsResponse`、设置页表单和添加来源入口，避免把聊天引用范围改动与设置 schema 改动混在一个 PR。
+
+### 23.3 验证
+
+```text
+cd frontend && npm test -- SourcesColumn.test.tsx useNotebookChat.test.tsx
+```
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx` | 来源筛选结果的全选/取消全选与筛选内选中数量 |
+| `frontend/src/app/(dashboard)/notebooks/[id]/page.tsx` | 批量上下文选择支持限定 source id 范围 |
+| `frontend/src/components/source/SourceDetailContent.tsx` | 修复 markdown 图片 `src` 类型窄化，保证生产构建通过 |
+| `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.test.tsx` | 来源栏筛选后批量选择回归 |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | 聊天上下文配置遵守来源选择回归 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 记录本轮行为决策、边界和验证 |
+
+---
+
+> 最后更新：2026-06-13 | 新增 §23（打开笔记本来源筛选与本次聊天引用范围）。当前分支 `codex/notebook-source-context-selection` 实现来源栏筛选和筛选结果批量选择，仅影响本次聊天上下文，不改变笔记本来源成员关系。

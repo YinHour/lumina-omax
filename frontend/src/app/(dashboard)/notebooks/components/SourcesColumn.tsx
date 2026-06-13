@@ -36,7 +36,7 @@ interface SourcesColumnProps {
   onRefresh?: () => void
   contextSelections?: Record<string, ContextMode>
   onContextModeChange?: (sourceId: string, mode: ContextMode) => void
-  onBulkContextModeChange?: (mode: ContextMode) => void
+  onBulkContextModeChange?: (mode: ContextMode, sourceIds?: string[]) => void
   // Pagination props
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
@@ -55,7 +55,7 @@ export function SourcesColumn({
   isFetchingNextPage,
   fetchNextPage,
 }: SourcesColumnProps) {
-  const { t, language } = useTranslation()
+  const { t } = useTranslation()
   const { toast } = useToast()
   const user = useAuthStore((s) => s.user)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -118,6 +118,27 @@ export function SourcesColumn({
       return searchableText.includes(query)
     })
   }, [displaySources, sourceQuery])
+
+  const filteredSourceIds = useMemo(
+    () => filteredSources?.map((source) => source.id) ?? [],
+    [filteredSources]
+  )
+
+  const selectedFilteredSourceCount = useMemo(() => {
+    if (!contextSelections) return 0
+    return filteredSourceIds.filter((sourceId) => contextSelections[sourceId] !== 'off').length
+  }, [contextSelections, filteredSourceIds])
+
+  const allFilteredSourcesSelected = filteredSourceIds.length > 0
+    && selectedFilteredSourceCount === filteredSourceIds.length
+
+  const handleToggleFilteredSources = () => {
+    if (!onBulkContextModeChange || filteredSourceIds.length === 0) return
+    onBulkContextModeChange(
+      allFilteredSourcesSelected ? 'off' : 'full',
+      filteredSourceIds
+    )
+  }
 
   const { openModal } = useModalManager()
   const deleteSource = useDeleteSource()
@@ -297,14 +318,32 @@ export function SourcesColumn({
                 </div>
               </div>
               {sources && sources.length > 0 && (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={sourceQuery}
-                    onChange={(event) => setSourceQuery(event.target.value)}
-                    placeholder={t.sources.filterSources || t.sources.searchPlaceholder}
-                    className="h-9 pl-9"
-                  />
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={sourceQuery}
+                      onChange={(event) => setSourceQuery(event.target.value)}
+                      placeholder={t.sources.filterSources || t.sources.searchPlaceholder}
+                      className="h-9 pl-9"
+                    />
+                  </div>
+                  {onBulkContextModeChange && filteredSourceIds.length > 0 && (
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={handleToggleFilteredSources}
+                      >
+                        {allFilteredSourcesSelected ? t.sources.deselectAll : t.sources.selectAll}
+                      </Button>
+                      <span>
+                        {t.sources.selectedCount.replace('{count}', selectedFilteredSourceCount.toString())}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
