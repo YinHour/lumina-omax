@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/lumina_stop_check.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking Lumina-Omax workflow reminders"
+          }
+        ]
+      }
+    ]
+  }
+}

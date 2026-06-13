@@ -1,4 +1,5 @@
 .PHONY: run frontend frontend-test-bib check ruff database lint api start-all stop-all status clean-cache worker worker-start worker-stop worker-restart
+.PHONY: codex-quick-check codex-frontend-check codex-backend-check codex-diff-check
 .PHONY: docker-buildx-prepare docker-buildx-clean docker-buildx-reset
 .PHONY: docker-push docker-push-latest docker-release docker-build-local tag export-docs
 .PHONY: parallel-up parallel-down parallel-status
@@ -38,6 +39,21 @@ frontend:
 # Verify 参考文献 auto-numbering (run on your machine; requires Node/npm in PATH)
 frontend-test-bib:
 	cd frontend && npm run test -- --run src/lib/utils/source-references.bibliography.test.ts
+
+codex-diff-check:
+	git diff --check
+
+codex-quick-check: codex-diff-check
+	@echo "✅ Codex quick check complete"
+
+codex-frontend-check:
+	cd frontend && npm run lint
+	cd frontend && npm test
+	cd frontend && npm run build
+
+codex-backend-check:
+	.venv/bin/python -m ruff check api commands open_notebook tests
+	.venv/bin/python -m pytest tests/ -q
 
 lint:
 	uv run python -m mypy .

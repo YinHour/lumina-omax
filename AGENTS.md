@@ -48,6 +48,15 @@ This file provides architectural guidance for contributors working on Lumiton·O
 
 User documentation is at @docs/
 
+## Lumina-Omax Local Working Rules
+
+- Before non-trivial development, read `docs/8-CUSTOMIZATION/00-index.md` for the custom-development baseline.
+- For major UI work, read `DESIGN.md` and the relevant `docs/superpowers/specs/` or `docs/superpowers/plans/` file before editing.
+- Frontend-visible strings must use i18n keys unless the text is explicitly brand or domain narrative.
+- For LAN source deployment, browser clients should use relative `/api` through the Next.js proxy. Do not route browser traffic directly to machine-local `localhost` API URLs.
+- The stable frontend production build path is `npm run build`, currently backed by `next build --webpack`.
+- After durable behavior changes, update `docs/8-CUSTOMIZATION/00-index.md` with the decision, touched areas, validation, and any known follow-up.
+
 ## Tech Stack
 
 ### Frontend (`frontend/`)
@@ -146,15 +155,7 @@ User documentation is at @docs/
 
 ## Component References
 
-See dedicated AGENTS.md files for detailed guidance:
-
-- **[frontend/AGENTS.md](frontend/AGENTS.md)**: React/Next.js architecture, state management, API integration
-- **[api/AGENTS.md](api/AGENTS.md)**: FastAPI structure, service pattern, endpoint development
-- **[open_notebook/AGENTS.md](open_notebook/AGENTS.md)**: Backend core, domain models, LangGraph workflows, AI provisioning
-- **[open_notebook/domain/AGENTS.md](open_notebook/domain/AGENTS.md)**: Data models, repository pattern, search functions
-- **[open_notebook/ai/AGENTS.md](open_notebook/ai/AGENTS.md)**: ModelManager, AI provider integration, Esperanto usage
-- **[open_notebook/graphs/AGENTS.md](open_notebook/graphs/AGENTS.md)**: LangGraph workflow design, state machines
-- **[open_notebook/database/AGENTS.md](open_notebook/database/AGENTS.md)**: SurrealDB operations, migrations, async patterns
+This checkout currently uses the root `AGENTS.md` as the durable project-level guidance file. If future subdirectory-specific `AGENTS.md` files are added, read the closest one before editing that subtree.
 
 ---
 
@@ -215,4 +216,3 @@ See dedicated AGENTS.md files for detailed guidance:
 - **Discord**: https://discord.gg/37XJPXfz2w
 - **Issues**: https://github.com/lfnovo/open-notebook/issues
 - **License**: MIT (see LICENSE)
-

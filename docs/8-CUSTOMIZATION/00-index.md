@@ -1642,4 +1642,93 @@ passed
 
 ---
 
-> 最后更新：2026-06-13 | 新增 §21（笔记本权限、导览建议与可观测性修复）。当前分支 `bugfix_feat_test_0611` 已修复创建者权限、`created_by` schema、回答后建议、图片源详情和源码启动日志；联网搜索性能、大来源问答耗时、导览进度、旧笔记本归属 backfill 等仍需后续单独处理。
+## 22. Codex 本地协作环境优化（新增 2026-06-13）
+
+本轮基于 `en_local_codex_env_optim_0613` 分支，将长期二开过程中形成的 Codex 使用习惯固化为项目级配置、仓库 skill、轻量 hook 和快捷验证入口，减少后续任务对临时上下文和口头提醒的依赖。
+
+### 22.1 项目级 Codex 配置
+
+- `.codex/config.toml`：
+  - `project_doc_max_bytes = 65536`，降低根 `AGENTS.md` 和后续项目说明被默认 32 KiB 限制截断的概率
+  - 显式启用 `features.hooks` 和 `features.memories`
+- `.codex/hooks.json`：
+  - 注册 `Stop` 阶段提醒型 hook
+- `.codex/hooks/lumina_stop_check.py`：
+  - 检测前端可见文件改动但未触碰 locale 时，提醒确认是否需要 i18n key
+  - 检测 API、前端、后端、prompt、Makefile、`.codex`、`.agents` 等耐久行为改动但未更新本总账时，提醒补充 `docs/8-CUSTOMIZATION/00-index.md`
+  - 仅输出提醒并返回 0，不阻断开发流程
+
+**决策**：hook 先采用非阻断模式，避免在规则未完全稳定前影响正常迭代；后续若提醒命中率高，可再考虑增强为更严格的检查。
+
+### 22.2 Repo Skill
+
+- `.agents/skills/lumina-omax-development/SKILL.md` — 新增仓库级 skill，触发范围覆盖 `lumina-omax` 中非平凡开发任务，尤其是 UI、i18n、API、RAG、Vision、部署和文档变更
+- skill 固化：
+  - 先读 `docs/8-CUSTOMIZATION/00-index.md`
+  - UI 任务再读 `DESIGN.md` 和相关 `docs/superpowers/` 规格/计划
+  - 浏览器侧 API 使用相对 `/api`
+  - 前端可见文案走 i18n
+  - 代码审查建议先验证再执行
+  - 变更后按影响面选择窄验证命令
+
+**决策**：把项目专属流程放到 repo skill，而不是继续扩展根 `AGENTS.md`，以便 Codex 按任务渐进加载，降低普通问题的上下文负担。
+
+### 22.3 根说明与验证入口
+
+- `AGENTS.md`：
+  - 新增 Lumina-Omax 本地工作规则
+  - 明确非平凡开发先读二开总账
+  - 强调 UI 走温暖研究设计系统和 i18n
+  - 明确 LAN 源码部署下浏览器流量走相对 `/api`
+  - 移除当前仓库不存在的子目录 `AGENTS.md` 引用，改为说明当前 checkout 以根文件为准
+- `Makefile`：
+  - 新增 `codex-diff-check`：执行 `git diff --check`
+  - 新增 `codex-quick-check`：快速 diff hygiene 检查
+  - 新增 `codex-frontend-check`：执行 `npm run lint`、`npm test`、`npm run build`
+  - 新增 `codex-backend-check`：执行 ruff 和 pytest
+
+**决策**：把常用验证命令命名为 `codex-*`，避免每轮任务重新推断构建/测试入口，也避免误用已知不稳定的旧 `make dev` 路径。
+
+### 22.4 本机全局 Codex 设置
+
+本轮还在本机 `~/.codex` 下做了不会进入 PR 的个人环境调整：
+
+- `~/.codex/AGENTS.md` — 写入通用协作偏好：先读仓库说明、审查建议先验证、可见文案走 i18n、大 UI 先计划、结束时报告验证和缺口
+- `~/.codex/config.toml` — `features.js_repl` 从 `false` 改为 `true`，配合 Browser/Chrome 插件提升前端和浏览器验证效率
+
+**决策**：个人默认放全局 Codex home，项目共同约束放仓库；两者分层，避免把个人偏好误当成项目事实。
+
+### 22.5 验证
+
+本轮验证以配置和文本结构为主：
+
+```text
+python3 -m json.tool .codex/hooks.json
+.codex/hooks/lumina_stop_check.py
+python3 - <<'PY'
+from pathlib import Path
+for path in [
+    ".codex/config.toml",
+    ".agents/skills/lumina-omax-development/SKILL.md",
+    "AGENTS.md",
+]:
+    assert Path(path).read_text(encoding="utf-8").strip()
+PY
+make codex-quick-check
+```
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `.codex/config.toml` | 项目级 Codex 配置，扩大项目说明读取预算并启用 hooks/memories |
+| `.codex/hooks.json` | 注册 Stop 阶段工作流提醒 hook |
+| `.codex/hooks/lumina_stop_check.py` | i18n 与二开总账更新提醒 |
+| `.agents/skills/lumina-omax-development/SKILL.md` | 仓库级 Codex 开发 workflow skill |
+| `AGENTS.md` | 本地工作规则、二开总账、UI/i18n、LAN `/api` 约束 |
+| `Makefile` | 新增 `codex-*` 快捷验证入口 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 记录本轮 Codex 环境优化 |
+
+---
+
+> 最后更新：2026-06-13 | 新增 §22（Codex 本地协作环境优化）。当前分支 `en_local_codex_env_optim_0613` 固化了项目级 Codex 配置、提醒 hook、仓库 skill、验证入口和本机全局偏好；后续可根据命中率再决定是否把提醒型 hook 升级为更严格的检查。
