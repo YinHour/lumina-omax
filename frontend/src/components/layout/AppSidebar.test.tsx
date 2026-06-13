@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { AppSidebar } from './AppSidebar'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
+import { useRecentNotebooksStore } from '@/lib/stores/recent-notebooks-store'
 
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(),
@@ -27,6 +28,7 @@ describe('AppSidebar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    useRecentNotebooksStore.setState({ recentNotebooks: [] })
     vi.mocked(usePathname).mockReturnValue('')
     vi.mocked(useSidebarStore).mockReturnValue({
       isCollapsed: false,
@@ -222,5 +224,22 @@ describe('AppSidebar', () => {
       'data-[active=true]:before:bg-sidebar-primary'
     )
     expect(notebooksButton?.className).not.toContain('indigo')
+  })
+
+  it('adds a native title to recent notebook links for long names', () => {
+    const longName = 'A very long recently opened notebook title for visual verification'
+    useRecentNotebooksStore.setState({
+      recentNotebooks: [
+        {
+          id: 'notebook:new-owned',
+          name: longName,
+          openedAt: Date.now(),
+        },
+      ],
+    })
+
+    render(<AppSidebar {...defaultProps} />)
+
+    expect(screen.getByRole('link', { name: longName })).toHaveAttribute('title', longName)
   })
 })

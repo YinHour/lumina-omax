@@ -85,7 +85,7 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
                   onClick={() => setShowPasswordDialog(true)}
                 >
                   <KeyRound className="h-4 w-4 mr-2" />
-                  {t.notebooks.passwordSettings || 'Password'}
+                  {t.notebooks.passwordSettings}
                 </Button>
                 <Button
                   variant="outline"

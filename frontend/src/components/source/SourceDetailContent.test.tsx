@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SourceDetailContent } from './SourceDetailContent'
 import { sourcesApi } from '@/lib/api/sources'
 import { insightsApi } from '@/lib/api/insights'
@@ -92,6 +92,32 @@ describe('SourceDetailContent header', () => {
     })
 
     expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument()
+  })
+
+  it('renders a source-level close button when used inside the source modal', async () => {
+    const onClose = vi.fn()
+    vi.mocked(sourcesApi.get).mockResolvedValue({
+      id: 'source:abc',
+      title: 'Example source',
+      full_text: '# Parsed content',
+      asset: { file_path: 'uploads/example.pdf' },
+      embedded: true,
+      topics: [],
+      created: '2026-06-08T00:00:00.000Z',
+      updated: '2026-06-08T00:00:00.000Z',
+      notebooks: [],
+      file_available: true,
+    } as never)
+
+    renderWithQueryClient(<SourceDetailContent sourceId="source:abc" onClose={onClose} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Example source')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('renders standalone image before the image description content', async () => {

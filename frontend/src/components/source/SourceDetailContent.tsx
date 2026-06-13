@@ -61,6 +61,7 @@ import {
   Database,
   AlertCircle,
   MessageSquare,
+  X,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
@@ -448,7 +449,7 @@ export function SourceDetailContent({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="pb-4 px-2 pr-12">
+      <div className="pb-4 px-2">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <InlineEdit
@@ -538,6 +539,16 @@ export function SourceDetailContent({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {onClose && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t.common.close}
+                onClick={onClose}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>

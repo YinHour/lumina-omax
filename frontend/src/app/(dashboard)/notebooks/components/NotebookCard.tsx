@@ -74,7 +74,7 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      aria-label="More actions"
+                      aria-label={t.sources.moreActions}
                       className="transition-opacity"
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -101,7 +101,7 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                       setShowPasswordDialog(true)
                     }}>
                       <KeyRound className="h-4 w-4 mr-2" />
-                      {t.notebooks.passwordSettings || 'Password'}
+                      {t.notebooks.passwordSettings}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={(e) => {
