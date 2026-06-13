@@ -71,6 +71,7 @@ import { SourceInsightDialog } from '@/components/source/SourceInsightDialog'
 import { NotebookAssociations } from '@/components/source/NotebookAssociations'
 
 const IMAGE_FILE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.img']
+const TIFF_FILE_EXTENSIONS = ['.tif', '.tiff']
 
 interface SourceDetailContentProps {
   sourceId: string
@@ -373,8 +374,21 @@ export function SourceDetailContent({
     return IMAGE_FILE_EXTENSIONS.some(ext => lowerPath.endsWith(ext))
   }, [source?.asset?.file_path])
 
+  const isStandaloneTiffSource = useMemo(() => {
+    const filePath = source?.asset?.file_path
+    if (!filePath) return false
+    const lowerPath = filePath.toLowerCase()
+    return TIFF_FILE_EXTENSIONS.some(ext => lowerPath.endsWith(ext))
+  }, [source?.asset?.file_path])
+
+  const isTiffImagePath = useCallback((path: string | undefined) => {
+    if (!path) return false
+    const lowerPath = path.toLowerCase().split('?')[0]
+    return TIFF_FILE_EXTENSIONS.some(ext => lowerPath.endsWith(ext))
+  }, [])
+
   const sourceImageUrl = source
-    ? `/api/sources/${encodeURIComponent(source.id)}/download`
+    ? `/api/sources/${encodeURIComponent(source.id)}/${isStandaloneTiffSource ? 'preview' : 'download'}`
     : ''
 
   const handleCopyUrl = useCallback(() => {
@@ -633,6 +647,13 @@ export function SourceDetailContent({
                       ul: ({ children }) => <ul className="mb-4 list-disc pl-6">{children}</ul>,
                       ol: ({ children }) => <ol className="mb-4 list-decimal pl-6">{children}</ol>,
                       li: ({ children }) => <li className="mb-1">{children}</li>,
+                      img: ({ src, alt }) => (
+                        <img
+                          src={isStandaloneTiffSource && isTiffImagePath(src) ? sourceImageUrl : src}
+                          alt={alt || ''}
+                          className="my-4 max-h-[70vh] w-full rounded-lg border object-contain"
+                        />
+                      ),
                       table: ({ children }) => (
                         <div className="my-4 overflow-x-auto">
                           <table className="min-w-full border-collapse border border-border">{children}</table>

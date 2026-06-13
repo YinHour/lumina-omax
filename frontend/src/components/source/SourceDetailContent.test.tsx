@@ -148,4 +148,29 @@ describe('SourceDetailContent header', () => {
     expect(description).toBeTruthy()
     expect(image.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
+
+  it('uses the PNG preview endpoint for standalone TIFF images', async () => {
+    vi.mocked(sourcesApi.get).mockResolvedValue({
+      id: 'source:abc',
+      title: 'TIFF source',
+      full_text: '## Extracted Images\n\n![](/api/uploads/images/abc/example.tiff)\n\n## Figure Descriptions\n\nDescription unavailable.',
+      asset: { file_path: '/data/uploads/example.tiff' },
+      embedded: false,
+      topics: [],
+      created: '2026-06-08T00:00:00.000Z',
+      updated: '2026-06-08T00:00:00.000Z',
+      notebooks: [],
+      file_available: true,
+    } as never)
+
+    renderWithQueryClient(<SourceDetailContent sourceId="source:abc" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('TIFF source')).toBeInTheDocument()
+    })
+
+    const images = Array.from(document.querySelectorAll('img'))
+    expect(images[0]).toHaveAttribute('src', '/api/sources/source%3Aabc/preview')
+    expect(images[1]).toHaveAttribute('src', '/api/sources/source%3Aabc/preview')
+  })
 })

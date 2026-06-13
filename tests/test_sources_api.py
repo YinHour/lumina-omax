@@ -15,7 +15,7 @@ from api.routers.sources import (
 )
 from open_notebook.ai.models import DefaultModels
 from open_notebook.config import UPLOADS_FOLDER
-from open_notebook.domain.notebook import Source
+from open_notebook.domain.notebook import Asset, Source
 
 
 @pytest.fixture
@@ -40,6 +40,33 @@ def mock_default_models():
     ) as mock_get_defaults:
         mock_get_defaults.return_value = DefaultModels(default_chat_model="model:test")
         yield mock_get_defaults
+
+
+def test_tiff_source_preview_converts_to_png(client, auth_headers):
+    from PIL import Image
+
+    source_id = "source:tiffpreview"
+    upload_path = os.path.join(os.path.abspath(UPLOADS_FOLDER), "preview-test.tiff")
+    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+    Image.new("RGB", (12, 8), (120, 40, 20)).save(upload_path, format="TIFF")
+
+    source = Source(
+        id=source_id,
+        title="preview-test.tiff",
+        asset=Asset(file_path=upload_path, original_filename="preview-test.tiff"),
+    )
+
+    with patch("api.routers.sources.Source.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = source
+
+        response = client.get(
+            f"/api/sources/{source_id}/preview",
+            headers=auth_headers,
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG")
 
 
 class TestAsyncSourceAssetPersistence:

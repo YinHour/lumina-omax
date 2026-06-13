@@ -1520,7 +1520,7 @@ DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;
 - `frontend/src/components/source/SourceDetailContent.test.tsx` — 覆盖独立图片源“先图后描述”
 - `open_notebook/graphs/source.py` / `tests/test_vision_descriptions.py` — 继续扩展图片描述链路的容错、并发和格式清洗
 
-**当前状态**：图片源详情展示已完成。图片文件的导入、解析、描述、嵌入、图谱抽取对 `img/png/bmp/tiff` 的完整覆盖仍需后续专项核查，尤其是图谱抽取是否适合纯图片描述文本。
+**当前状态**：图片源详情展示已完成。后端导入链路已覆盖 `.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.bmp`、`.tif`、`.tiff`、`.img`：独立图片绕过 content-core 文本抽取，复制到 `data/uploads/images/{source_id}/`，写入原图 Markdown，并将 Vision 描述或“未配置 Vision 模型”的占位说明合并进 `Source.full_text`。因此即使没有视觉模型，source 也不会因正文为空而失败，后续嵌入与知识图谱抽取继续复用现有 `full_text` 流程。浏览器端用 `http://192.168.10.55:3001/` 新建笔记本验证 `.png/.bmp/.tiff/.img` 上传和详情展示时发现 Chromium 不能直接渲染 TIFF；已新增 `GET /sources/{source_id}/preview` 将 `.tif/.tiff` 转为 PNG 预览，详情页顶部原图和 Markdown 内 TIFF 图片均走该预览端点，原始下载仍保留 TIFF。真实视觉模型质量、纯图片描述文本是否适合 KG 抽取，仍需用更多实际样本继续评估。
 
 #### 2026-06-13 第二段收敛
 
