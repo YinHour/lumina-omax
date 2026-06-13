@@ -318,6 +318,7 @@ export function AppSidebar({
                                 <TooltipTrigger asChild>
                                   <Link
                                     href={href}
+                                    title={notebook.name}
                                     aria-current={isRecentActive ? 'page' : undefined}
                                     onClick={() => onMobileOpenChange(false)}
                                     className={cn(

@@ -12,7 +12,8 @@ import {
   CreateNotebookChatSessionRequest,
   UpdateNotebookChatSessionRequest,
   SourceListResponse,
-  NoteResponse
+  NoteResponse,
+  BuildContextResponse
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
 
@@ -38,6 +39,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const isSendingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const pendingSuggestedQuestionsRef = useRef<string[] | null>(null)
+  const contextCacheRef = useRef<{ signature: string; response: BuildContextResponse } | null>(null)
+  const contextRequestRef = useRef<{ signature: string; promise: Promise<BuildContextResponse> } | null>(null)
   // Pending model override for when user changes model before a session exists
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
@@ -205,17 +208,60 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       }
     })
 
+    const signature = JSON.stringify({
+      notebookId,
+      sources: sources
+        .map(source => [
+          source.id,
+          source.updated,
+          context_config.sources[source.id],
+        ])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+      notes: notes
+        .map(note => [
+          note.id,
+          note.updated,
+          context_config.notes[note.id],
+        ])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    })
+
+    const cached = contextCacheRef.current
+    if (cached?.signature === signature) {
+      setTokenCount(cached.response.token_count)
+      setCharCount(cached.response.char_count)
+      return cached.response.context
+    }
+
+    const pending = contextRequestRef.current
+    if (pending?.signature === signature) {
+      const response = await pending.promise
+      setTokenCount(response.token_count)
+      setCharCount(response.char_count)
+      return response.context
+    }
+
     // Call API to build context with actual content
-    const response = await chatApi.buildContext({
+    const request = chatApi.buildContext({
       notebook_id: notebookId,
       context_config
     })
+    contextRequestRef.current = { signature, promise: request }
 
-    // Store token and char counts
-    setTokenCount(response.token_count)
-    setCharCount(response.char_count)
+    try {
+      const response = await request
+      contextCacheRef.current = { signature, response }
 
-    return response.context
+      // Store token and char counts
+      setTokenCount(response.token_count)
+      setCharCount(response.char_count)
+
+      return response.context
+    } finally {
+      if (contextRequestRef.current?.promise === request) {
+        contextRequestRef.current = null
+      }
+    }
   }, [notebookId, sources, notes, contextSelections])
 
   // Send message (with streaming)
@@ -295,6 +341,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       let aiMessage: NotebookChatMessage | null = null
       let pendingSuggestedQuestions: string[] | null = null
       let buffer = ''
+      const markAnswerComplete = () => {
+        isSendingRef.current = false
+        setActivityStatus(null)
+        setIsSending(false)
+      }
+
       const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown }) => {
         if (data.type === 'ai_message') {
           setActivityStatus(null)
@@ -327,6 +379,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
               [aiMessage!.id]: questions,
             }))
           }
+        } else if (data.type === 'answer_complete') {
+          markAnswerComplete()
         } else if (data.type === 'error') {
           throw new Error(data.message || 'Stream error')
         }

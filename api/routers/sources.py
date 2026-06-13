@@ -929,6 +929,30 @@ async def download_source_file(source_id: str):
         raise HTTPException(status_code=500, detail="Failed to download source file")
 
 
+@router.get("/sources/{source_id}/preview")
+async def preview_source_file(source_id: str):
+    """Return a browser-renderable preview for uploaded image sources."""
+    try:
+        resolved_path, _filename = await _resolve_source_file(source_id)
+        ext = Path(resolved_path).suffix.lower()
+        if ext not in (".tif", ".tiff"):
+            raise HTTPException(status_code=400, detail="Preview is only available for TIFF images")
+
+        from PIL import Image
+
+        with Image.open(resolved_path) as image:
+            preview = image.convert("RGB")
+            output = BytesIO()
+            preview.save(output, format="PNG")
+
+        return Response(content=output.getvalue(), media_type="image/png")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating preview for source {source_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate source preview")
+
+
 @router.get("/sources/{source_id}/download/markdown")
 async def download_source_markdown(source_id: str):
     """Download the processed source content as a Markdown file."""

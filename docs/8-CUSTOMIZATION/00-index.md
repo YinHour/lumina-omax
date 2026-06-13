@@ -1453,6 +1453,13 @@ DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;
 
 **决策**：可观测性优先落在 `logs/open_notebook.log`，方便源码启动模式下直接定位卡点；前端只显示用户能理解的阶段文案，不暴露内部图节点和工具细节。
 
+#### 2026-06-13 后续收敛
+
+- `api/routers/chat.py` — 主回答结束后立即发送 `answer_complete` SSE 事件，再异步继续生成 `suggested_questions`，最后发送原有 `complete` 事件关闭流。这样建议问题慢或超时时，不再阻塞用户继续输入下一条问题。
+- `frontend/src/lib/hooks/useNotebookChat.ts` — 收到 `answer_complete` 后立即恢复发送状态和输入框，同时继续读取同一个 SSE 连接中随后到达的建议问题。
+- `frontend/src/lib/hooks/useNotebookChat.ts` — 对 notebook context 构建增加签名缓存和同签名 in-flight 去重；签名包含 notebook id、来源/笔记 id、更新时间和上下文选择模式。相同选择下发送消息复用已构建 context，避免大来源笔记本在统计和发送之间重复构建完整上下文。
+- `tests/test_chat_suggestions_sse.py` / `frontend/src/lib/hooks/useNotebookChat.test.tsx` — 覆盖 `answer_complete` 事件、建议问题后到达时继续挂载、相同选择下 context 构建复用。
+
 ---
 
 ### 21.4 Tavily 联网搜索超时与降级
@@ -1466,7 +1473,15 @@ DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;
 - `tests/test_tavily_search_timeout.py` — 覆盖 Tavily 慢响应时返回超时说明而不是无限等待
 - `frontend/src/components/source/ChatPanel.tsx` — 联网搜索阶段显示明确状态，让用户知道系统仍在处理
 
-**当前状态**：已完成“不卡死 + 可降级 + 可观测”的第一层修复；尚未完成多白名单、多 query、23 个源大上下文场景下的系统性性能优化。
+#### 2026-06-13 后续收敛
+
+- `open_notebook/graphs/tools.py`：
+  - 新增 `TAVILY_SEARCH_MAX_CALLS`，默认每次 chat trace 最多 2 次 Tavily 调用
+  - 超过上限后直接返回降级说明，不再触发真实 Tavily 网络请求
+  - 保留 `unknown` trace 的兼容行为，避免非聊天链路被误限流
+- `tests/test_tavily_search_timeout.py` — 覆盖同一 chat trace 下超过上限时第二次搜索不会调用 Tavily。
+
+**当前状态**：已完成“不卡死 + 可降级 + 可观测 + 单回答搜索调用上限”的第二层修复；仍需结合真实 23 源笔记本日志继续分析 context 构建、模型首包和白名单查询质量。
 
 ---
 
@@ -1490,7 +1505,7 @@ DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;
   - 调整打开笔记本后的布局，使来源栏与对话栏更接近
   - 笔记栏为空时可收起/减少占用，给来源和对话更多空间
 
-**当前状态**：代码已有改动，但这部分高度依赖实际 UI 手感，仍需后续按真实工作流手测确认。
+**当前状态**：代码已有改动，组件级回归通过；由于本轮浏览器打开 `/notebooks` 时被 API 连接错误页阻挡，真实新上传/添加已有来源、空笔记栏/有笔记栏布局仍需在 API 可用环境下手测确认。
 
 ---
 
@@ -1505,7 +1520,13 @@ DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;
 - `frontend/src/components/source/SourceDetailContent.test.tsx` — 覆盖独立图片源“先图后描述”
 - `open_notebook/graphs/source.py` / `tests/test_vision_descriptions.py` — 继续扩展图片描述链路的容错、并发和格式清洗
 
-**当前状态**：图片源详情展示已完成。图片文件的导入、解析、描述、嵌入、图谱抽取对 `img/png/bmp/tiff` 的完整覆盖仍需后续专项核查，尤其是图谱抽取是否适合纯图片描述文本。
+**当前状态**：图片源详情展示已完成。后端导入链路已覆盖 `.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.bmp`、`.tif`、`.tiff`、`.img`：独立图片绕过 content-core 文本抽取，复制到 `data/uploads/images/{source_id}/`，写入原图 Markdown，并将 Vision 描述或“未配置 Vision 模型”的占位说明合并进 `Source.full_text`。因此即使没有视觉模型，source 也不会因正文为空而失败，后续嵌入与知识图谱抽取继续复用现有 `full_text` 流程。浏览器端用 `http://192.168.10.55:3001/` 新建笔记本验证 `.png/.bmp/.tiff/.img` 上传和详情展示时发现 Chromium 不能直接渲染 TIFF；已新增 `GET /sources/{source_id}/preview` 将 `.tif/.tiff` 转为 PNG 预览，详情页顶部原图和 Markdown 内 TIFF 图片均走该预览端点，原始下载仍保留 TIFF。真实视觉模型质量、纯图片描述文本是否适合 KG 抽取，仍需用更多实际样本继续评估。
+
+#### 2026-06-13 第二段收敛
+
+- `frontend/src/components/source/SourceDialog.tsx` — 源详情弹窗关闭默认浮动 X，避免与内容 header 的右上角动作区争抢空间。
+- `frontend/src/components/source/SourceDetailContent.tsx` — 当作为弹窗内容使用时，在类型 badge、三点菜单同一动作区内渲染关闭按钮；内容/见解/详情切换时右上角动作保持同一布局来源。
+- `frontend/src/components/source/SourceDetailContent.test.tsx` — 覆盖弹窗模式关闭按钮调用 `onClose`。
 
 ---
 
@@ -1516,7 +1537,13 @@ DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;
 - `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx` — 带密码笔记本展示锁定/密码标识
 - `frontend/src/lib/locales/zh-CN/index.ts` / `frontend/src/lib/locales/en-US/index.ts` — 更新相关文案；中文界面将 Token 统一为“词元”
 
-**当前状态**：代码已有实现，但密码标识的视觉显著性、最近笔记本的交互细节仍需手测验收。
+#### 2026-06-13 第二段收敛
+
+- `frontend/src/components/layout/AppSidebar.tsx` — 最近笔记本链接补原生 `title` 属性，长标题除 Radix Tooltip 外也有浏览器原生 hover 提示。
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx` / `NotebookHeader.tsx` — owner 操作和密码按钮文案移除英文 fallback，统一走 i18n；新建笔记本路径仍以 `created_by` 与当前用户匹配作为三点菜单显示条件。
+- `frontend/src/components/layout/AppSidebar.test.tsx` — 覆盖最近笔记本长标题 `title`。
+
+**当前状态**：组件级行为已收敛。按安全决策，旧笔记本缺少 `created_by` 不显示 owner 三点菜单，不作为本轮 UI 回归；新建笔记本应在 API 写入 `created_by` 后显示。
 
 ---
 
@@ -1565,6 +1592,34 @@ All checks passed
 
 git diff --check
 passed
+
+2026-06-13 后续收敛验证：
+
+.venv/bin/python -m pytest tests/test_chat_suggestions_sse.py tests/test_tavily_search_timeout.py tests/test_chat_context_budget.py -q
+8 passed, 1 warning
+
+cd frontend && npm test -- useNotebookChat.test.tsx
+6 passed
+
+.venv/bin/python -m ruff check api/routers/chat.py open_notebook/graphs/tools.py tests/test_chat_suggestions_sse.py tests/test_tavily_search_timeout.py
+All checks passed
+
+cd frontend && npx eslint src/lib/hooks/useNotebookChat.ts src/lib/hooks/useNotebookChat.test.tsx
+exit 0
+
+cd frontend && npm run build
+exit 0
+
+2026-06-13 第二段 UI 收敛验证：
+
+cd frontend && npm test -- NotebookCard.test.tsx ChatPanel.test.tsx ChatColumn.test.tsx SourceDetailContent.test.tsx AppSidebar.test.tsx
+34 passed
+
+cd frontend && npx eslint src/components/source/SourceDetailContent.tsx src/components/source/SourceDialog.tsx src/components/layout/AppSidebar.tsx src/app/'(dashboard)'/notebooks/components/NotebookCard.tsx src/app/'(dashboard)'/notebooks/components/NotebookHeader.tsx src/components/source/SourceDetailContent.test.tsx src/components/layout/AppSidebar.test.tsx
+exit 0, one existing Next no-img-element warning for standalone image preview
+
+cd frontend && npm run build
+exit 0
 ```
 
 `npm run build -- --webpack` 仍打印 Next standalone traced file copy warning，但退出码为 0；该警告在前序 UI 分支中已存在，不阻塞本轮验证。
@@ -1575,21 +1630,20 @@ passed
 
 #### 需要继续优化
 
-1. **联网搜索性能与稳定性**：当前已加超时和降级，但还需分析多 query、多白名单域名、Tavily 响应慢时的查询策略和总耗时。
-2. **大来源数量问答耗时**：23 个源约 6 分钟才返回的问题仍需拆解 context 构建、检索、模型首包、联网搜索、建议生成各阶段耗时，并考虑 context 裁剪、并行化或缓存。
+1. **联网搜索性能与稳定性**：当前已加超时、降级和每次回答 Tavily 调用上限；还需分析多白名单域名下的查询质量和是否需要更明确的模型提示来减少无效搜索。
+2. **大来源数量问答耗时**：已减少前端相同选择下重复 context 构建；23 个源真实场景仍需拆解 context 构建、模型首包、联网搜索和建议生成各阶段耗时，并考虑进一步 context 裁剪或缓存。
 3. **导览卡片生成进度**：已有生成中反馈，但尚未做到细粒度步骤进展；首次导入来源后的长等待仍可继续优化。
 4. **导览卡片长期保留体验**：代码已朝保留方向处理，但需要真实对话中验证首次提问、点击建议、刷新页面后的保留行为。
-5. **新来源默认全文**：已改代码，但需分别验证“新上传来源”和“添加已有来源”两条路径。
-6. **笔记栏/对话栏布局**：已改方向，但需要结合真实屏幕尺寸、空笔记栏、有笔记栏、移动端三种场景继续调优。
-7. **最近笔记本与密码标识**：已实现基础功能，需继续校准视觉显著性、截断、hover title 和点击切换体验。
+5. **新来源默认全文**：已改代码并保留组件级逻辑；需在 API 可用环境分别验证“新上传来源”和“添加已有来源”两条路径。
+6. **笔记栏/对话栏布局**：已改方向，但浏览器本轮被 API 连接错误页阻挡；需要结合真实屏幕尺寸、空笔记栏、有笔记栏、移动端三种场景继续调优。
+7. **最近笔记本与密码标识**：最近笔记本长标题 title 已补，密码标识基础功能保留；仍需在新建笔记本真实数据上确认视觉显著性和点击切换体验。
 8. **图片源完整链路**：已完成详情展示，后续应专项确认图片导入、Vision 描述、嵌入、KG 抽取是否覆盖全部目标格式。
 
 #### 暂缓或未做
 
-1. **源预览页右上角按钮对齐**：内容/见解/详情切换时三点菜单和关闭 X 位置不齐，尚未处理。
-2. **已发送问题一键复制回输入框**：尚未实现。
-3. **联网搜索答案中的互联网引用标注**：暂缓。要做到句级区分互联网源与本地源，需要更深的引用跟踪和回答后处理，当前先观察用户反馈。
-4. **旧笔记本 `created_by` backfill**：暂缓。缺少可靠创建者字段时不能自动认领，后续如需要应做管理员确认式数据修复。
+1. **已发送问题一键复制回输入框**：已实现“编辑并再次提问”入口，仍可后续根据真实使用反馈调整入口位置或文案。
+2. **联网搜索答案中的互联网引用标注**：暂缓。要做到句级区分互联网源与本地源，需要更深的引用跟踪和回答后处理，当前先观察用户反馈。
+3. **旧笔记本 `created_by` backfill**：暂缓。缺少可靠创建者字段时不能自动认领，后续如需要应做管理员确认式数据修复。
 
 ---
 

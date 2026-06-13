@@ -54,6 +54,13 @@ def suggested_questions_sse_event(questions: list[str]) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
+def answer_complete_sse_event() -> str:
+    import json
+
+    event = {"type": "answer_complete"}
+    return f"data: {json.dumps(event)}\n\n"
+
+
 def log_chat_info(trace_id: str, step: str, **fields: Any) -> None:
     """Emit a compact INFO log line for one chat request stage."""
     rendered_fields = " ".join(f"{key}={value}" for key, value in fields.items())
@@ -704,6 +711,7 @@ async def stream_chat_response(
             answer_chars=len(answer),
             elapsed_ms=elapsed_ms(started_at),
         )
+        yield answer_complete_sse_event()
 
         suggestions_event = await build_suggested_questions_event(
             answer=answer,

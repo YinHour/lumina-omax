@@ -5,6 +5,8 @@ from open_notebook.graphs.source import (
     SUPPORTED_VISION_IMAGE_EXTENSIONS,
     FigureContext,
     _build_excel_context_from_anchor,
+    _build_standalone_image_markdown,
+    _default_figure_context,
     _invoke_vision_with_retries,
     _is_transient_vision_error,
     _render_vision_result,
@@ -28,6 +30,31 @@ def test_standalone_images_bypass_content_core_extraction():
     assert should_bypass_content_core_for_image("/tmp/example.png") is True
     assert should_bypass_content_core_for_image("/tmp/example.jpeg") is True
     assert should_bypass_content_core_for_image("/tmp/example.pdf") is False
+
+
+def test_standalone_image_markdown_preserves_image_when_vision_is_unavailable():
+    markdown = _build_standalone_image_markdown(
+        "source123",
+        ["example.bmp"],
+        {"example.bmp": "Vision model is not configured. Description unavailable."},
+    )
+
+    assert "## Extracted Images" in markdown
+    assert "![](/api/uploads/images/source123/example.bmp)" in markdown
+    assert "## Figure Descriptions" in markdown
+    assert "Vision model is not configured" in markdown
+
+
+def test_default_context_marks_standalone_image_as_image_source():
+    context = _default_figure_context(
+        "sample.tiff",
+        is_excel_source=False,
+        safe_source_id="source123",
+    )
+
+    assert context.source_kind == "image"
+    assert context.image_role == "standalone_image"
+    assert context.image_url == "/api/uploads/images/source123/sample.tiff"
 
 
 def test_structured_vision_description_renders_confirmed_and_uncertain_items():

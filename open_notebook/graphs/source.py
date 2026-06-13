@@ -955,6 +955,48 @@ def _build_excel_figure_markdown(
     return "".join(figures_section_parts) + "".join(descriptions_section_parts)
 
 
+def _build_standalone_image_markdown(
+    safe_source_id: str,
+    image_files: List[str],
+    descriptions_by_file: Dict[str, str],
+) -> str:
+    images_section_parts = ["\n\n## Extracted Images\n"]
+    descriptions_section_parts = ["\n\n## Figure Descriptions\n"]
+
+    for image_index, filename in enumerate(image_files, start=1):
+        images_section_parts.append(
+            f"\n### Image {image_index}\n"
+            f"![](/api/uploads/images/{safe_source_id}/{filename})\n"
+        )
+        descriptions_section_parts.append(
+            f"\n### Figure: {filename}\n"
+            f"{descriptions_by_file.get(filename, 'Description unavailable.')}\n"
+        )
+
+    return "".join(images_section_parts) + "".join(descriptions_section_parts)
+
+
+def _default_figure_context(
+    img_file: str,
+    is_excel_source: bool,
+    safe_source_id: str,
+) -> FigureContext:
+    if is_excel_source:
+        return FigureContext(
+            filename=img_file,
+            source_kind="excel",
+            image_role="embedded_excel_image",
+            image_url=f"/api/uploads/images/{safe_source_id}/{img_file}",
+        )
+
+    return FigureContext(
+        filename=img_file,
+        source_kind="image",
+        image_role="standalone_image",
+        image_url=f"/api/uploads/images/{safe_source_id}/{img_file}",
+    )
+
+
 async def content_process(state: SourceState) -> dict:
     ContentSettings.clear_instance()  # Force reload from DB
     content_settings = await ContentSettings.get_instance()
@@ -1306,10 +1348,10 @@ async def content_process(state: SourceState) -> dict:
                             img_path = os.path.join(images_dir, img_file)
                             context = figure_contexts_by_file.get(img_file)
                             if context is None:
-                                context = FigureContext(
-                                    filename=img_file,
-                                    source_kind="excel" if is_excel_source else "pdf",
-                                    image_url=f"/api/uploads/images/{safe_source_id}/{img_file}",
+                                context = _default_figure_context(
+                                    img_file,
+                                    is_excel_source,
+                                    safe_source_id,
                                 )
                             try:
                                 async with semaphore:
@@ -1372,14 +1414,14 @@ async def content_process(state: SourceState) -> dict:
                                     f"to source content"
                                 )
                         elif descriptions:
-                            desc_section = (
-                                "\n\n## Figure Descriptions\n\n"
-                                + "\n".join(
-                                    f"### Figure: {item['filename']}\n{item['description']}\n"
-                                    for item in descriptions
+                            processed_state.content = (
+                                (processed_state.content or "")
+                                + _build_standalone_image_markdown(
+                                    safe_source_id,
+                                    image_files,
+                                    descriptions_by_file,
                                 )
                             )
-                            processed_state.content = (processed_state.content or "") + desc_section
                             logger.info(f"Added {len(descriptions)} figure descriptions to source content")
                     else:
                         logger.debug("No vision model configured. Skipping image description.")
@@ -1405,6 +1447,23 @@ async def content_process(state: SourceState) -> dict:
                                     f"Added {len(figures)} extracted figure entries with placeholder descriptions "
                                     "to source content"
                                 )
+                        else:
+                            placeholder_descriptions = {
+                                filename: "Vision model is not configured. Description unavailable."
+                                for filename in image_files
+                            }
+                            processed_state.content = (
+                                (processed_state.content or "")
+                                + _build_standalone_image_markdown(
+                                    safe_source_id,
+                                    image_files,
+                                    placeholder_descriptions,
+                                )
+                            )
+                            logger.info(
+                                f"Added {len(image_files)} standalone image entries with placeholder descriptions "
+                                "to source content"
+                            )
     except Exception as e:
         logger.warning(f"Image description failed (non-fatal): {e}")
 

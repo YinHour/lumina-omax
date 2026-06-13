@@ -84,6 +84,46 @@ const createAnswerWithSuggestionsStream = () => {
   } as unknown as ReadableStream<Uint8Array>
 }
 
+const createDelayedSuggestionsStream = () => {
+  let releaseSuggestions!: () => void
+  const suggestionsReady = new Promise<void>((resolve) => {
+    releaseSuggestions = resolve
+  })
+
+  const stream = {
+    getReader: () => {
+      let readCount = 0
+      return {
+        read: vi.fn(async () => {
+          readCount += 1
+          if (readCount === 1) {
+            return {
+              done: false,
+              value: new TextEncoder().encode(
+                'data: {"type":"ai_message","content":"The answer."}\n\n' +
+                'data: {"type":"answer_complete"}\n\n',
+              ),
+            }
+          }
+          if (readCount === 2) {
+            await suggestionsReady
+            return {
+              done: false,
+              value: new TextEncoder().encode(
+                'data: {"type":"suggested_questions","questions":["Q1?","Q2?","Q3?"]}\n\n' +
+                'data: {"type":"complete"}\n\n',
+              ),
+            }
+          }
+          return { done: true, value: undefined }
+        }),
+      }
+    },
+  } as unknown as ReadableStream<Uint8Array>
+
+  return { stream, releaseSuggestions }
+}
+
 describe('useNotebookChat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -301,5 +341,110 @@ describe('useNotebookChat', () => {
     await waitFor(() => {
       expect(result.current.suggestedQuestionsByMessageId['persisted-ai-1']).toEqual(['Q1?', 'Q2?', 'Q3?'])
     })
+  })
+
+  it('marks sending complete after answer_complete while continuing to read suggestions', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'What should I inspect next?',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+    chatApiMock.getSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Session',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+      messages: [
+        {
+          id: 'persisted-human-1',
+          type: 'human',
+          content: 'What should I inspect next?',
+          timestamp: '2026-06-12T00:00:01Z',
+        },
+        {
+          id: 'persisted-ai-1',
+          type: 'ai',
+          content: 'The answer.',
+          timestamp: '2026-06-12T00:00:02Z',
+        },
+      ],
+    })
+    const delayedStream = createDelayedSuggestionsStream()
+    chatApiMock.sendMessage.mockResolvedValue(delayedStream.stream)
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      void result.current.sendMessage('What should I inspect next?')
+    })
+
+    await waitFor(() => {
+      expect(result.current.isSending).toBe(false)
+    })
+
+    delayedStream.releaseSuggestions()
+
+    await waitFor(() => {
+      expect(result.current.suggestedQuestionsByMessageId['persisted-ai-1']).toEqual(['Q1?', 'Q2?', 'Q3?'])
+    })
+  })
+
+  it('reuses the latest built context when sending without selection changes', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'What should I inspect next?',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+    chatApiMock.buildContext.mockResolvedValue({
+      context: { sources: [{ id: 'source:1', full_text: 'cached context' }], notes: [] },
+      token_count: 12,
+      char_count: 64,
+    })
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [
+          {
+            id: 'source:1',
+            title: 'Source',
+            status: 'completed',
+            updated: '2026-06-12T00:00:00Z',
+          } as never,
+        ],
+        notes: [],
+        contextSelections: { sources: { 'source:1': 'full' }, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => {
+      expect(result.current.tokenCount).toBe(12)
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('What should I inspect next?')
+    })
+
+    expect(chatApiMock.buildContext).toHaveBeenCalledTimes(1)
+    expect(chatApiMock.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: { sources: [{ id: 'source:1', full_text: 'cached context' }], notes: [] },
+      }),
+      expect.any(AbortSignal),
+    )
   })
 })

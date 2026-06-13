@@ -9,6 +9,9 @@ from loguru import logger
 from open_notebook.graphs.observability import chat_trace_id
 
 DEFAULT_TAVILY_SEARCH_TIMEOUT_SECONDS = 20.0
+DEFAULT_TAVILY_SEARCH_MAX_CALLS = 2
+_TAVILY_TRACE_CALL_COUNTS: dict[str, int] = {}
+_TAVILY_TRACE_CALL_COUNTS_MAX_SIZE = 256
 
 
 def _env_float(name: str, default: float) -> float:
@@ -21,6 +24,38 @@ def _env_float(name: str, default: float) -> float:
         logger.warning(f"Invalid {name}={raw!r}; using default {default}")
         return default
     return value if value > 0 else default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(f"Invalid {name}={raw!r}; using default {default}")
+        return default
+    return value if value > 0 else default
+
+
+def reset_tavily_trace_state(trace_id: str | None = None) -> None:
+    """Reset Tavily per-trace counters; used by tests and long-running cleanup."""
+    if trace_id is None:
+        _TAVILY_TRACE_CALL_COUNTS.clear()
+    else:
+        _TAVILY_TRACE_CALL_COUNTS.pop(trace_id, None)
+
+
+def _claim_tavily_call(trace_id: str, max_calls: int) -> bool:
+    if trace_id == "unknown":
+        return True
+    if len(_TAVILY_TRACE_CALL_COUNTS) > _TAVILY_TRACE_CALL_COUNTS_MAX_SIZE:
+        _TAVILY_TRACE_CALL_COUNTS.clear()
+    current_count = _TAVILY_TRACE_CALL_COUNTS.get(trace_id, 0)
+    if current_count >= max_calls:
+        return False
+    _TAVILY_TRACE_CALL_COUNTS[trace_id] = current_count + 1
+    return True
 
 
 # todo: turn this into a system prompt variable
@@ -73,6 +108,21 @@ async def tavily_search(query: str) -> str:
             )
         )
         return "Tavily Search API Key is not configured in Settings. Please ask the user to configure it first."
+
+    max_calls = _env_int("TAVILY_SEARCH_MAX_CALLS", DEFAULT_TAVILY_SEARCH_MAX_CALLS)
+    if not _claim_tavily_call(trace_id, max_calls):
+        logger.warning(
+            "chat_trace={} step=web_search_end status=max_calls max_calls={} elapsed_ms={}".format(
+                trace_id,
+                max_calls,
+                int((time.perf_counter() - started_at) * 1000),
+            )
+        )
+        return (
+            f"Web search skipped after reaching the maximum web search calls "
+            f"for this answer ({max_calls}). Continue with local notebook context "
+            "and any web results already collected."
+        )
     
     # Configure the API wrapper
     wrapper_kwargs = {"tavily_api_key": api_key}

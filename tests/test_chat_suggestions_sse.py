@@ -7,6 +7,16 @@ from unittest.mock import AsyncMock
 import pytest
 
 
+def test_answer_complete_sse_event_returns_done_event():
+    from api.routers import chat
+
+    event = chat.answer_complete_sse_event()
+
+    assert event.startswith("data: ")
+    payload = json.loads(event.removeprefix("data: ").strip())
+    assert payload == {"type": "answer_complete"}
+
+
 @pytest.mark.asyncio
 async def test_build_suggested_questions_event_returns_sse(monkeypatch):
     from api.routers import chat
