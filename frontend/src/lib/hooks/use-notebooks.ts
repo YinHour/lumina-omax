@@ -21,6 +21,25 @@ export function useNotebook(id: string) {
   })
 }
 
+export function useNotebookGuide(id: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: QUERY_KEYS.notebookGuide(id),
+    queryFn: () => notebooksApi.getGuide(id),
+    enabled: !!id && enabled,
+  })
+}
+
+export function useRegenerateNotebookGuide() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => notebooksApi.regenerateGuide(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebookGuide(id) })
+    },
+  })
+}
+
 export function useCreateNotebook() {
   const queryClient = useQueryClient()
   const { toast } = useToast()

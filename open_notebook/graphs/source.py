@@ -3,6 +3,7 @@ import json
 import operator
 import os
 import re
+import shutil
 from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 from content_core import extract_content
@@ -22,6 +23,24 @@ from open_notebook.graphs.transformation import graph as transform_graph
 from open_notebook.utils.text_utils import clean_thinking_content
 
 T = TypeVar("T")
+
+SUPPORTED_VISION_IMAGE_EXTENSIONS = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".img",
+)
+
+
+def should_bypass_content_core_for_image(file_path: str | None) -> bool:
+    if not file_path:
+        return False
+    return os.path.splitext(file_path)[1].lower() in SUPPORTED_VISION_IMAGE_EXTENSIONS
 
 
 class SourceState(TypedDict):
@@ -1093,13 +1112,39 @@ async def content_process(state: SourceState) -> dict:
             finally:
                 loop.close()
                 
-        # 让 CPU 密集型任务在背景线程中运行，不阻塞主事件循环
-        processed_state = await asyncio.to_thread(_sync_extract, content_state, state.get("source_id"))
+        file_path = content_state.get("file_path", "")
+        if should_bypass_content_core_for_image(file_path):
+            content_state["content"] = content_state.get("content") or ""
+            content_state["title"] = content_state.get("title") or os.path.basename(file_path)
+            content_state["document_engine"] = "auto"
+            processed_state = ProcessSourceState(**content_state)
+            logger.info(
+                f"Bypassing content-core extraction for standalone image source_id={state.get('source_id')} file_path={file_path}"
+            )
+        else:
+            # 让 CPU 密集型任务在背景线程中运行，不阻塞主事件循环
+            processed_state = await asyncio.to_thread(_sync_extract, content_state, state.get("source_id"))
         logger.info(f"Content extraction completed for source_id={state.get('source_id')}")
 
-        file_path = content_state.get("file_path", "")
-        excel_ext = os.path.splitext(file_path)[1].lower() if file_path else ""
-        is_excel_source = bool(file_path and excel_ext in (".xls", ".xlsx", ".xlsm"))
+        file_ext = os.path.splitext(file_path)[1].lower() if file_path else ""
+        excel_ext = file_ext
+        is_excel_source = bool(file_path and file_ext in (".xls", ".xlsx", ".xlsm"))
+        if file_path and file_ext in SUPPORTED_VISION_IMAGE_EXTENSIONS and safe_source_id:
+            project_root = os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
+            images_dir = os.path.join(
+                project_root, "data", "uploads", "images", safe_source_id
+            )
+            os.makedirs(images_dir, exist_ok=True)
+            image_filename = os.path.basename(file_path)
+            target_path = os.path.join(images_dir, image_filename)
+            if not os.path.exists(target_path):
+                shutil.copy2(file_path, target_path)
+            processed_state.content = processed_state.content or ""
+            logger.info(
+                f"Registered standalone image for vision description: {image_filename}"
+            )
         if is_excel_source:
             processed_state.content = _trim_excel_empty_table_rows(
                 _sanitize_excel_table_newlines(processed_state.content or "")
@@ -1129,7 +1174,7 @@ async def content_process(state: SourceState) -> dict:
                             [
                                 f
                                 for f in os.listdir(images_dir)
-                                if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+                                if f.lower().endswith(SUPPORTED_VISION_IMAGE_EXTENSIONS)
                             ]
                         )
                         if existing_images:
@@ -1218,7 +1263,7 @@ async def content_process(state: SourceState) -> dict:
             if os.path.isdir(images_dir):
                 image_files = sorted([
                     f for f in os.listdir(images_dir)
-                    if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))
+                    if f.lower().endswith(SUPPORTED_VISION_IMAGE_EXTENSIONS)
                 ])
                 if image_files:
                     from esperanto import LanguageModel
@@ -1242,7 +1287,17 @@ async def content_process(state: SourceState) -> dict:
                         from langchain_core.messages import HumanMessage
 
                         vision_lc = vision_model.to_langchain()
-                        mime_map = {'.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp', '.bmp': 'bmp'}
+                        mime_map = {
+                            '.jpg': 'jpeg',
+                            '.jpeg': 'jpeg',
+                            '.png': 'png',
+                            '.gif': 'gif',
+                            '.webp': 'webp',
+                            '.bmp': 'bmp',
+                            '.tif': 'tiff',
+                            '.tiff': 'tiff',
+                            '.img': 'jpeg',
+                        }
                         concurrency = _vision_concurrency()
                         semaphore = asyncio.Semaphore(concurrency)
 

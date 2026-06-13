@@ -7,14 +7,15 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe } from 'lucide-react'
+import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
-  BaseChatSession
+  BaseChatSession,
+  NotebookGuideResponse
 } from '@/lib/types/api'
 import { ModelSelector } from './ModelSelector'
 import { ContextIndicator } from '@/components/common/ContextIndicator'
@@ -28,6 +29,10 @@ import {
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { NotebookGuideCard } from './NotebookGuideCard'
+import { SuggestedQuestionList } from './SuggestedQuestionList'
+
+type ChatActivityStatus = 'gettingContext' | 'searchingWeb' | 'thinking'
 
 interface NotebookContextStats {
   sourcesInsights: number
@@ -61,6 +66,11 @@ interface ChatPanelProps {
   notebookId?: string
   // Cancel streaming
   onCancelStreaming?: () => void
+  notebookGuide?: NotebookGuideResponse | null
+  isGuideLoading?: boolean
+  suggestedQuestionsByMessageId?: Record<string, string[]>
+  activityStatus?: ChatActivityStatus | null
+  onRegenerateGuide?: () => void
 }
 
 export function ChatPanel({
@@ -81,7 +91,12 @@ export function ChatPanel({
   contextType = 'source',
   notebookContextStats,
   notebookId,
-  onCancelStreaming
+  onCancelStreaming,
+  notebookGuide,
+  isGuideLoading = false,
+  suggestedQuestionsByMessageId = {},
+  activityStatus,
+  onRegenerateGuide,
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -107,6 +122,7 @@ export function ChatPanel({
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const { openModal } = useModalManager()
 
   const handleReferenceClick = (type: string, id: string) => {
@@ -182,9 +198,9 @@ export function ChatPanel({
     }
   }
 
-  // Re-enable auto-scroll when user sends a new message
-  const handleSend = () => {
-    if (input.trim() && !isStreaming) {
+  const sendMessageNow = (message: string) => {
+    const trimmed = message.trim()
+    if (trimmed && !isStreaming) {
       setIsAutoScrollEnabled(true)
       isUserScrolling.current = false
       // Force scroll immediately on send
@@ -203,9 +219,27 @@ export function ChatPanel({
           }
         })
       }, 10)
-      onSendMessage(input.trim(), modelOverride, webSearchEnabled)
+      onSendMessage(trimmed, modelOverride, webSearchEnabled)
+    }
+  }
+
+  // Re-enable auto-scroll when user sends a new message
+  const handleSend = () => {
+    if (input.trim() && !isStreaming) {
+      sendMessageNow(input)
       setInput('')
     }
+  }
+
+  const handleSuggestedQuestionClick = (question: string) => {
+    sendMessageNow(question)
+  }
+
+  const handleEditHumanMessage = (message: string) => {
+    setInput(message)
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -222,6 +256,18 @@ export function ChatPanel({
   // Detect platform for placeholder text
   const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
   const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
+  const shouldShowActivityStatus = Boolean(
+    isStreaming &&
+    activityStatus &&
+    messages[messages.length - 1]?.type === 'human'
+  )
+  const activityStatusLabel = activityStatus
+    ? {
+        gettingContext: t.chat.activityGettingContext,
+        searchingWeb: t.chat.activitySearchingWeb,
+        thinking: t.chat.activityThinking,
+      }[activityStatus]
+    : null
 
   return (
     <>
@@ -270,14 +316,42 @@ export function ChatPanel({
           onScrollCapture={handleScroll}
         >
           <div className="space-y-4 py-4">
-            {messages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-sm">
-                  {t.chat.startConversation.replace('{type}', contextType === 'source' ? t.navigation.sources : t.common.notebook)}
-                </p>
-                <p className="text-xs mt-2">{t.chat.askQuestions}</p>
+            {notebookGuide?.status === 'ready' && notebookGuide.summary && (
+              <NotebookGuideCard
+                title={title}
+                guide={notebookGuide}
+                disabled={isStreaming}
+                onQuestionClick={handleSuggestedQuestionClick}
+                onRegenerate={onRegenerateGuide}
+              />
+            )}
+            {contextType === 'notebook' && isGuideLoading && !notebookGuide?.summary && (
+              <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 rounded-lg border bg-muted/30 p-5">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">{t.chat.generatingGuide}</p>
+                    <p className="text-xs text-muted-foreground">{t.chat.generatingGuideDesc}</p>
+                  </div>
+                </div>
+                <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                  <span>{t.chat.guideStepReading}</span>
+                  <span>{t.chat.guideStepSummarizing}</span>
+                  <span>{t.chat.guideStepQuestions}</span>
+                </div>
               </div>
+            )}
+
+            {messages.length === 0 ? (
+              !notebookGuide?.summary && !isGuideLoading && (
+                <div className="text-center text-muted-foreground py-8">
+                  <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-sm">
+                    {t.chat.startConversation.replace('{type}', contextType === 'source' ? t.navigation.sources : t.common.notebook)}
+                  </p>
+                  <p className="text-xs mt-2">{t.chat.askQuestions}</p>
+                </div>
+              )
             ) : (
               messages.map((message) => (
                 <div
@@ -316,6 +390,29 @@ export function ChatPanel({
                         notebookId={notebookId}
                       />
                     )}
+                    {message.type === 'ai' && suggestedQuestionsByMessageId[message.id]?.length > 0 && (
+                      <SuggestedQuestionList
+                        questions={suggestedQuestionsByMessageId[message.id]}
+                        disabled={isStreaming}
+                        onQuestionClick={handleSuggestedQuestionClick}
+                      />
+                    )}
+                    {message.type === 'human' && (
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          disabled={isStreaming}
+                          onClick={() => handleEditHumanMessage(message.content)}
+                          aria-label={t.chat.editAndAskAgain}
+                        >
+                          <PencilLine className="h-3.5 w-3.5" />
+                          {t.chat.editAndAskAgain}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   {message.type === 'human' && (
                     <div className="flex-shrink-0">
@@ -327,16 +424,17 @@ export function ChatPanel({
                 </div>
               ))
             )}
-            {isStreaming && !onCancelStreaming && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Bot className="h-4 w-4" />
-                  </div>
+            {shouldShowActivityStatus && activityStatusLabel && (
+              <div className="flex justify-start pl-10">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>{activityStatusLabel}</span>
                 </div>
-                <div className="rounded-lg px-4 py-2 bg-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
+              </div>
+            )}
+            {isStreaming && !onCancelStreaming && !activityStatus && (
+              <div className="flex justify-start pl-10">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -406,6 +504,7 @@ export function ChatPanel({
 
           <div className="flex gap-2 items-end min-w-0">
             <Textarea
+              ref={inputRef}
               id={chatInputId}
               name="chat-message"
               autoComplete="off"

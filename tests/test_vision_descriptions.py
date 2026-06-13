@@ -2,6 +2,7 @@ import asyncio
 import json
 
 from open_notebook.graphs.source import (
+    SUPPORTED_VISION_IMAGE_EXTENSIONS,
     FigureContext,
     _build_excel_context_from_anchor,
     _invoke_vision_with_retries,
@@ -12,7 +13,21 @@ from open_notebook.graphs.source import (
     _trim_excel_empty_table_rows,
     _vision_concurrency,
     _vision_model_inference_kwargs,
+    should_bypass_content_core_for_image,
 )
+
+
+def test_supported_vision_image_extensions_include_standalone_image_formats():
+    assert ".png" in SUPPORTED_VISION_IMAGE_EXTENSIONS
+    assert ".bmp" in SUPPORTED_VISION_IMAGE_EXTENSIONS
+    assert ".tif" in SUPPORTED_VISION_IMAGE_EXTENSIONS
+    assert ".tiff" in SUPPORTED_VISION_IMAGE_EXTENSIONS
+
+
+def test_standalone_images_bypass_content_core_extraction():
+    assert should_bypass_content_core_for_image("/tmp/example.png") is True
+    assert should_bypass_content_core_for_image("/tmp/example.jpeg") is True
+    assert should_bypass_content_core_for_image("/tmp/example.pdf") is False
 
 
 def test_structured_vision_description_renders_confirmed_and_uncertain_items():

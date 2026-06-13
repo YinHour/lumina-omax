@@ -11,16 +11,45 @@ from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
     NotebookDeleteResponse,
+    NotebookGuideResponse,
     NotebookPasswordUpdate,
     NotebookResponse,
     NotebookUpdate,
 )
+from api.notebook_guide_service import generate_notebook_guide
 from api.routers.auth import get_current_user_from_state
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
+
+
+def normalize_record_id(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return normalize_record_id(
+            value.get("id") or value.get("value") or value.get("tb")
+        )
+    text = str(value)
+    if "'id':" in text or '"id":' in text:
+        import re
+
+        match = re.search(r"""['"]id['"]\s*:\s*['"]([^'"]+)['"]""", text)
+        if match:
+            return normalize_record_id(match.group(1))
+    return text.split(":")[-1] if ":" in text else text
+
+
+def ensure_notebook_creator(notebook: Notebook, current_user: dict) -> None:
+    user_id = normalize_record_id(current_user.get("id"))
+    creator_id = normalize_record_id(notebook.created_by)
+    if not creator_id or creator_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the notebook creator can manage this notebook",
+        )
 
 
 @router.get("/notebooks", response_model=List[NotebookResponse])
@@ -93,6 +122,7 @@ async def get_notebooks(
                 note_count=nb.get("note_count", 0),
                 password=nb.get("password"),
                 creator_name=nb.get("creator_name"),
+                created_by=normalize_record_id(nb.get("created_by")),
                 is_aggregated=nb.get("is_aggregated", False),
                 aggregated_notebooks=nb.get("aggregated_notebooks", []),
             )
@@ -134,7 +164,7 @@ async def create_notebook(
             note_count=0,  # New notebook has no notes
             password=new_notebook.password,
             creator_name=new_notebook.creator_name,
-            created_by=new_notebook.created_by,
+            created_by=normalize_record_id(new_notebook.created_by),
             is_aggregated=new_notebook.is_aggregated or False,
             aggregated_notebooks=[],
         )
@@ -225,7 +255,7 @@ async def aggregate_notebooks(
                 note_count=nb_res.get("note_count", 0),
                 password=nb_res.get("password"),
                 creator_name=nb_res.get("creator_name"),
-                created_by=nb_res.get("created_by"),
+                created_by=normalize_record_id(nb_res.get("created_by")),
                 is_aggregated=nb_res.get("is_aggregated", False),
             )
             
@@ -310,7 +340,7 @@ async def get_notebook(notebook_id: str):
             note_count=nb.get("note_count", 0),
             password=nb.get("password"),
                 creator_name=nb.get("creator_name"),
-                created_by=nb.get("created_by"),
+                created_by=normalize_record_id(nb.get("created_by")),
                 is_aggregated=nb.get("is_aggregated", False),
             aggregated_notebooks=nb.get("aggregated_notebooks", []),
         )
@@ -323,13 +353,30 @@ async def get_notebook(notebook_id: str):
         )
 
 
+@router.get("/notebooks/{notebook_id}/guide", response_model=NotebookGuideResponse)
+async def get_notebook_guide(notebook_id: str):
+    """Get or generate the cached notebook guide."""
+    return await generate_notebook_guide(notebook_id, force=False)
+
+
+@router.post("/notebooks/{notebook_id}/guide/regenerate", response_model=NotebookGuideResponse)
+async def regenerate_notebook_guide(notebook_id: str):
+    """Force regeneration of the notebook guide."""
+    return await generate_notebook_guide(notebook_id, force=True)
+
+
 @router.put("/notebooks/{notebook_id}", response_model=NotebookResponse)
-async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
+async def update_notebook(
+    notebook_id: str,
+    notebook_update: NotebookUpdate,
+    current_user: dict = Depends(get_current_user_from_state),
+):
     """Update a notebook."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        ensure_notebook_creator(notebook, current_user)
 
         # Update only provided fields
         if notebook_update.name is not None:
@@ -378,7 +425,7 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
                 note_count=nb.get("note_count", 0),
                 password=nb.get("password"),
                 creator_name=nb.get("creator_name"),
-                created_by=nb.get("created_by"),
+                created_by=normalize_record_id(nb.get("created_by")),
                 is_aggregated=nb.get("is_aggregated", False),
                 aggregated_notebooks=nb.get("aggregated_notebooks", []),
             )
@@ -395,6 +442,7 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
             note_count=0,
             password=notebook.password,
             creator_name=notebook.creator_name,
+            created_by=normalize_record_id(notebook.created_by),
             is_aggregated=notebook.is_aggregated or False,
             aggregated_notebooks=notebook.get("aggregated_notebooks", []) if hasattr(notebook, "get") else [],
         )
@@ -511,7 +559,8 @@ async def delete_notebook(
         False,
         description="Whether to delete sources that belong only to this notebook",
     ),
-    x_notebook_password: Optional[str] = Header(None, alias="X-Notebook-Password")
+    x_notebook_password: Optional[str] = Header(None, alias="X-Notebook-Password"),
+    current_user: dict = Depends(get_current_user_from_state),
 ):
     """
     Delete a notebook with cascade deletion.
@@ -524,6 +573,7 @@ async def delete_notebook(
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        ensure_notebook_creator(notebook, current_user)
 
         # Validate password if notebook is protected
         if notebook.password:
@@ -561,20 +611,13 @@ async def manage_notebook_password(
     body: NotebookPasswordUpdate,
     current_user: dict = Depends(get_current_user_from_state),
 ):
-    """Set, change, or remove notebook password (only the creator or admin can manage)."""
+    """Set, change, or remove notebook password (only the creator can manage)."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
 
-        user_id = current_user.get("id")
-        is_admin = current_user.get("role") == "admin"
-
-        if notebook.created_by and notebook.created_by != user_id and not is_admin:
-            raise HTTPException(
-                status_code=403,
-                detail="Only the notebook creator or an admin can manage the password",
-            )
+        ensure_notebook_creator(notebook, current_user)
 
         if body.action == "set":
             notebook.password = body.password
@@ -582,9 +625,6 @@ async def manage_notebook_password(
             notebook.password = body.password
         elif body.action == "remove":
             notebook.password = None
-
-        if notebook.created_by is None:
-            notebook.created_by = user_id
 
         await notebook.save()
 

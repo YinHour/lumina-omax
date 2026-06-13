@@ -32,6 +32,15 @@ class NotebookPasswordUpdate(BaseModel):
         return self
 
 
+class NotebookGuideResponse(BaseModel):
+    notebook_id: str
+    source_count: int
+    generated_at: Optional[str] = None
+    summary: Optional[str] = None
+    questions: List[str] = Field(default_factory=list)
+    status: Literal["empty", "ready", "error"]
+
+
 class NotebookResponse(BaseModel):
     id: str
     name: str

@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
+import { useRecentNotebooksStore } from '@/lib/stores/recent-notebooks-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
   Tooltip,
@@ -99,6 +100,7 @@ export function AppSidebar({
     .filter(item => pathname === item.href || pathname?.startsWith(`${item.href}/`))
     .sort((left, right) => right.href.length - left.href.length)[0]?.href
   const { isCollapsed, toggleCollapse } = useSidebarStore()
+  const recentNotebooks = useRecentNotebooksStore((state) => state.recentNotebooks)
   const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
 
   const [desktopCreateMenuOpen, setDesktopCreateMenuOpen] = useState(false)
@@ -298,14 +300,41 @@ export function AppSidebar({
                   }
 
                   return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      aria-current={isActive ? 'page' : undefined}
-                      onClick={() => onMobileOpenChange(false)}
-                    >
-                      {button}
-                    </Link>
+                    <div key={item.name}>
+                      <Link
+                        href={item.href}
+                        aria-current={isActive ? 'page' : undefined}
+                        onClick={() => onMobileOpenChange(false)}
+                      >
+                        {button}
+                      </Link>
+                      {!collapsed && item.href === '/notebooks' && recentNotebooks.length > 0 && (
+                        <div className="mt-1 space-y-0.5 pl-9 pr-1">
+                          {recentNotebooks.map((notebook) => {
+                            const href = `/notebooks/${encodeURIComponent(notebook.id)}`
+                            const isRecentActive = pathname === href
+                            return (
+                              <Tooltip key={notebook.id}>
+                                <TooltipTrigger asChild>
+                                  <Link
+                                    href={href}
+                                    aria-current={isRecentActive ? 'page' : undefined}
+                                    onClick={() => onMobileOpenChange(false)}
+                                    className={cn(
+                                      'block truncate rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                                      isRecentActive && 'bg-sidebar-accent text-sidebar-accent-foreground'
+                                    )}
+                                  >
+                                    {notebook.name}
+                                  </Link>
+                                </TooltipTrigger>
+                                <TooltipContent side="right">{notebook.name}</TooltipContent>
+                              </Tooltip>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>

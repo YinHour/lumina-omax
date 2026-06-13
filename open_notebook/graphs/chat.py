@@ -6,11 +6,13 @@ from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from loguru import logger
 from typing_extensions import TypedDict
 
 from open_notebook.ai.provision import provision_langchain_model
 from open_notebook.domain.notebook import Notebook
 from open_notebook.exceptions import OpenNotebookError
+from open_notebook.graphs.observability import chat_trace_id
 from open_notebook.utils import clean_thinking_content
 from open_notebook.utils.error_classifier import classify_error
 from open_notebook.utils.text_utils import extract_text_content
@@ -23,14 +25,24 @@ class ThreadState(TypedDict):
     context_config: Optional[dict]
     model_override: Optional[str]
     enable_web_search: Optional[bool]
+    chat_trace: Optional[str]
 
 
 async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict:
     try:
+        trace_id = state.get("chat_trace") or chat_trace_id.get() or "unknown"
         system_prompt = Prompter(prompt_template="chat/system").render(data=state)  # type: ignore[arg-type]
         payload = [SystemMessage(content=system_prompt)] + state.get("messages", [])
         model_id = config.get("configurable", {}).get("model_id") or state.get(
             "model_override"
+        )
+        logger.info(
+            "chat_trace={} step=model_start model_id={} enable_web_search={} payload_messages={}".format(
+                trace_id,
+                model_id or "default:chat",
+                bool(state.get("enable_web_search")),
+                len(payload),
+            )
         )
 
         try:
@@ -59,6 +71,13 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
             model = model.bind_tools([tavily_search])
 
         ai_message = await model.ainvoke(payload, config=config)
+        logger.info(
+            "chat_trace={} step=model_end model_id={} response_type={}".format(
+                trace_id,
+                model_id or "default:chat",
+                type(ai_message).__name__,
+            )
+        )
 
         # Clean thinking content from AI response (e.g., <think>...</think> tags)
         content = extract_text_content(ai_message.content)
@@ -71,7 +90,6 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
     except Exception as e:
         import traceback
 
-        from loguru import logger
         logger.error(f"Error in chat streaming: {str(e)}\n{traceback.format_exc()}")
         error_class, user_message = classify_error(e)
         raise error_class(user_message) from e

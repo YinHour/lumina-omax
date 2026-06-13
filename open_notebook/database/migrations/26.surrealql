@@ -1,0 +1,1 @@
+DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;

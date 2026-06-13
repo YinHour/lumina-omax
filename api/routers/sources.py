@@ -49,7 +49,17 @@ from open_notebook.exceptions import InvalidInputError
 router = APIRouter()
 
 
-_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+_IMAGE_EXTENSIONS = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".img",
+)
 
 
 def _safe_download_basename(title: Optional[str]) -> str:

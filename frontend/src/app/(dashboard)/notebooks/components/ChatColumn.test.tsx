@@ -3,10 +3,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { ChatColumn } from './ChatColumn'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
+import { useNotebookGuide, useRegenerateNotebookGuide } from '@/lib/hooks/use-notebooks'
 
 // Mock the hooks
 vi.mock('@/lib/hooks/use-notes')
 vi.mock('@/lib/hooks/useNotebookChat')
+vi.mock('@/lib/hooks/use-notebooks')
 vi.mock('@/components/source/ChatPanel', () => ({
   ChatPanel: () => <div data-testid="chat-panel" />
 }))
@@ -45,6 +47,8 @@ describe('ChatColumn', () => {
   it('shows loading spinner when fetching data', () => {
     vi.mocked(useNotes).mockReturnValue(createNotesMock({ isLoading: true }))
     vi.mocked(useNotebookChat).mockReturnValue(createChatMock())
+    vi.mocked(useNotebookGuide).mockReturnValue({ data: null, isLoading: false, isFetching: false } as never)
+    vi.mocked(useRegenerateNotebookGuide).mockReturnValue({ mutate: vi.fn() } as never)
 
     render(<ChatColumn {...baseProps} sourcesLoading={true} />)
 
@@ -55,6 +59,8 @@ describe('ChatColumn', () => {
   it('renders chat panel when data is loaded', () => {
     vi.mocked(useNotes).mockReturnValue(createNotesMock({ isLoading: false }))
     vi.mocked(useNotebookChat).mockReturnValue(createChatMock())
+    vi.mocked(useNotebookGuide).mockReturnValue({ data: null, isLoading: false, isFetching: false } as never)
+    vi.mocked(useRegenerateNotebookGuide).mockReturnValue({ mutate: vi.fn() } as never)
 
     render(<ChatColumn {...baseProps} sourcesLoading={false} />)
 

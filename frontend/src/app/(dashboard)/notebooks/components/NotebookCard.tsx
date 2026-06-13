@@ -19,6 +19,8 @@ import { ManageNotebookPasswordDialog } from '@/components/notebooks/ManageNoteb
 import { useState } from 'react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { sameRecordId } from '@/lib/utils/record-id'
 interface NotebookCardProps {
   notebook: NotebookResponse
 }
@@ -30,6 +32,8 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const router = useRouter()
   const updateNotebook = useUpdateNotebook()
+  const user = useAuthStore((s) => s.user)
+  const canManageNotebook = sameRecordId(notebook.created_by, user?.id)
 
   const handleArchiveToggle = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -64,52 +68,55 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                 )}
               </div>
               
-              <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={handleArchiveToggle}>
-                    {notebook.archived ? (
-                      <>
-                        <ArchiveRestore className="h-4 w-4 mr-2" />
-                        {t.notebooks.unarchive}
-                      </>
-                    ) : (
-                      <>
-                        <Archive className="h-4 w-4 mr-2" />
-                        {t.notebooks.archive}
-                      </>
-                    )}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={(e) => {
-                    e.stopPropagation()
-                    setMenuOpen(false)
-                    setShowPasswordDialog(true)
-                  }}>
-                    <KeyRound className="h-4 w-4 mr-2" />
-                    {t.notebooks.passwordSettings || 'Password'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
+              {canManageNotebook && (
+                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="More actions"
+                      className="transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem onClick={handleArchiveToggle}>
+                      {notebook.archived ? (
+                        <>
+                          <ArchiveRestore className="h-4 w-4 mr-2" />
+                          {t.notebooks.unarchive}
+                        </>
+                      ) : (
+                        <>
+                          <Archive className="h-4 w-4 mr-2" />
+                          {t.notebooks.archive}
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => {
                       e.stopPropagation()
                       setMenuOpen(false)
-                      setShowDeleteDialog(true)
-                    }}
-                    className="text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {t.common.delete}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      setShowPasswordDialog(true)
+                    }}>
+                      <KeyRound className="h-4 w-4 mr-2" />
+                      {t.notebooks.passwordSettings || 'Password'}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMenuOpen(false)
+                        setShowDeleteDialog(true)
+                      }}
+                      className="text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {t.common.delete}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </CardHeader>
           
@@ -127,6 +134,13 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                   </Badge>
                 ))}
               </div>
+            )}
+
+            {notebook.password && (
+              <Badge variant="outline" className="mt-3 inline-flex items-center gap-1 text-xs">
+                <Lock className="h-3 w-3" />
+                {t.notebooks.protectedNotebook}
+              </Badge>
             )}
 
             <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
