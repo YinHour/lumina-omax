@@ -4,7 +4,7 @@
 .PHONY: parallel-up parallel-down parallel-status
 
 # Get version from pyproject.toml
-VERSION := $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
 
 # Image names for both registries
 DOCKERHUB_IMAGE := lfnovo/open_notebook
@@ -12,21 +12,28 @@ GHCR_IMAGE := ghcr.io/lfnovo/open-notebook
 
 # Build platforms
 PLATFORMS := linux/amd64,linux/arm64
+TIMESTAMP_LOG = while IFS= read -r line; do printf '%s %s\n' "$$(date '+%Y-%m-%d %H:%M:%S')" "$$line"; done
 
 database:
+	@mkdir -p logs
 	docker run -d --name surrealdb-v2 \
 		-p 127.0.0.1:8001:8000 \
 		-v ./surreal_data_v2:/mydata \
 		-e SURREAL_EXPERIMENTAL_GRAPHQL=true \
 		surrealdb/surrealdb:v2 \
-		start --log info --user root --pass root rocksdb:/mydata/mydatabase.db
+		start --log info --user root --pass root rocksdb:/mydata/mydatabase.db 2>/dev/null || docker start surrealdb-v2
+	@pkill -f "[d]ocker logs -f surrealdb-v2" || true
+	@nohup docker logs -f surrealdb-v2 > logs/surrealdb.log 2>&1 &
+	@echo "SurrealDB logs -> logs/surrealdb.log"
 
 run:
 	@echo "⚠️  Warning: Starting frontend only. For full functionality, use 'make start-all'"
-	cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001
+	@mkdir -p logs
+	(cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001) 2>&1 | $(TIMESTAMP_LOG) | tee logs/frontend.log
 
 frontend:
-	cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001
+	@mkdir -p logs
+	(cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001) 2>&1 | $(TIMESTAMP_LOG) | tee logs/frontend.log
 
 # Verify 参考文献 auto-numbering (run on your machine; requires Node/npm in PATH)
 frontend-test-bib:
@@ -144,7 +151,8 @@ full:
 
 
 api:
-	LOG_SERVICE=api uv run --env-file .env run_api.py
+	@mkdir -p logs
+	LOG_SERVICE=api uv run --env-file .env run_api.py 2>&1 | $(TIMESTAMP_LOG) | tee logs/api.log
 
 .PHONY: worker worker-start worker-stop worker-restart
 
@@ -152,14 +160,15 @@ worker: worker-start
 
 worker-start:
 	@echo "Starting surreal-commands worker..."
-	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands
+	@mkdir -p logs
+	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands 2>&1 | $(TIMESTAMP_LOG) | tee logs/worker.log
 
 worker-stop:
 	@echo "Stopping surreal-commands worker..."
 	pkill -f "surreal-commands-worker" || true
 
 worker-restart: worker-stop
-	@python -c "import time; time.sleep(2)"
+	@sleep 2
 	@$(MAKE) worker-start
 
 # === Service Management ===
@@ -172,7 +181,7 @@ start-all:
 		-e SURREAL_EXPERIMENTAL_GRAPHQL=true \
 		surrealdb/surrealdb:v2 \
 		start --log info --user root --pass root rocksdb:/mydata/mydatabase.db 2>/dev/null || docker start surrealdb-v2
-	@python -c "import time; time.sleep(3)"
+	@sleep 3
 	@mkdir -p logs
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -185,9 +194,9 @@ start-all:
 	@echo ""
 	@trap 'kill 0; exit 0' INT TERM; \
 	docker logs -f surrealdb-v2 2>&1 | tee logs/surrealdb.log | while IFS= read -r line; do printf '\033[35m[ DB]\033[0m %s\n' "$$line"; done & \
-	LOG_SERVICE=api uv run run_api.py 2>&1 | while IFS= read -r line; do printf '\033[34m[API]\033[0m %s\n' "$$line"; done & \
-	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands 2>&1 | while IFS= read -r line; do printf '\033[33m[WRK]\033[0m %s\n' "$$line"; done & \
-	(cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001) 2>&1 | tee logs/frontend.log | while IFS= read -r line; do printf '\033[32m[WEB]\033[0m %s\n' "$$line"; done & \
+	LOG_SERVICE=api uv run run_api.py 2>&1 | $(TIMESTAMP_LOG) | tee logs/api.log | while IFS= read -r line; do printf '\033[34m[API]\033[0m %s\n' "$$line"; done & \
+	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands 2>&1 | $(TIMESTAMP_LOG) | tee logs/worker.log | while IFS= read -r line; do printf '\033[33m[WRK]\033[0m %s\n' "$$line"; done & \
+	(cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001) 2>&1 | $(TIMESTAMP_LOG) | tee logs/frontend.log | while IFS= read -r line; do printf '\033[32m[WEB]\033[0m %s\n' "$$line"; done & \
 	wait
 
 stop-all:

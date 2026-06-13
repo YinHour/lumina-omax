@@ -11,6 +11,7 @@ import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
+import { useRecentNotebooksStore } from '@/lib/stores/recent-notebooks-store'
 import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
@@ -45,7 +46,8 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
   const { data: notes, isLoading: notesLoading } = useNotes(notebookId)
 
   // Get collapse states for dynamic layout
-  const { sourcesCollapsed, notesCollapsed } = useNotebookColumnsStore()
+  const { sourcesCollapsed, notesCollapsed, setNotes } = useNotebookColumnsStore()
+  const recordNotebook = useRecentNotebooksStore((state) => state.recordNotebook)
 
   // Detect desktop to avoid double-mounting ChatColumn
   const isDesktop = useIsDesktop()
@@ -91,6 +93,12 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
     }
   }, [notebook])
 
+  useEffect(() => {
+    if (notebook?.id && notebook.name) {
+      recordNotebook({ id: notebook.id, name: notebook.name })
+    }
+  }, [notebook?.id, notebook?.name, recordNotebook])
+
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault()
     if (notebook?.password) {
@@ -113,12 +121,8 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
         const newSourceSelections = { ...prev.sources }
         let changed = false
         sources.forEach(source => {
-          const currentMode = newSourceSelections[source.id]
-          const hasInsights = source.insights_count > 0
-
-          if (currentMode === undefined) {
-            // Initial setup - default based on insights availability
-            newSourceSelections[source.id] = hasInsights ? 'insights' : 'full'
+          if (newSourceSelections[source.id] === undefined) {
+            newSourceSelections[source.id] = 'full'
             changed = true
           }
         })
@@ -144,6 +148,12 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
       })
     }
   }, [notes])
+
+  useEffect(() => {
+    if (!notesLoading && notes && notes.length === 0) {
+      setNotes(true)
+    }
+  }, [notes, notesLoading, setNotes])
 
   // Handler to update context selection
   const handleContextModeChange = (itemId: string, mode: ContextMode, type: 'source' | 'note') => {
@@ -330,6 +340,16 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
               />
             </div>
 
+            {/* Chat Column - always expanded, placed next to sources for faster reference */}
+            <div className="transition-all duration-150 flex-1 min-w-0 lg:pr-6 lg:-mr-6">
+              <ChatColumn
+                notebookId={notebookId}
+                contextSelections={contextSelections}
+                sources={sources}
+                sourcesLoading={sourcesLoading}
+              />
+            </div>
+
             {/* Notes Column */}
             <div className={cn(
               'transition-all duration-150',
@@ -342,16 +362,6 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
                 contextSelections={contextSelections.notes}
                 onContextModeChange={(noteId, mode) => handleContextModeChange(noteId, mode, 'note')}
                 onBulkContextModeChange={(mode) => handleBulkContextModeChange(mode, 'note')}
-              />
-            </div>
-
-            {/* Chat Column - always expanded, takes remaining space */}
-            <div className="transition-all duration-150 flex-1 min-w-0 lg:pr-6 lg:-mr-6">
-              <ChatColumn
-                notebookId={notebookId}
-                contextSelections={contextSelections}
-                sources={sources}
-                sourcesLoading={sourcesLoading}
               />
             </div>
           </div>

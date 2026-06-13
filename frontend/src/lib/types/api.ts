@@ -14,6 +14,17 @@ export interface NotebookResponse {
   aggregated_notebooks?: string[]
 }
 
+export type NotebookGuideStatus = 'empty' | 'ready' | 'error'
+
+export interface NotebookGuideResponse {
+  notebook_id: string
+  source_count: number
+  generated_at?: string | null
+  summary?: string | null
+  questions: string[]
+  status: NotebookGuideStatus
+}
+
 export interface NoteResponse {
   id: string
   title: string | null

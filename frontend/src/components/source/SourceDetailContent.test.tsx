@@ -93,4 +93,33 @@ describe('SourceDetailContent header', () => {
 
     expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument()
   })
+
+  it('renders standalone image before the image description content', async () => {
+    vi.mocked(sourcesApi.get).mockResolvedValue({
+      id: 'source:abc',
+      title: 'Image source',
+      full_text: '图像类型：lab_photo\n可确认信息：\n- 图片显示实验装置',
+      asset: { file_path: '/data/uploads/example.png' },
+      embedded: true,
+      topics: [],
+      created: '2026-06-08T00:00:00.000Z',
+      updated: '2026-06-08T00:00:00.000Z',
+      notebooks: [],
+      file_available: true,
+    } as never)
+
+    renderWithQueryClient(<SourceDetailContent sourceId="source:abc" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Image source')).toBeInTheDocument()
+    })
+
+    const image = screen.getByRole('img', { name: 'Image source' })
+    expect(image).toHaveAttribute('src', '/api/sources/source%3Aabc/download')
+    const description = Array.from(document.querySelectorAll('p')).find(element =>
+      element.textContent?.includes('图像类型：lab_photo')
+    )
+    expect(description).toBeTruthy()
+    expect(image.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
 import { useNotes } from '@/lib/hooks/use-notes'
+import { useNotebookGuide, useRegenerateNotebookGuide } from '@/lib/hooks/use-notebooks'
 import { ChatPanel } from '@/components/source/ChatPanel'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,6 +24,8 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
 
   // Fetch notes for this notebook
   const { data: notes = [], isLoading: notesLoading } = useNotes(notebookId)
+  const { data: notebookGuide, isLoading: guideLoading, isFetching: guideFetching } = useNotebookGuide(notebookId, sources.length > 0)
+  const regenerateGuide = useRegenerateNotebookGuide()
 
   // Initialize notebook chat hook
   const chat = useNotebookChat({
@@ -97,6 +100,10 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       contextType="notebook"
       messages={chat.messages}
       isStreaming={chat.isSending}
+      activityStatus={chat.activityStatus}
+      notebookGuide={notebookGuide}
+      isGuideLoading={sources.length > 0 && (guideLoading || guideFetching)}
+      suggestedQuestionsByMessageId={chat.suggestedQuestionsByMessageId}
       contextIndicators={null}
       onSendMessage={(message, modelOverride, enableWebSearch) => chat.sendMessage(message, modelOverride, enableWebSearch)}
       modelOverride={chat.currentSession?.model_override ?? chat.pendingModelOverride ?? undefined}
@@ -111,6 +118,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       notebookContextStats={contextStats}
       notebookId={notebookId}
       onCancelStreaming={chat.cancelStreaming}
+      onRegenerateGuide={() => regenerateGuide.mutate(notebookId)}
     />
   )
 }

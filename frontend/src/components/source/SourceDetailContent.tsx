@@ -69,6 +69,8 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceInsightDialog } from '@/components/source/SourceInsightDialog'
 import { NotebookAssociations } from '@/components/source/NotebookAssociations'
 
+const IMAGE_FILE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.img']
+
 interface SourceDetailContentProps {
   sourceId: string
   showChatButton?: boolean
@@ -363,6 +365,17 @@ export function SourceDetailContent({
     return <AlignLeft className="h-4 w-4" aria-hidden="true" />
   }
 
+  const isStandaloneImageSource = useMemo(() => {
+    const filePath = source?.asset?.file_path
+    if (!filePath) return false
+    const lowerPath = filePath.toLowerCase()
+    return IMAGE_FILE_EXTENSIONS.some(ext => lowerPath.endsWith(ext))
+  }, [source?.asset?.file_path])
+
+  const sourceImageUrl = source
+    ? `/api/sources/${encodeURIComponent(source.id)}/download`
+    : ''
+
   const handleCopyUrl = useCallback(() => {
     if (source?.asset?.url) {
       navigator.clipboard.writeText(source.asset.url)
@@ -435,9 +448,9 @@ export function SourceDetailContent({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="pb-4 px-2">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+      <div className="pb-4 px-2 pr-12">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
             <InlineEdit
               value={source.title || ''}
               onSave={handleUpdateTitle}
@@ -450,7 +463,7 @@ export function SourceDetailContent({
               {t.sources.id}: {source.id}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 pt-1">
             <Badge variant="secondary" className="text-sm">
               <span className="inline-flex items-center gap-1.5">
                 {getSourceIcon()}
@@ -466,8 +479,8 @@ export function SourceDetailContent({
               </Button>
             )}
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label={t.sources.moreActions}>
                   <MoreVertical className="h-4 w-4" />
                 </Button>
@@ -562,6 +575,15 @@ export function SourceDetailContent({
                 )}
               </CardHeader>
               <CardContent>
+                {isStandaloneImageSource && source && (
+                  <figure className="mb-6 overflow-hidden rounded-lg border bg-muted/20">
+                    <img
+                      src={sourceImageUrl}
+                      alt={source.title || source.id}
+                      className="max-h-[70vh] w-full object-contain"
+                    />
+                  </figure>
+                )}
                 {isYouTubeUrl && youTubeVideoId && (
                   <div className="mb-6">
                     <div className="aspect-video rounded-lg overflow-hidden bg-black">

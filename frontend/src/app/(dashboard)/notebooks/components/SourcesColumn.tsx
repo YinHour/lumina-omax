@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Plus, FileText, Link2, ChevronDown, Loader2, MoreVertical, CheckSquare, List, Ban } from 'lucide-react'
+import { Plus, FileText, Link2, ChevronDown, Loader2, MoreVertical, CheckSquare, List, Ban, Search } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
@@ -65,6 +65,7 @@ export function SourcesColumn({
   const [sourceToDelete, setSourceToDelete] = useState<string | null>(null)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [sourceToRemove, setSourceToRemove] = useState<string | null>(null)
+  const [sourceQuery, setSourceQuery] = useState('')
 
   // Group and sort sources for aggregated notebooks
   const displaySources = useMemo(() => {
@@ -92,6 +93,31 @@ export function SourcesColumn({
       return dateB - dateA;
     });
   }, [sources, notebookId, t.navigation.notebooks]);
+
+  const selectedSourceCount = useMemo(() => {
+    if (!sources || !contextSelections) return 0
+    return sources.filter(source => contextSelections[source.id] !== 'off').length
+  }, [sources, contextSelections])
+
+  const filteredSources = useMemo(() => {
+    if (!displaySources || displaySources.length === 0) return displaySources
+    const query = sourceQuery.trim().toLowerCase()
+    if (!query) return displaySources
+
+    return displaySources.filter(source => {
+      const searchableText = [
+        source.title,
+        source.asset?.file_path,
+        source.asset?.url,
+        source.origin_notebook_name,
+        source.uploader_name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return searchableText.includes(query)
+    })
+  }, [displaySources, sourceQuery])
 
   const { openModal } = useModalManager()
   const deleteSource = useDeleteSource()
@@ -210,9 +236,19 @@ export function SourcesColumn({
       >
         <Card className="h-full flex flex-col flex-1 overflow-hidden">
           <CardHeader className="pb-3 flex-shrink-0">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-lg">{t.navigation.sources}</CardTitle>
-              <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <CardTitle className="text-lg">{t.navigation.sources}</CardTitle>
+                  {sources && sources.length > 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {t.sources.selectedCount.replace('{count}', selectedSourceCount.toString())}
+                      <span className="mx-1">/</span>
+                      {t.sources.totalItems.replace('{count}', sources.length.toString())}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
                 <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button size="sm">
@@ -258,7 +294,19 @@ export function SourcesColumn({
                 )}
                 
                 {collapseButton}
+                </div>
               </div>
+              {sources && sources.length > 0 && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={sourceQuery}
+                    onChange={(event) => setSourceQuery(event.target.value)}
+                    placeholder={t.sources.filterSources || t.sources.searchPlaceholder}
+                    className="h-9 pl-9"
+                  />
+                </div>
+              )}
             </div>
           </CardHeader>
 
@@ -273,9 +321,15 @@ export function SourcesColumn({
                 title={t.sources.noSourcesYet}
                 description={t.sources.createFirstSource}
               />
+            ) : !filteredSources || filteredSources.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                title={t.sources.noSourcesMatchSearch}
+                description={t.sources.searchPlaceholder}
+              />
             ) : (
               <div className="space-y-3">
-                {displaySources.map((source) => (
+                {filteredSources.map((source) => (
                   <SourceCard
                     key={source.id}
                     source={source}

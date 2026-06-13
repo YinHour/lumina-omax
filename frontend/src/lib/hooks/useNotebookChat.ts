@@ -23,15 +23,21 @@ interface UseNotebookChatParams {
   contextSelections: ContextSelections
 }
 
+export type NotebookChatActivityStatus = 'gettingContext' | 'searchingWeb' | 'thinking'
+
 export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<NotebookChatMessage[]>([])
+  const [suggestedQuestionsByMessageId, setSuggestedQuestionsByMessageId] = useState<Record<string, string[]>>({})
   const [isSending, setIsSending] = useState(false)
+  const [activityStatus, setActivityStatus] = useState<NotebookChatActivityStatus | null>(null)
   const [tokenCount, setTokenCount] = useState<number>(0)
   const [charCount, setCharCount] = useState<number>(0)
+  const isSendingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const pendingSuggestedQuestionsRef = useRef<string[] | null>(null)
   // Pending model override for when user changes model before a session exists
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
@@ -75,7 +81,30 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   // Update messages when current session changes
   useEffect(() => {
     if (currentSession?.messages) {
-      setMessages(currentSession.messages)
+      const pendingSuggestedQuestions = pendingSuggestedQuestionsRef.current
+      const persistedAiMessage = currentSession.messages
+        .filter(msg => msg.type === 'ai')
+        .at(-1)
+
+      setMessages(prev => {
+        const optimisticMessages = prev.filter(msg => msg.id.startsWith('temp-'))
+        if (!isSendingRef.current || optimisticMessages.length === 0) {
+          return currentSession.messages
+        }
+
+        const persistedIds = new Set(currentSession.messages.map(msg => msg.id))
+        const pendingMessages = optimisticMessages.filter(msg => !persistedIds.has(msg.id))
+        return [...currentSession.messages, ...pendingMessages]
+      })
+
+      if (pendingSuggestedQuestions && persistedAiMessage) {
+        const questions = pendingSuggestedQuestions
+        setSuggestedQuestionsByMessageId(prev => ({
+          ...prev,
+          [persistedAiMessage.id]: questions,
+        }))
+        pendingSuggestedQuestionsRef.current = null
+      }
     }
   }, [currentSession])
 
@@ -191,48 +220,58 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
   // Send message (with streaming)
   const sendMessage = useCallback(async (message: string, modelOverride?: string, enableWebSearch?: boolean) => {
-    let sessionId = currentSessionId
-
-    // Auto-create session if none exists
-    if (!sessionId) {
-      try {
-        const defaultTitle = message.length > 30
-          ? `${message.substring(0, 30)}...`
-          : message
-        const newSession = await chatApi.createSession({
-          notebook_id: notebookId,
-          title: defaultTitle,
-          // Include pending model override when creating session
-          model_override: pendingModelOverride ?? undefined
-        })
-        sessionId = newSession.id
-        setCurrentSessionId(sessionId)
-        // Clear pending model override now that it's applied to the session
-        setPendingModelOverride(null)
-        queryClient.invalidateQueries({
-          queryKey: QUERY_KEYS.notebookChatSessions(notebookId)
-        })
-      } catch (err: unknown) {
-        const error = err as { response?: { data?: { detail?: string } }, message?: string };
-        toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToCreateSession'))
-        return
-      }
+    const trimmedMessage = message.trim()
+    if (!trimmedMessage || isSendingRef.current) {
+      return
     }
 
-    // Add user message optimistically
+    isSendingRef.current = true
+    setIsSending(true)
+    setActivityStatus('gettingContext')
+
+    const userMessageId = `temp-${Date.now()}`
     const userMessage: NotebookChatMessage = {
-      id: `temp-${Date.now()}`,
+      id: userMessageId,
       type: 'human',
-      content: message,
+      content: trimmedMessage,
       timestamp: new Date().toISOString()
     }
     setMessages(prev => [...prev, userMessage])
-    setIsSending(true)
 
     let abortController: AbortController | null = null
     try {
+      let sessionId = currentSessionId
+
+      // Auto-create session if none exists
+      if (!sessionId) {
+        try {
+          const defaultTitle = trimmedMessage.length > 30
+            ? `${trimmedMessage.substring(0, 30)}...`
+            : trimmedMessage
+          const newSession = await chatApi.createSession({
+            notebook_id: notebookId,
+            title: defaultTitle,
+            // Include pending model override when creating session
+            model_override: pendingModelOverride ?? undefined
+          })
+          sessionId = newSession.id
+          setCurrentSessionId(sessionId)
+          // Clear pending model override now that it's applied to the session
+          setPendingModelOverride(null)
+          queryClient.invalidateQueries({
+            queryKey: QUERY_KEYS.notebookChatSessions(notebookId)
+          })
+        } catch (err: unknown) {
+          const error = err as { response?: { data?: { detail?: string } }, message?: string };
+          toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToCreateSession'))
+          setMessages(prev => prev.filter(msg => msg.id !== userMessageId))
+          return
+        }
+      }
+
       // Build context
       const context = await buildContext()
+      setActivityStatus(enableWebSearch ? 'searchingWeb' : 'thinking')
       
       // Create abort controller for cancellation
       abortController = new AbortController()
@@ -241,7 +280,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       // Start streaming request
       const response = await chatApi.sendMessage({
         session_id: sessionId,
-        message,
+        message: trimmedMessage,
         context,
         model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
         enable_web_search: enableWebSearch
@@ -254,7 +293,44 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       const reader = response.getReader()
       const decoder = new TextDecoder()
       let aiMessage: NotebookChatMessage | null = null
+      let pendingSuggestedQuestions: string[] | null = null
       let buffer = ''
+      const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown }) => {
+        if (data.type === 'ai_message') {
+          setActivityStatus(null)
+          if (!aiMessage) {
+            aiMessage = {
+              id: `ai-${Date.now()}`,
+              type: 'ai',
+              content: data.content || '',
+              timestamp: new Date().toISOString()
+            }
+            setMessages(prev => [...prev, aiMessage!])
+          } else {
+            aiMessage.content += data.content || ''
+            setMessages(prev =>
+              prev.map(msg => msg.id === aiMessage!.id
+                ? { ...msg, content: aiMessage!.content }
+                : msg
+              )
+            )
+          }
+        } else if (data.type === 'suggested_questions') {
+          const questions = Array.isArray(data.questions)
+            ? data.questions.filter((question): question is string => typeof question === 'string' && question.trim().length > 0).slice(0, 3)
+            : []
+          if (aiMessage && questions.length > 0) {
+            pendingSuggestedQuestions = questions
+            pendingSuggestedQuestionsRef.current = questions
+            setSuggestedQuestionsByMessageId(prev => ({
+              ...prev,
+              [aiMessage!.id]: questions,
+            }))
+          }
+        } else if (data.type === 'error') {
+          throw new Error(data.message || 'Stream error')
+        }
+      }
 
       while (true) {
         if (!abortController || abortController.signal.aborted) break
@@ -268,25 +344,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
               if (line.startsWith('data: ')) {
                 try {
                   const data = JSON.parse(line.slice(6))
-                  if (data.type === 'ai_message') {
-                    if (!aiMessage) {
-                      aiMessage = {
-                        id: `ai-${Date.now()}`,
-                        type: 'ai',
-                        content: data.content || '',
-                        timestamp: new Date().toISOString()
-                      }
-                      setMessages(prev => [...prev, aiMessage!])
-                    } else {
-                      aiMessage.content += data.content || ''
-                      setMessages(prev =>
-                        prev.map(msg => msg.id === aiMessage!.id
-                          ? { ...msg, content: aiMessage!.content }
-                          : msg
-                        )
-                      )
-                    }
-                  }
+                  handleStreamEvent(data)
                 } catch {}
               }
             }
@@ -304,28 +362,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))
-              
-              if (data.type === 'ai_message') {
-                if (!aiMessage) {
-                  aiMessage = {
-                    id: `ai-${Date.now()}`,
-                    type: 'ai',
-                    content: data.content || '',
-                    timestamp: new Date().toISOString()
-                  }
-                  setMessages(prev => [...prev, aiMessage!])
-                } else {
-                  aiMessage.content += data.content || ''
-                  setMessages(prev =>
-                    prev.map(msg => msg.id === aiMessage!.id
-                      ? { ...msg, content: aiMessage!.content }
-                      : msg
-                    )
-                  )
-                }
-              } else if (data.type === 'error') {
-                throw new Error(data.message || 'Stream error')
-              }
+              handleStreamEvent(data)
             } catch (e) {
               if (e instanceof SyntaxError) {
                 console.error('Error parsing SSE data:', e, 'Line:', line)
@@ -338,7 +375,24 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       }
 
       // Refetch current session to get updated data and persistence
-      await refetchCurrentSession()
+      const refetchResult = await refetchCurrentSession()
+      let persistedMessages = refetchResult.data?.messages
+      if (!persistedMessages && pendingSuggestedQuestions) {
+        const refreshedSession = await chatApi.getSession(sessionId)
+        queryClient.setQueryData(QUERY_KEYS.notebookChatSession(sessionId), refreshedSession)
+        persistedMessages = refreshedSession.messages
+      }
+      const persistedAiMessage = persistedMessages
+        ?.filter(msg => msg.type === 'ai')
+        .at(-1)
+      if (pendingSuggestedQuestions && persistedAiMessage) {
+        const questions = pendingSuggestedQuestions
+        setSuggestedQuestionsByMessageId(prev => ({
+          ...prev,
+          [persistedAiMessage.id]: questions,
+        }))
+        pendingSuggestedQuestionsRef.current = null
+      }
     } catch (err: unknown) {
       // AbortError is user-initiated cancellation, not a real error
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -350,6 +404,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
     } finally {
+      isSendingRef.current = false
+      setActivityStatus(null)
       setIsSending(false)
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null
@@ -370,12 +426,19 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
+      isSendingRef.current = false
+      setActivityStatus(null)
       setIsSending(false)
     }
   }, [])
 
+  const sendSuggestedQuestion = useCallback((question: string, modelOverride?: string, enableWebSearch?: boolean) => {
+    return sendMessage(question, modelOverride, enableWebSearch)
+  }, [sendMessage])
+
   // Switch session
   const switchSession = useCallback((sessionId: string) => {
+    setSuggestedQuestionsByMessageId({})
     setCurrentSessionId(sessionId)
   }, [])
 
@@ -432,7 +495,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     currentSession: currentSession || sessions.find(s => s.id === currentSessionId),
     currentSessionId,
     messages,
+    suggestedQuestionsByMessageId,
     isSending,
+    activityStatus,
     loadingSessions,
     tokenCount,
     charCount,
@@ -444,6 +509,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     deleteSession,
     switchSession,
     sendMessage,
+    sendSuggestedQuestion,
     cancelStreaming,
     setModelOverride,
     refetchSessions

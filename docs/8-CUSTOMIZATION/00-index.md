@@ -1351,4 +1351,295 @@ Failed to copy traced files ... page_client-reference-manifest.js
 
 ---
 
-> 最后更新：2026-06-11 | 新增 §20（温暖研究风格 UI 美化与设计系统）。当前 UI 美化分支 `en_ui_beautify_0610` 已完成视觉系统、响应式导航、核心页面迁移、验证与截图证据；剩余非 UI 阻塞为 `make dev` 引用缺失的 `docker-compose.dev.yml`。
+## 21. 笔记本权限、导览建议与可观测性修复（新增 2026-06-11 ~ 2026-06-13）
+
+本轮基于 `bugfix_feat_test_0611` 分支，围绕笔记本多用户权限、NotebookLM 风格导览卡片、回答后的下一步建议、长耗时问答反馈、联网搜索卡死排查、图片源展示和源码启动日志问题进行集中修复。由于本轮覆盖范围较广，以下按“已完成 / 部分完成 / 暂缓和待办”记录，便于后续继续拆分收敛。
+
+---
+
+### 21.1 笔记本创建者权限与三点菜单
+
+**用户问题**：任意登录用户都能修改其他人的笔记本密码、归档和删除笔记本；修复后又发现创建者自己的卡片 hover 仍看不到三点菜单。
+
+#### 后端权限收敛
+
+- `api/routers/notebooks.py`：
+  - 新增 `normalize_record_id()`，兼容 SurrealDB record string、dict 和对象字符串，避免 `user:abc` / `abc` / `{ id: "user:abc" }` 形态不一致导致误判
+  - 新增 `ensure_notebook_creator()`，统一校验 `notebook.created_by == current_user.id`
+  - 密码管理、归档/更新、删除端点均要求当前用户为创建者
+  - `NotebookResponse.created_by` 返回前统一归一化，前端无需理解 SurrealDB record 内部形态
+- `api/models.py` — `NotebookResponse` / `NotebookCreate` 等 schema 补齐 `created_by` 字段
+- `tests/test_notebooks_api.py` — 覆盖创建者可管理密码、非创建者管理员不可越权、无创建者旧笔记本不可被任意认领、非创建者不可归档/删除
+
+#### 数据库 schema 根因修复
+
+根因确认：`notebook` 表为 `SCHEMAFULL`，但早期 migration 仅定义了 `password` 和 `creator_name`，遗漏 `created_by`。因此 API 写入 `created_by=current_user.id` 后会被 SurrealDB 丢弃，前端永远拿到 `created_by=null`。
+
+- `open_notebook/database/migrations/26.surrealql` — 新增：
+
+```surql
+DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;
+```
+
+- `open_notebook/database/migrations/26_down.surrealql` — 回滚字段
+- `tests/test_notebook_schema_migrations.py` — 新增 schema 回归测试，防止 notebook schema 再次遗漏 `created_by`
+
+#### 前端菜单显示
+
+- `frontend/src/lib/utils/record-id.ts` — 新增 `normalizeRecordId()` / `sameRecordId()`，统一前端 record id 比较
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx`：
+  - 三点菜单仅创建者可见
+  - 创建者菜单不再依赖 `opacity-0 group-hover:opacity-100`，避免 hover 状态或 owner 判断边界导致用户看不到入口
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookHeader.tsx` — 详情页密码、归档、删除按钮同样按创建者显示
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.test.tsx` — 覆盖 string 和 object 形态 `created_by`、创建者可见、非创建者不可见
+
+**决策**：旧笔记本若数据库中已经没有 `created_by`，不自动用 `creator_name == display_name` 认领。`display_name` 非唯一且可修改，作为权限依据会重新引入越权风险。旧数据若需要恢复归属，应后续单独设计受控 backfill。
+
+---
+
+### 21.2 NotebookLM 风格导览卡片与下一步建议
+
+**用户需求**：参考 NotebookLM，首次导入来源后在聊天区生成结构化 summary 和 3 条建议动作；后续每次回答结束后也给出 3 条下一步建议。用户点击建议时应直接发送该问题。
+
+#### 导览卡片
+
+- `api/notebook_guide_service.py` — 新增导览生成服务，根据笔记本来源内容生成：
+  - 标题/摘要
+  - 关键要点
+  - 3 条建议问题
+- `api/routers/notebooks.py` — 新增/接入 `/notebooks/{id}/guide` 导览接口
+- `frontend/src/components/source/NotebookGuideCard.tsx` — 新增导览卡片组件
+- `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx` — 在无对话或导览可用时展示导览卡片；点击建议问题直接发送
+- `frontend/src/app/(dashboard)/notebooks/[id]/page.tsx` — 接入导览数据和状态
+- `tests/test_notebook_guide_service.py` / `tests/test_notebook_guide_api.py` — 覆盖服务与 API
+
+#### 回答后的建议问题
+
+- `api/routers/chat.py`：
+  - SSE 主回答结束后生成 `suggested_questions` 事件
+  - 建议生成设置超时，避免主回答完成后长期阻塞
+  - 超时后提供降级建议，目标是回答后仍尽量给出 3 条下一步问题
+- `frontend/src/components/source/SuggestedQuestionList.tsx` — 新增建议问题列表组件
+- `frontend/src/lib/hooks/useNotebookChat.ts`：
+  - 解析 SSE `suggested_questions`
+  - 暂存建议问题，避免 session 持久化刷新后 AI message id 变化导致建议丢失
+  - 点击建议后复用发送问题链路
+- `frontend/src/lib/hooks/useNotebookChat.test.tsx` / `tests/test_chat_suggestions_sse.py` — 覆盖 SSE 建议事件、前端持久化刷新后仍保留建议
+
+**当前状态**：代码和测试已完成，但仍建议在真实笔记本中手测“长回答后是否稳定出现 3 条建议”。如后续仍缺失，应优先查看 `logs/open_notebook.log` 中 `suggestions_start` / `suggestions_end` / `suggestions_timeout`。
+
+---
+
+### 21.3 长耗时问答反馈与可观测日志
+
+**用户问题**：用户发送问题后等待很久才看到流式回答，期间像系统无响应；出现卡死时无法从日志判断卡在哪一步。
+
+#### 前端等待状态
+
+- `frontend/src/components/source/ChatPanel.tsx`：
+  - 用户发送后、首个 AI chunk 到达前显示轻量状态提示
+  - 状态覆盖获取上下文、联网搜索、生成回答、生成建议等阶段
+  - 输入框在回答中显示响应状态，并保留停止按钮
+- `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx` — 透传 notebook chat 的阶段状态
+- `frontend/src/components/source/ChatPanel.test.tsx` / `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.test.tsx` — 覆盖状态提示渲染
+
+#### 后端 INFO 级日志
+
+- `open_notebook/graphs/observability.py` — 新增聊天链路观测辅助逻辑
+- `api/routers/chat.py` / `open_notebook/graphs/chat.py` / `open_notebook/graphs/tools.py`：
+  - `chat_trace` 贯穿一次聊天请求
+  - INFO 日志覆盖请求开始、context token/字符数、是否启用联网、模型 id、图执行开始、Tavily 查询开始/结束、首个 AI chunk、主回答结束、建议问题生成开始/结束/超时、总耗时
+- `tests/test_chat_observability.py` / `tests/test_chat_context_budget.py` — 覆盖关键日志字段和 context budget 行为
+
+**决策**：可观测性优先落在 `logs/open_notebook.log`，方便源码启动模式下直接定位卡点；前端只显示用户能理解的阶段文案，不暴露内部图节点和工具细节。
+
+---
+
+### 21.4 Tavily 联网搜索超时与降级
+
+**用户问题**：启用联网搜索后，白名单域名较多时长时间停在“正在联网搜索...”，API 日志显示多次 `web_search_start` 后缺少对应结束。
+
+- `open_notebook/graphs/tools.py`：
+  - Tavily 查询增加超时控制
+  - 捕获超时和异常，返回可读降级消息
+  - 记录 `web_search_start` / `web_search_end`，包括 query 长度、include domain 数、结果数、耗时、timeout/failed 状态
+- `tests/test_tavily_search_timeout.py` — 覆盖 Tavily 慢响应时返回超时说明而不是无限等待
+- `frontend/src/components/source/ChatPanel.tsx` — 联网搜索阶段显示明确状态，让用户知道系统仍在处理
+
+**当前状态**：已完成“不卡死 + 可降级 + 可观测”的第一层修复；尚未完成多白名单、多 query、23 个源大上下文场景下的系统性性能优化。
+
+---
+
+### 21.5 笔记本来源选择、默认全文与布局体验
+
+#### 来源筛选与批量选择
+
+- `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx`：
+  - 来源列表增加筛选能力
+  - 增加批量选择/上下文模式操作入口
+  - 便于大来源数量笔记本中快速定位和调整引用范围
+
+#### 新来源默认参考全文
+
+- `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx` / `frontend/src/lib/hooks/useNotebookChat.ts`：
+  - 新增来源后默认加入全文上下文，而不是默认仅引用见解
+
+#### 对话栏与笔记栏布局
+
+- `frontend/src/app/(dashboard)/notebooks/[id]/page.tsx`：
+  - 调整打开笔记本后的布局，使来源栏与对话栏更接近
+  - 笔记栏为空时可收起/减少占用，给来源和对话更多空间
+
+**当前状态**：代码已有改动，但这部分高度依赖实际 UI 手感，仍需后续按真实工作流手测确认。
+
+---
+
+### 21.6 图片源处理与详情展示
+
+**用户需求**：如果源本身就是图片文件，进入内容页后应先显示图片，再显示对图片的描述。
+
+- `frontend/src/components/source/SourceDetailContent.tsx`：
+  - 识别 `.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.bmp`、`.tif`、`.tiff`、`.img` 等独立图片源
+  - 内容页顶部通过 `/api/sources/{id}/download` 显示原图
+  - 原图下方继续显示 `full_text` 中的图片描述或解析文本
+- `frontend/src/components/source/SourceDetailContent.test.tsx` — 覆盖独立图片源“先图后描述”
+- `open_notebook/graphs/source.py` / `tests/test_vision_descriptions.py` — 继续扩展图片描述链路的容错、并发和格式清洗
+
+**当前状态**：图片源详情展示已完成。图片文件的导入、解析、描述、嵌入、图谱抽取对 `img/png/bmp/tiff` 的完整覆盖仍需后续专项核查，尤其是图谱抽取是否适合纯图片描述文本。
+
+---
+
+### 21.7 侧边栏最近笔记本、密码标识与词元翻译
+
+- `frontend/src/lib/stores/recent-notebooks-store.ts` — 新增最近打开笔记本状态
+- `frontend/src/components/layout/AppSidebar.tsx` — 在“笔记本”菜单下展示最近打开的笔记本，长标题截断并通过 hover title 查看全名
+- `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx` — 带密码笔记本展示锁定/密码标识
+- `frontend/src/lib/locales/zh-CN/index.ts` / `frontend/src/lib/locales/en-US/index.ts` — 更新相关文案；中文界面将 Token 统一为“词元”
+
+**当前状态**：代码已有实现，但密码标识的视觉显著性、最近笔记本的交互细节仍需手测验收。
+
+---
+
+### 21.8 源码启动日志脚本修复
+
+**用户问题**：`make start-all` 启动时只看到 DB 日志，API/worker/frontend 日志缺失，并出现：
+
+```text
+awk: calling undefined function strftime
+```
+
+#### 修复
+
+- `Makefile`：
+  - 将依赖 `awk strftime()` 的日志时间戳管道替换为 shell `date`
+  - 适配 macOS 默认 awk 不支持 `strftime()` 的情况
+  - 保留 API、worker、frontend、DB 分进程日志前缀输出
+- `tests/test_makefile_logging.py` — 覆盖 Makefile 不再依赖 `awk strftime`
+
+**决策**：当前阶段以源码方式运行服务供用户使用，因此优先修复本地 `make start-all`，而不是仅处理 Docker 启动路径。
+
+---
+
+### 21.9 已验证命令
+
+本轮关键验证包括：
+
+```text
+cd frontend && npm test -- --run src/app/'(dashboard)'/notebooks/components/NotebookCard.test.tsx src/lib/hooks/useNotebookChat.test.tsx src/components/source/SourceDetailContent.test.tsx
+10 passed
+
+cd frontend && npm run build -- --webpack
+exit 0
+
+.venv/bin/python -m pytest tests/test_notebooks_api.py tests/test_chat_suggestions_sse.py -q
+9 passed, 1 warning
+
+.venv/bin/python -m pytest tests/test_notebook_schema_migrations.py tests/test_notebooks_api.py -q
+6 passed, 1 warning
+
+.venv/bin/python -m pytest tests/test_chat_suggestions_sse.py -q
+4 passed, 1 warning
+
+.venv/bin/python -m ruff check api/routers/notebooks.py api/routers/chat.py open_notebook/graphs/source.py tests/test_notebooks_api.py tests/test_chat_suggestions_sse.py tests/test_vision_descriptions.py
+All checks passed
+
+git diff --check
+passed
+```
+
+`npm run build -- --webpack` 仍打印 Next standalone traced file copy warning，但退出码为 0；该警告在前序 UI 分支中已存在，不阻塞本轮验证。
+
+---
+
+### 21.10 未尽事宜与后续建议
+
+#### 需要继续优化
+
+1. **联网搜索性能与稳定性**：当前已加超时和降级，但还需分析多 query、多白名单域名、Tavily 响应慢时的查询策略和总耗时。
+2. **大来源数量问答耗时**：23 个源约 6 分钟才返回的问题仍需拆解 context 构建、检索、模型首包、联网搜索、建议生成各阶段耗时，并考虑 context 裁剪、并行化或缓存。
+3. **导览卡片生成进度**：已有生成中反馈，但尚未做到细粒度步骤进展；首次导入来源后的长等待仍可继续优化。
+4. **导览卡片长期保留体验**：代码已朝保留方向处理，但需要真实对话中验证首次提问、点击建议、刷新页面后的保留行为。
+5. **新来源默认全文**：已改代码，但需分别验证“新上传来源”和“添加已有来源”两条路径。
+6. **笔记栏/对话栏布局**：已改方向，但需要结合真实屏幕尺寸、空笔记栏、有笔记栏、移动端三种场景继续调优。
+7. **最近笔记本与密码标识**：已实现基础功能，需继续校准视觉显著性、截断、hover title 和点击切换体验。
+8. **图片源完整链路**：已完成详情展示，后续应专项确认图片导入、Vision 描述、嵌入、KG 抽取是否覆盖全部目标格式。
+
+#### 暂缓或未做
+
+1. **源预览页右上角按钮对齐**：内容/见解/详情切换时三点菜单和关闭 X 位置不齐，尚未处理。
+2. **已发送问题一键复制回输入框**：尚未实现。
+3. **联网搜索答案中的互联网引用标注**：暂缓。要做到句级区分互联网源与本地源，需要更深的引用跟踪和回答后处理，当前先观察用户反馈。
+4. **旧笔记本 `created_by` backfill**：暂缓。缺少可靠创建者字段时不能自动认领，后续如需要应做管理员确认式数据修复。
+
+---
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `api/routers/notebooks.py` | 创建者权限校验、`created_by` 归一化、导览接口接入 |
+| `api/models.py` | Notebook response/create/password/guide 相关 schema 扩展 |
+| `api/routers/chat.py` | SSE 建议问题、阶段日志、超时降级和回答链路可观测性 |
+| `api/routers/sources.py` | 图片/来源下载与相关接口适配 |
+| `api/notebook_guide_service.py` | **新文件** — 笔记本导览卡片生成服务 |
+| `open_notebook/database/migrations/26.surrealql` | notebook 表新增 `created_by` 字段 |
+| `open_notebook/database/migrations/26_down.surrealql` | 回滚 `created_by` 字段 |
+| `open_notebook/graphs/chat.py` | chat graph 模型调用日志和 trace 传递 |
+| `open_notebook/graphs/tools.py` | Tavily 超时、异常降级、开始/结束日志 |
+| `open_notebook/graphs/observability.py` | **新文件** — chat trace 可观测辅助 |
+| `open_notebook/graphs/source.py` | 图片描述链路延续增强 |
+| `Makefile` | `make start-all` 日志时间戳 macOS 兼容 |
+| `frontend/src/lib/utils/record-id.ts` | **新文件** — 前端 record id 归一化 |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | SSE 状态、建议问题保留、导览/上下文交互 |
+| `frontend/src/components/source/ChatPanel.tsx` | 用户等待状态提示、建议问题展示入口 |
+| `frontend/src/components/source/SuggestedQuestionList.tsx` | **新文件** — 下一步建议列表 |
+| `frontend/src/components/source/NotebookGuideCard.tsx` | **新文件** — 导览卡片 |
+| `frontend/src/components/source/SourceDetailContent.tsx` | 独立图片源先显示原图再显示描述 |
+| `frontend/src/app/(dashboard)/notebooks/[id]/page.tsx` | 笔记本布局、导览和最近笔记本接入 |
+| `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx` | 导览卡片、阶段状态、建议点击发送 |
+| `frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx` | 来源筛选、批量选择、默认全文相关改动 |
+| `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.tsx` | 创建者菜单、密码标识 |
+| `frontend/src/app/(dashboard)/notebooks/components/NotebookHeader.tsx` | 详情页创建者操作控制 |
+| `frontend/src/components/layout/AppSidebar.tsx` | 最近打开笔记本列表 |
+| `frontend/src/lib/stores/recent-notebooks-store.ts` | **新文件** — 最近笔记本本地状态 |
+| `frontend/src/lib/api/notebooks.ts` | guide/password/notebook API 适配 |
+| `frontend/src/lib/api/query-client.ts` | notebook 查询失效和刷新支持 |
+| `frontend/src/lib/hooks/use-notebooks.ts` | notebook mutation 和密码/权限状态适配 |
+| `frontend/src/lib/types/api.ts` | Notebook、guide、chat 建议等 TS 类型扩展 |
+| `frontend/src/lib/locales/en-US/index.ts` / `zh-CN/index.ts` | 导览、建议、等待状态、词元、密码等文案 |
+| `frontend/src/components/sources/steps/SourceTypeStep.tsx` | 图片格式声明相关调整 |
+| `tests/test_notebooks_api.py` | 创建者权限回归 |
+| `tests/test_notebook_schema_migrations.py` | schema 中 `created_by` 字段回归 |
+| `tests/test_notebook_guide_service.py` / `tests/test_notebook_guide_api.py` | 导览服务/API 回归 |
+| `tests/test_chat_suggestions_sse.py` | SSE 建议问题回归 |
+| `tests/test_chat_observability.py` / `tests/test_chat_context_budget.py` | chat 日志和上下文预算回归 |
+| `tests/test_tavily_search_timeout.py` | Tavily 超时降级回归 |
+| `tests/test_makefile_logging.py` | Makefile 日志时间戳兼容回归 |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | 前端建议问题保留回归 |
+| `frontend/src/components/source/SourceDetailContent.test.tsx` | 图片源详情展示回归 |
+| `frontend/src/app/(dashboard)/notebooks/components/NotebookCard.test.tsx` | owner 菜单可见性回归 |
+| `frontend/src/components/source/ChatPanel.test.tsx` / `ChatColumn.test.tsx` | 等待状态和建议交互回归 |
+
+---
+
+> 最后更新：2026-06-13 | 新增 §21（笔记本权限、导览建议与可观测性修复）。当前分支 `bugfix_feat_test_0611` 已修复创建者权限、`created_by` schema、回答后建议、图片源详情和源码启动日志；联网搜索性能、大来源问答耗时、导览进度、旧笔记本归属 backfill 等仍需后续单独处理。

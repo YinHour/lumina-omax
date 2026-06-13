@@ -6,6 +6,7 @@ import {
   NotebookAggregateRequest,
   NotebookDeletePreview,
   NotebookDeleteResponse,
+  NotebookGuideResponse,
   NotebookPasswordUpdateRequest,
 } from '@/lib/types/api'
 
@@ -17,6 +18,16 @@ export const notebooksApi = {
 
   get: async (id: string) => {
     const response = await apiClient.get<NotebookResponse>(`/notebooks/${id}`)
+    return response.data
+  },
+
+  getGuide: async (id: string) => {
+    const response = await apiClient.get<NotebookGuideResponse>(`/notebooks/${id}/guide`)
+    return response.data
+  },
+
+  regenerateGuide: async (id: string) => {
+    const response = await apiClient.post<NotebookGuideResponse>(`/notebooks/${id}/guide/regenerate`)
     return response.data
   },
 

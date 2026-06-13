@@ -1,5 +1,8 @@
 import asyncio
+import os
+import time
 import traceback
+import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -7,6 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api.notebook_guide_service import generate_followup_questions
 from open_notebook.config import LANGGRAPH_CHAT_CHECKPOINT_FILE
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import ChatSession, Note, Notebook, Source
@@ -15,9 +19,94 @@ from open_notebook.exceptions import (
 )
 from open_notebook.graphs.chat import agent_state
 from open_notebook.graphs.chat import graph as chat_graph
+from open_notebook.graphs.observability import chat_trace_id
+from open_notebook.utils import token_count
 from open_notebook.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
+
+SUGGESTED_QUESTIONS_TIMEOUT_SECONDS = 8.0
+NOTEBOOK_CHAT_CONTEXT_MAX_CHARS = int(
+    os.environ.get("NOTEBOOK_CHAT_CONTEXT_MAX_CHARS", "200000")
+)
+
+
+def fallback_followup_questions(answer: str) -> list[str]:
+    """Return deterministic follow-up questions when model generation fails."""
+    has_cjk = any("\u4e00" <= char <= "\u9fff" for char in answer)
+    if has_cjk:
+        return [
+            "请基于这个回答指出最关键的证据来源。",
+            "这个结论还有哪些不确定点需要进一步验证？",
+            "下一步可以如何设计实验或检索来验证这个判断？",
+        ]
+    return [
+        "Which evidence in the sources best supports this answer?",
+        "What uncertainties should be checked before relying on this conclusion?",
+        "What follow-up experiment or search would validate this finding?",
+    ]
+
+
+def suggested_questions_sse_event(questions: list[str]) -> str:
+    import json
+
+    event = {"type": "suggested_questions", "questions": questions}
+    return f"data: {json.dumps(event)}\n\n"
+
+
+def log_chat_info(trace_id: str, step: str, **fields: Any) -> None:
+    """Emit a compact INFO log line for one chat request stage."""
+    rendered_fields = " ".join(f"{key}={value}" for key, value in fields.items())
+    suffix = f" {rendered_fields}" if rendered_fields else ""
+    logger.info(f"chat_trace={trace_id} step={step}{suffix}")
+
+
+def estimate_context_stats(context: dict[str, Any]) -> dict[str, int]:
+    context_text = str(context)
+    return {
+        "context_chars": len(context_text),
+        "context_tokens": token_count(context_text) if context_text else 0,
+    }
+
+
+def elapsed_ms(started_at: float) -> int:
+    return int((time.perf_counter() - started_at) * 1000)
+
+
+def trim_context_data_to_char_budget(
+    context_data: dict[str, list[dict[str, Any]]],
+    max_chars: int,
+) -> tuple[str, bool]:
+    """Trim long full-text fields so notebook chat starts within a bounded context."""
+    text_fields: list[tuple[dict[str, Any], str]] = []
+    for source_context in context_data.get("sources", []):
+        if source_context.get("full_text"):
+            text_fields.append((source_context, "full_text"))
+    for note_context in context_data.get("notes", []):
+        if note_context.get("content"):
+            text_fields.append((note_context, "content"))
+
+    if not text_fields:
+        return str(context_data), False
+
+    total_content = str(context_data)
+    if len(total_content) <= max_chars:
+        return total_content, False
+
+    per_field_budget = max_chars // len(text_fields)
+    if max_chars >= 8000:
+        per_field_budget = max(4000, per_field_budget)
+    was_trimmed = False
+    for item, field in text_fields:
+        text = str(item.get(field) or "")
+        if len(text) <= per_field_budget:
+            continue
+        marker = "\n\n[Content truncated for chat context.]"
+        prefix_budget = max(0, per_field_budget - len(marker))
+        item[field] = text[:prefix_budget] + marker
+        was_trimmed = True
+
+    return str(context_data), was_trimmed
 
 
 # Request/Response models
@@ -96,6 +185,73 @@ class BuildContextResponse(BaseModel):
 class SuccessResponse(BaseModel):
     success: bool = Field(True, description="Operation success status")
     message: str = Field(..., description="Success message")
+
+
+async def build_suggested_questions_event(
+    answer: str,
+    context: dict[str, Any],
+    model_override: Optional[str],
+    trace_id: Optional[str] = None,
+) -> Optional[str]:
+    """Build an SSE event for suggested follow-up questions."""
+    started_at = time.perf_counter()
+    if trace_id:
+        log_chat_info(
+            trace_id,
+            "suggestions_start",
+            answer_chars=len(answer),
+            model_id=model_override or "default:chat",
+        )
+
+    try:
+        questions = await asyncio.wait_for(
+            generate_followup_questions(
+                answer=answer,
+                context=context,
+                model_override=model_override,
+            ),
+            timeout=SUGGESTED_QUESTIONS_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Suggested questions generation timed out; using fallback")
+        if trace_id:
+            log_chat_info(
+                trace_id,
+                "suggestions_timeout",
+                timeout_seconds=SUGGESTED_QUESTIONS_TIMEOUT_SECONDS,
+                elapsed_ms=elapsed_ms(started_at),
+            )
+        return suggested_questions_sse_event(fallback_followup_questions(answer))
+    except Exception as exc:
+        logger.warning(f"Suggested questions generation failed; using fallback: {exc}")
+        if trace_id:
+            log_chat_info(
+                trace_id,
+                "suggestions_failed",
+                error_type=type(exc).__name__,
+                elapsed_ms=elapsed_ms(started_at),
+            )
+        return suggested_questions_sse_event(fallback_followup_questions(answer))
+
+    if len(questions) != 3:
+        if trace_id:
+            log_chat_info(
+                trace_id,
+                "suggestions_end",
+                status="fallback",
+                question_count=len(questions),
+                elapsed_ms=elapsed_ms(started_at),
+            )
+        return suggested_questions_sse_event(fallback_followup_questions(answer))
+    if trace_id:
+        log_chat_info(
+            trace_id,
+            "suggestions_end",
+            status="ready",
+            question_count=len(questions),
+            elapsed_ms=elapsed_ms(started_at),
+        )
+    return suggested_questions_sse_event(questions)
 
 
 @router.get("/chat/sessions", response_model=List[ChatSessionResponse])
@@ -359,7 +515,12 @@ async def delete_session(session_id: str):
 
 
 async def stream_chat_response(
-    session_id: str, message: str, context: dict, model_override: Optional[str] = None, enable_web_search: bool = False
+    session_id: str,
+    message: str,
+    context: dict,
+    model_override: Optional[str] = None,
+    enable_web_search: bool = False,
+    trace_id: Optional[str] = None,
 ):
     import json
 
@@ -368,7 +529,19 @@ async def stream_chat_response(
     from open_notebook.config import LANGGRAPH_CHAT_CHECKPOINT_FILE
     from open_notebook.graphs.chat import agent_state
     
+    trace_id = trace_id or uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    trace_token = chat_trace_id.set(trace_id)
+
     try:
+        log_chat_info(
+            trace_id,
+            "stream_start",
+            session_id=session_id,
+            message_chars=len(message),
+            model_id=model_override or "default:chat",
+            enable_web_search=enable_web_search,
+        )
         # Get current state from SqliteSaver (same file the streaming writes to)
         from langgraph.checkpoint.sqlite import SqliteSaver
 
@@ -384,6 +557,7 @@ async def stream_chat_response(
         state_values["context"] = context
         state_values["model_override"] = model_override
         state_values["enable_web_search"] = enable_web_search
+        state_values["chat_trace"] = trace_id
 
         from langchain_core.messages import HumanMessage
         user_message = HumanMessage(content=message)
@@ -397,9 +571,31 @@ async def stream_chat_response(
         )
         
         yielded_ai_chunks = False
+        first_ai_chunk_logged = False
+        final_answer_parts: list[str] = []
+
+        def observe_ai_chunk(content: str) -> None:
+            nonlocal yielded_ai_chunks, first_ai_chunk_logged
+            yielded_ai_chunks = True
+            final_answer_parts.append(content)
+            if not first_ai_chunk_logged:
+                first_ai_chunk_logged = True
+                log_chat_info(
+                    trace_id,
+                    "first_ai_chunk",
+                    chunk_chars=len(content),
+                    elapsed_ms=elapsed_ms(started_at),
+                )
             
         async with AsyncSqliteSaver.from_conn_string(LANGGRAPH_CHAT_CHECKPOINT_FILE) as saver:
             async_graph = agent_state.compile(checkpointer=saver)
+            log_chat_info(
+                trace_id,
+                "graph_start",
+                history_messages=len(state_values.get("messages", [])),
+                context_sources=len(context.get("sources", [])),
+                context_notes=len(context.get("notes", [])),
+            )
             
             async for event in async_graph.astream_events(
                 input=state_values, config=config, version="v2"
@@ -412,9 +608,9 @@ async def stream_chat_response(
                         
                         if hasattr(chunk, "content") and chunk.content:
                             content = chunk.content
-                            yielded_ai_chunks = True
                             if isinstance(content, str):
                                 if not content.startswith("<web_search_results>") and not content.endswith("</web_search_results>"):
+                                    observe_ai_chunk(content)
                                     ai_event = {
                                         "type": "ai_message",
                                         "content": content,
@@ -426,6 +622,7 @@ async def stream_chat_response(
                                 for c in content:
                                     if isinstance(c, dict) and "text" in c:
                                         if not c["text"].startswith("<web_search_results>") and not c["text"].endswith("</web_search_results>"):
+                                            observe_ai_chunk(c["text"])
                                             ai_event = {
                                                 "type": "ai_message",
                                                 "content": c["text"],
@@ -435,6 +632,7 @@ async def stream_chat_response(
                                             await asyncio.sleep(0.001)
                                     elif isinstance(c, str):
                                         if not c.startswith("<web_search_results>") and not c.endswith("</web_search_results>"):
+                                            observe_ai_chunk(c)
                                             ai_event = {
                                                 "type": "ai_message",
                                                 "content": c,
@@ -445,7 +643,7 @@ async def stream_chat_response(
                                         
                         elif isinstance(chunk, str) and chunk:
                             if not chunk.startswith("<web_search_results>") and not chunk.endswith("</web_search_results>"):
-                                yielded_ai_chunks = True
+                                observe_ai_chunk(chunk)
                                 ai_event = {
                                     "type": "ai_message",
                                     "content": chunk,
@@ -455,7 +653,7 @@ async def stream_chat_response(
                                 await asyncio.sleep(0.001)
                         elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
                             if not chunk["content"].startswith("<web_search_results>") and not chunk["content"].endswith("</web_search_results>"):
-                                yielded_ai_chunks = True
+                                observe_ai_chunk(chunk["content"])
                                 ai_event = {
                                     "type": "ai_message",
                                     "content": chunk["content"],
@@ -467,11 +665,11 @@ async def stream_chat_response(
                 elif kind == "on_chat_model_end":
                     if "output" in event["data"] and "content" in event["data"]["output"]:
                         if not yielded_ai_chunks:
-                            yielded_ai_chunks = True
                             content = event["data"]["output"]["content"]
                             if isinstance(content, str):
                                 chunk_size = 50
                                 for i in range(0, len(content), chunk_size):
+                                    observe_ai_chunk(content[i:i+chunk_size])
                                     ai_event = {
                                         "type": "ai_message",
                                         "content": content[i:i+chunk_size],
@@ -490,6 +688,7 @@ async def stream_chat_response(
                                 if content_text:
                                     chunk_size = 50
                                     for i in range(0, len(content_text), chunk_size):
+                                        observe_ai_chunk(content_text[i:i+chunk_size])
                                         ai_event = {
                                             "type": "ai_message",
                                             "content": content_text[i:i+chunk_size],
@@ -498,6 +697,24 @@ async def stream_chat_response(
                                         yield f"data: {json.dumps(ai_event)}\n\n"
                                         await asyncio.sleep(0.01)
 
+        answer = "".join(final_answer_parts)
+        log_chat_info(
+            trace_id,
+            "main_answer_end",
+            answer_chars=len(answer),
+            elapsed_ms=elapsed_ms(started_at),
+        )
+
+        suggestions_event = await build_suggested_questions_event(
+            answer=answer,
+            context=context,
+            model_override=model_override,
+            trace_id=trace_id,
+        )
+        if suggestions_event:
+            yield suggestions_event
+
+        log_chat_info(trace_id, "request_complete", total_ms=elapsed_ms(started_at))
         completion_event = {"type": "complete"}
         yield f"data: {json.dumps(completion_event)}\n\n"
 
@@ -507,8 +724,16 @@ async def stream_chat_response(
         from open_notebook.utils.error_classifier import classify_error
         _, user_message = classify_error(e)
         logger.error(f"Error in chat streaming: {str(e)}\n{traceback.format_exc()}")
+        log_chat_info(
+            trace_id,
+            "request_failed",
+            error_type=type(e).__name__,
+            total_ms=elapsed_ms(started_at),
+        )
         error_event = {"type": "error", "message": user_message}
         yield f"data: {json.dumps(error_event)}\n\n"
+    finally:
+        chat_trace_id.reset(trace_token)
 
 from fastapi.responses import StreamingResponse
 
@@ -516,6 +741,7 @@ from fastapi.responses import StreamingResponse
 @router.post("/chat/execute")
 async def execute_chat(request: ExecuteChatRequest):
     """Execute a chat request and get AI response with SSE streaming."""
+    trace_id = uuid.uuid4().hex[:12]
     try:
         # Verify session exists
         # Ensure session_id has proper table prefix
@@ -534,6 +760,18 @@ async def execute_chat(request: ExecuteChatRequest):
             if request.model_override is not None
             else getattr(session, "model_override", None)
         )
+        context_stats = estimate_context_stats(request.context)
+        log_chat_info(
+            trace_id,
+            "request_start",
+            session_id=full_session_id,
+            message_chars=len(request.message),
+            model_id=model_override or "default:chat",
+            enable_web_search=request.enable_web_search or False,
+            context_sources=len(request.context.get("sources", [])),
+            context_notes=len(request.context.get("notes", [])),
+            **context_stats,
+        )
 
         # Update session timestamp
         await session.save()
@@ -546,6 +784,7 @@ async def execute_chat(request: ExecuteChatRequest):
                 context=request.context,
                 model_override=model_override,
                 enable_web_search=request.enable_web_search or False,
+                trace_id=trace_id,
             ),
             media_type="text/event-stream",
             headers={
@@ -565,11 +804,20 @@ async def execute_chat(request: ExecuteChatRequest):
 @router.post("/chat/context", response_model=BuildContextResponse)
 async def build_context(request: BuildContextRequest):
     """Build context for a notebook based on context configuration."""
+    context_trace = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
     try:
         # Verify notebook exists
         notebook = await Notebook.get(request.notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        log_chat_info(
+            context_trace,
+            "context_build_start",
+            notebook_id=request.notebook_id,
+            selected_sources=len(request.context_config.get("sources", {})),
+            selected_notes=len(request.context_config.get("notes", {})),
+        )
 
         context_data: dict[str, list[dict[str, str]]] = {"sources": [], "notes": []}
         total_content = ""
@@ -649,6 +897,11 @@ async def build_context(request: BuildContextRequest):
                     logger.warning(f"Error processing note {note.id}: {str(e)}")
                     continue
 
+        total_content, context_trimmed = trim_context_data_to_char_budget(
+            context_data,
+            NOTEBOOK_CHAT_CONTEXT_MAX_CHARS,
+        )
+
         # Calculate character and token counts
         char_count = len(total_content)
         # Use token count utility if available
@@ -660,11 +913,26 @@ async def build_context(request: BuildContextRequest):
             # Fallback to simple estimation
             estimated_tokens = char_count // 4
 
-        return BuildContextResponse(
-            context=context_data, token_count=estimated_tokens, char_count=char_count
+        log_chat_info(
+            context_trace,
+            "context_build_end",
+            context_sources=len(context_data["sources"]),
+            context_notes=len(context_data["notes"]),
+            context_chars=char_count,
+            context_tokens=estimated_tokens,
+            context_trimmed=context_trimmed,
+            context_max_chars=NOTEBOOK_CHAT_CONTEXT_MAX_CHARS,
+            elapsed_ms=elapsed_ms(started_at),
         )
+        return BuildContextResponse(context=context_data, token_count=estimated_tokens, char_count=char_count)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error building context: {str(e)}")
+        log_chat_info(
+            context_trace,
+            "context_build_failed",
+            error_type=type(e).__name__,
+            elapsed_ms=elapsed_ms(started_at),
+        )
         raise HTTPException(status_code=500, detail=f"Error building context: {str(e)}")
