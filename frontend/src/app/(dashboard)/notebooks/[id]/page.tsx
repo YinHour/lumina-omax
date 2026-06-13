@@ -166,10 +166,15 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
     }))
   }
 
-  const handleBulkContextModeChange = (mode: ContextMode, type: 'source' | 'note') => {
+  const handleBulkContextModeChange = (mode: ContextMode, type: 'source' | 'note', itemIds?: string[]) => {
     setContextSelections(prev => {
-      const items = type === 'source' ? sources : notes
-      if (!items) return prev
+      const allItems = type === 'source' ? sources : notes
+      if (!allItems) return prev
+      const scopedIds = itemIds ? new Set(itemIds) : null
+      const items = scopedIds
+        ? allItems.filter(item => scopedIds.has(item.id))
+        : allItems
+      if (items.length === 0) return prev
       
       const newSelections = { ...(type === 'source' ? prev.sources : prev.notes) }
       let changed = false
@@ -287,7 +292,7 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
                     onRefresh={refetchSources}
                     contextSelections={contextSelections.sources}
                     onContextModeChange={(sourceId, mode) => handleContextModeChange(sourceId, mode, 'source')}
-                    onBulkContextModeChange={(mode) => handleBulkContextModeChange(mode, 'source')}
+                    onBulkContextModeChange={(mode, sourceIds) => handleBulkContextModeChange(mode, 'source', sourceIds)}
                     hasNextPage={hasNextPage}
                     isFetchingNextPage={isFetchingNextPage}
                     fetchNextPage={fetchNextPage}
@@ -333,7 +338,7 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
                 onRefresh={refetchSources}
                 contextSelections={contextSelections.sources}
                 onContextModeChange={(sourceId, mode) => handleContextModeChange(sourceId, mode, 'source')}
-                onBulkContextModeChange={(mode) => handleBulkContextModeChange(mode, 'source')}
+                onBulkContextModeChange={(mode, sourceIds) => handleBulkContextModeChange(mode, 'source', sourceIds)}
                 hasNextPage={hasNextPage}
                 isFetchingNextPage={isFetchingNextPage}
                 fetchNextPage={fetchNextPage}

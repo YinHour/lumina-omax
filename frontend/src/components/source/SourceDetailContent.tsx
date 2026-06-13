@@ -647,13 +647,16 @@ export function SourceDetailContent({
                       ul: ({ children }) => <ul className="mb-4 list-disc pl-6">{children}</ul>,
                       ol: ({ children }) => <ol className="mb-4 list-decimal pl-6">{children}</ol>,
                       li: ({ children }) => <li className="mb-1">{children}</li>,
-                      img: ({ src, alt }) => (
-                        <img
-                          src={isStandaloneTiffSource && isTiffImagePath(src) ? sourceImageUrl : src}
-                          alt={alt || ''}
-                          className="my-4 max-h-[70vh] w-full rounded-lg border object-contain"
-                        />
-                      ),
+                      img: ({ src, alt }) => {
+                        const imageSrc = typeof src === 'string' ? src : undefined
+                        return (
+                          <img
+                            src={isStandaloneTiffSource && isTiffImagePath(imageSrc) ? sourceImageUrl : imageSrc}
+                            alt={alt || ''}
+                            className="my-4 max-h-[70vh] w-full rounded-lg border object-contain"
+                          />
+                        )
+                      },
                       table: ({ children }) => (
                         <div className="my-4 overflow-x-auto">
                           <table className="min-w-full border-collapse border border-border">{children}</table>

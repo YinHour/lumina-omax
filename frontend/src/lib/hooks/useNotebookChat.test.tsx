@@ -400,6 +400,60 @@ describe('useNotebookChat', () => {
     })
   })
 
+  it('builds chat context from the currently selected sources only', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'What should I inspect next?',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [
+          {
+            id: 'source:selected',
+            title: 'Selected source',
+            status: 'completed',
+            updated: '2026-06-12T00:00:00Z',
+          } as never,
+          {
+            id: 'source:filtered-out',
+            title: 'Filtered out source',
+            status: 'completed',
+            updated: '2026-06-12T00:00:00Z',
+          } as never,
+        ],
+        notes: [],
+        contextSelections: {
+          sources: {
+            'source:selected': 'full',
+            'source:filtered-out': 'off',
+          },
+          notes: {},
+        },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('What should I inspect next?')
+    })
+
+    expect(chatApiMock.buildContext).toHaveBeenCalledWith({
+      notebook_id: 'notebook:1',
+      context_config: {
+        sources: {
+          'source:selected': 'full content',
+          'source:filtered-out': 'not in',
+        },
+        notes: {},
+      },
+    })
+  })
+
   it('reuses the latest built context when sending without selection changes', async () => {
     chatApiMock.createSession.mockResolvedValue({
       id: 'session:1',
