@@ -10,7 +10,10 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from api.notebook_guide_service import generate_followup_questions
+from api.notebook_guide_service import (
+    FollowupQuestionParseError,
+    generate_followup_questions,
+)
 from open_notebook.config import LANGGRAPH_CHAT_CHECKPOINT_FILE
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import ChatSession, Note, Notebook, Source
@@ -198,6 +201,7 @@ async def build_suggested_questions_event(
     answer: str,
     context: dict[str, Any],
     model_override: Optional[str],
+    question: str = "",
     trace_id: Optional[str] = None,
 ) -> Optional[str]:
     """Build an SSE event for suggested follow-up questions."""
@@ -213,9 +217,11 @@ async def build_suggested_questions_event(
     try:
         questions = await asyncio.wait_for(
             generate_followup_questions(
+                question=question,
                 answer=answer,
                 context=context,
                 model_override=model_override,
+                raise_on_parse_error=True,
             ),
             timeout=SUGGESTED_QUESTIONS_TIMEOUT_SECONDS,
         )
@@ -228,6 +234,28 @@ async def build_suggested_questions_event(
                 timeout_seconds=SUGGESTED_QUESTIONS_TIMEOUT_SECONDS,
                 elapsed_ms=elapsed_ms(started_at),
             )
+            log_chat_info(
+                trace_id,
+                "suggestions_fallback",
+                reason="timeout",
+                elapsed_ms=elapsed_ms(started_at),
+            )
+        return suggested_questions_sse_event(fallback_followup_questions(answer))
+    except FollowupQuestionParseError as exc:
+        logger.warning(f"Suggested questions parse failed; using fallback: {exc}")
+        if trace_id:
+            log_chat_info(
+                trace_id,
+                "suggestions_parse_failed",
+                error_type=type(exc).__name__,
+                elapsed_ms=elapsed_ms(started_at),
+            )
+            log_chat_info(
+                trace_id,
+                "suggestions_fallback",
+                reason="parse_failed",
+                elapsed_ms=elapsed_ms(started_at),
+            )
         return suggested_questions_sse_event(fallback_followup_questions(answer))
     except Exception as exc:
         logger.warning(f"Suggested questions generation failed; using fallback: {exc}")
@@ -238,15 +266,41 @@ async def build_suggested_questions_event(
                 error_type=type(exc).__name__,
                 elapsed_ms=elapsed_ms(started_at),
             )
+            log_chat_info(
+                trace_id,
+                "suggestions_fallback",
+                reason="failed",
+                elapsed_ms=elapsed_ms(started_at),
+            )
         return suggested_questions_sse_event(fallback_followup_questions(answer))
 
+    if len(questions) == 0:
+        if trace_id:
+            log_chat_info(
+                trace_id,
+                "suggestions_empty",
+                elapsed_ms=elapsed_ms(started_at),
+            )
+            log_chat_info(
+                trace_id,
+                "suggestions_fallback",
+                reason="empty",
+                elapsed_ms=elapsed_ms(started_at),
+            )
+        return suggested_questions_sse_event(fallback_followup_questions(answer))
     if len(questions) != 3:
         if trace_id:
             log_chat_info(
                 trace_id,
-                "suggestions_end",
-                status="fallback",
+                "suggestions_parse_failed",
+                status="wrong_count",
                 question_count=len(questions),
+                elapsed_ms=elapsed_ms(started_at),
+            )
+            log_chat_info(
+                trace_id,
+                "suggestions_fallback",
+                reason="wrong_count",
                 elapsed_ms=elapsed_ms(started_at),
             )
         return suggested_questions_sse_event(fallback_followup_questions(answer))
@@ -714,6 +768,7 @@ async def stream_chat_response(
         yield answer_complete_sse_event()
 
         suggestions_event = await build_suggested_questions_event(
+            question=message,
             answer=answer,
             context=context,
             model_override=model_override,

@@ -40,6 +40,91 @@ async def test_build_suggested_questions_event_returns_sse(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_build_suggested_questions_event_passes_question_to_generator(monkeypatch):
+    from api.routers import chat
+
+    generate = AsyncMock(return_value=["Q1?", "Q2?", "Q3?"])
+    monkeypatch.setattr(chat, "generate_followup_questions", generate)
+
+    await chat.build_suggested_questions_event(
+        question="What changed in the slurry behavior?",
+        answer="AI answer",
+        context={"sources": []},
+        model_override=None,
+    )
+
+    generate.assert_awaited_once_with(
+        question="What changed in the slurry behavior?",
+        answer="AI answer",
+        context={"sources": []},
+        model_override=None,
+        raise_on_parse_error=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_suggested_questions_event_logs_empty_and_fallback(monkeypatch):
+    from api.routers import chat
+
+    logged_steps: list[str] = []
+    monkeypatch.setattr(
+        chat,
+        "generate_followup_questions",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        chat,
+        "log_chat_info",
+        lambda trace_id, step, **fields: logged_steps.append(step),
+    )
+
+    event = await chat.build_suggested_questions_event(
+        question="What changed in the slurry behavior?",
+        answer="AI answer",
+        context={"sources": []},
+        model_override=None,
+        trace_id="trace-1",
+    )
+
+    payload = json.loads(event.removeprefix("data: ").strip())
+    assert len(payload["questions"]) == 3
+    assert "suggestions_start" in logged_steps
+    assert "suggestions_empty" in logged_steps
+    assert "suggestions_fallback" in logged_steps
+
+
+@pytest.mark.asyncio
+async def test_build_suggested_questions_event_logs_parse_failed(monkeypatch):
+    from api.notebook_guide_service import FollowupQuestionParseError
+    from api.routers import chat
+
+    logged_steps: list[str] = []
+    monkeypatch.setattr(
+        chat,
+        "generate_followup_questions",
+        AsyncMock(side_effect=FollowupQuestionParseError("bad JSON")),
+    )
+    monkeypatch.setattr(
+        chat,
+        "log_chat_info",
+        lambda trace_id, step, **fields: logged_steps.append(step),
+    )
+
+    event = await chat.build_suggested_questions_event(
+        question="What changed in the slurry behavior?",
+        answer="AI answer",
+        context={"sources": []},
+        model_override=None,
+        trace_id="trace-1",
+    )
+
+    payload = json.loads(event.removeprefix("data: ").strip())
+    assert len(payload["questions"]) == 3
+    assert "suggestions_parse_failed" in logged_steps
+    assert "suggestions_fallback" in logged_steps
+
+
+@pytest.mark.asyncio
 async def test_build_suggested_questions_event_returns_fallback_on_failure(monkeypatch):
     from api.routers import chat
 

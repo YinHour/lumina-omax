@@ -114,3 +114,36 @@ async def test_malformed_followup_json_returns_empty_questions(monkeypatch):
     )
 
     assert questions == []
+
+
+@pytest.mark.asyncio
+async def test_malformed_followup_json_raises_when_requested(monkeypatch):
+    from api import notebook_guide_service as service
+
+    model = FakeModel("not json")
+    monkeypatch.setattr(service, "provision_langchain_model", AsyncMock(return_value=model))
+
+    with pytest.raises(service.FollowupQuestionParseError):
+        await service.generate_followup_questions(
+            question="What changed?",
+            answer="The answer discussed mechanism risks.",
+            context={"sources": []},
+            raise_on_parse_error=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_empty_followup_model_output_returns_empty_when_requested(monkeypatch):
+    from api import notebook_guide_service as service
+
+    model = FakeModel("")
+    monkeypatch.setattr(service, "provision_langchain_model", AsyncMock(return_value=model))
+
+    questions = await service.generate_followup_questions(
+        question="What changed?",
+        answer="The answer discussed mechanism risks.",
+        context={"sources": []},
+        raise_on_parse_error=True,
+    )
+
+    assert questions == []
