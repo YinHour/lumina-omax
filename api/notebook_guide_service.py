@@ -24,6 +24,10 @@ MAX_GUIDE_SOURCE_CHARS = 4000
 MAX_FOLLOWUP_CONTEXT_CHARS = 6000
 
 
+class FollowupQuestionParseError(ValueError):
+    """Raised when the model response cannot be parsed into 3 follow-up questions."""
+
+
 async def get_processed_notebook_sources(notebook_id: str) -> list[dict[str, Any]]:
     """Return processed sources linked to a notebook."""
     records = await repo_query(
@@ -56,7 +60,10 @@ def build_source_fingerprint(sources: list[dict[str, Any]]) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
-def parse_guide_json(raw_text: str) -> tuple[Optional[str], list[str]]:
+def parse_guide_json(
+    raw_text: str,
+    raise_on_json_error: bool = False,
+) -> tuple[Optional[str], list[str]]:
     """Parse model JSON output into summary and exactly up to three questions."""
     if not raw_text:
         return None, []
@@ -71,8 +78,10 @@ def parse_guide_json(raw_text: str) -> tuple[Optional[str], list[str]]:
 
     try:
         data = json.loads(cleaned)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         logger.warning("Failed to parse notebook guide JSON")
+        if raise_on_json_error:
+            raise ValueError("Failed to parse notebook guide JSON") from exc
         return None, []
 
     summary = data.get("summary")
@@ -231,7 +240,12 @@ async def generate_notebook_guide(
     )
 
 
-def _build_followup_prompt(answer: str, context: dict[str, Any], language: str) -> str:
+def _build_followup_prompt(
+    question: str,
+    answer: str,
+    context: dict[str, Any],
+    language: str,
+) -> str:
     context_text = json.dumps(context, ensure_ascii=False, default=str)
     context_text = context_text[:MAX_FOLLOWUP_CONTEXT_CHARS]
     output_language = "简体中文" if language.lower().startswith("zh") else "English"
@@ -240,6 +254,10 @@ Based on the assistant answer and notebook context, suggest exactly 3 useful fol
 Return strict JSON only with key "questions".
 Write in {output_language}.
 The questions should be specific and actionable, not generic.
+Do not repeat the user's question. Build on the latest question and answer.
+
+User question:
+{question[-1000:]}
 
 Assistant answer:
 {answer[-4000:]}
@@ -252,19 +270,43 @@ Notebook context:
 async def generate_followup_questions(
     answer: str,
     context: dict[str, Any],
+    question: str = "",
     language: str = "zh-CN",
     model_override: Optional[str] = None,
+    raise_on_parse_error: bool = False,
 ) -> list[str]:
     """Generate three follow-up questions for a completed AI answer."""
     if not answer.strip():
         return []
     try:
         raw = await _invoke_json_model(
-            _build_followup_prompt(answer, context, language),
+            _build_followup_prompt(question, answer, context, language),
             model_override=model_override,
         )
-        _, questions = parse_guide_json(raw)
-        return questions[:3] if len(questions) == 3 else []
+        if not raw.strip():
+            return []
+        try:
+            _, questions = parse_guide_json(
+                raw,
+                raise_on_json_error=raise_on_parse_error,
+            )
+        except ValueError as exc:
+            if raise_on_parse_error:
+                raise FollowupQuestionParseError(
+                    "Failed to parse follow-up questions JSON"
+                ) from exc
+            return []
+        if len(questions) != 3:
+            if not raise_on_parse_error:
+                return []
+            raise FollowupQuestionParseError(
+                f"Expected 3 follow-up questions, got {len(questions)}"
+            )
+        return questions[:3]
+    except FollowupQuestionParseError:
+        raise
     except Exception as exc:
+        if raise_on_parse_error:
+            raise
         logger.warning(f"Follow-up question generation failed: {exc}")
         return []

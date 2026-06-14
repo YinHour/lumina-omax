@@ -1901,4 +1901,50 @@ cd frontend && npm test -- AddExistingSourceDialog.test.tsx SourceTypeStep.test.
 
 ---
 
-> 最后更新：2026-06-14 | 新增 §25（添加来源数量上限设置）。当前分支 `codex/source-add-limit-setting` 将该设置定义为单个笔记本来源总数上限，覆盖新添加来源和添加现有来源两个前端入口，不新增后端批量创建语义。
+## 26. 导览点击与回答后建议刷新可观测性（新增 2026-06-14）
+
+本轮基于 `codex/guide-followup-refresh` 分支，收敛导览卡片建议点击、回答后 3 条下一步建议刷新，以及建议生成失败时的日志可观测性。
+
+### 26.1 行为决策
+
+- 导览卡片问题点击继续复用 `ChatPanel` 的普通发送路径，保持与用户手动输入后发送一致。
+- 回答后建议生成时，后端明确把本轮用户问题、主回答和 notebook context 一起传入 follow-up prompt，避免只根据回答和上下文生成泛化或重复建议。
+- 前端新增连续两轮回答回归，保证每轮 SSE `suggested_questions` 会挂到各自最新持久化 AI 消息上，不把上一轮建议复用到下一轮回答。
+- 建议生成流程继续在主回答 `answer_complete` 之后异步完成，不阻塞用户继续输入。
+- 聊天路径要求 follow-up 生成器显式暴露解析错误：坏 JSON 进入 `parse_failed`，模型空输出进入 `empty`，模型调用异常进入 `failed`，避免日志里把不同失败原因混在一起。
+- 建议生成异常日志细化为：
+  - `suggestions_start`：流程确实开始
+  - `suggestions_empty`：生成器没有给出任何可用问题
+  - `suggestions_parse_failed`：模型输出无法解析为 3 条建议，或数量不符合要求
+  - `suggestions_failed`：模型调用或其他异常失败
+  - `suggestions_timeout`：建议生成超时
+  - `suggestions_fallback`：进入确定性降级建议
+  - `suggestions_end`：成功得到 3 条建议
+
+**边界**：本轮不重做导览卡片 UI，不改变聊天 SSE 事件协议的 `suggested_questions` payload，不改变已存在的 fallback 建议内容。
+
+### 26.2 验证
+
+```text
+.venv/bin/python -m pytest tests/test_chat_suggestions_sse.py tests/test_notebook_guide_service.py -q
+.venv/bin/python -m ruff check api/routers/chat.py api/notebook_guide_service.py tests/test_chat_suggestions_sse.py tests/test_notebook_guide_service.py
+cd frontend && npm test -- useNotebookChat.test.tsx ChatPanel.test.tsx
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `api/notebook_guide_service.py` | follow-up prompt 加入用户问题；聊天路径可要求解析失败向外抛出，并区分坏 JSON 与空输出 |
+| `api/routers/chat.py` | 建议生成传入本轮问题；补充 empty、parse_failed、failed、timeout、fallback 日志分支 |
+| `tests/test_chat_suggestions_sse.py` | 覆盖 question 传递和建议失败日志分支 |
+| `tests/test_notebook_guide_service.py` | 覆盖 malformed JSON 抛出 parse error 与空模型输出保留 empty 分支 |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | 覆盖连续两轮回答分别挂载新的建议问题 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 记录本轮行为决策、边界和验证 |
+
+---
+
+> 最后更新：2026-06-14 | 新增 §26（导览点击与回答后建议刷新可观测性）。当前分支 `codex/guide-followup-refresh` 保持导览点击复用普通发送路径，将回答后建议生成依据收敛为 question + answer + context，并细化建议失败日志。

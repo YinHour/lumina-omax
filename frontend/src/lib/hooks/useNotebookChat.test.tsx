@@ -84,6 +84,33 @@ const createAnswerWithSuggestionsStream = () => {
   } as unknown as ReadableStream<Uint8Array>
 }
 
+const createAnswerWithCustomSuggestionsStream = (
+  answer: string,
+  questions: string[],
+) => {
+  const payload = [
+    `data: ${JSON.stringify({ type: 'ai_message', content: answer })}\n\n`,
+    `data: ${JSON.stringify({ type: 'suggested_questions', questions })}\n\n`,
+    'data: {"type":"complete"}\n\n',
+  ].join('')
+  const encoded = new TextEncoder().encode(payload)
+
+  return {
+    getReader: () => {
+      let readCount = 0
+      return {
+        read: vi.fn(async () => {
+          readCount += 1
+          if (readCount === 1) {
+            return { done: false, value: encoded }
+          }
+          return { done: true, value: undefined }
+        }),
+      }
+    },
+  } as unknown as ReadableStream<Uint8Array>
+}
+
 const createDelayedSuggestionsStream = () => {
   let releaseSuggestions!: () => void
   const suggestionsReady = new Promise<void>((resolve) => {
@@ -397,6 +424,114 @@ describe('useNotebookChat', () => {
 
     await waitFor(() => {
       expect(result.current.suggestedQuestionsByMessageId['persisted-ai-1']).toEqual(['Q1?', 'Q2?', 'Q3?'])
+    })
+  })
+
+  it('attaches fresh suggested questions to each completed answer', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'What should I inspect next?',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+    let persistedSession = {
+      id: 'session:1',
+      title: 'Session',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+      messages: [] as Array<{
+        id: string
+        type: 'human' | 'ai'
+        content: string
+        timestamp: string
+      }>,
+    }
+    chatApiMock.getSession.mockImplementation(async () => persistedSession)
+    const firstPersistedMessages = [
+      {
+        id: 'persisted-human-1',
+        type: 'human' as const,
+        content: 'What should I inspect first?',
+        timestamp: '2026-06-12T00:00:01Z',
+      },
+      {
+        id: 'persisted-ai-1',
+        type: 'ai' as const,
+        content: 'First answer.',
+        timestamp: '2026-06-12T00:00:02Z',
+      },
+    ]
+    const secondPersistedMessages = [
+      {
+        id: 'persisted-human-1',
+        type: 'human' as const,
+        content: 'What should I inspect first?',
+        timestamp: '2026-06-12T00:00:01Z',
+      },
+      {
+        id: 'persisted-ai-1',
+        type: 'ai' as const,
+        content: 'First answer.',
+        timestamp: '2026-06-12T00:00:02Z',
+      },
+      {
+        id: 'persisted-human-2',
+        type: 'human' as const,
+        content: 'What should I inspect second?',
+        timestamp: '2026-06-12T00:00:03Z',
+      },
+      {
+        id: 'persisted-ai-2',
+        type: 'ai' as const,
+        content: 'Second answer.',
+        timestamp: '2026-06-12T00:00:04Z',
+      },
+    ]
+    chatApiMock.sendMessage
+      .mockResolvedValueOnce(
+        createAnswerWithCustomSuggestionsStream('First answer.', [
+          'First Q1?',
+          'First Q2?',
+          'First Q3?',
+        ]),
+      )
+      .mockResolvedValueOnce(
+        createAnswerWithCustomSuggestionsStream('Second answer.', [
+          'Second Q1?',
+          'Second Q2?',
+          'Second Q3?',
+        ]),
+      )
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      persistedSession = { ...persistedSession, messages: firstPersistedMessages }
+      await result.current.sendMessage('What should I inspect first?')
+    })
+
+    await act(async () => {
+      persistedSession = { ...persistedSession, messages: secondPersistedMessages }
+      await result.current.sendMessage('What should I inspect second?')
+    })
+
+    await waitFor(() => {
+      expect(
+        result.current.suggestedQuestionsByMessageId['persisted-ai-1'],
+      ).toEqual(['First Q1?', 'First Q2?', 'First Q3?'])
+      expect(
+        result.current.suggestedQuestionsByMessageId['persisted-ai-2'],
+      ).toEqual(['Second Q1?', 'Second Q2?', 'Second Q3?'])
     })
   })
 
