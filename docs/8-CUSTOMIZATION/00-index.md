@@ -1827,4 +1827,34 @@ cd frontend && npm test -- SourcesColumn.test.tsx useNotebookChat.test.tsx
 
 ---
 
-> 最后更新：2026-06-13 | 新增 §23（打开笔记本来源筛选与本次聊天引用范围）。当前分支 `codex/notebook-source-context-selection` 实现来源栏筛选和筛选结果批量选择，仅影响本次聊天上下文，不改变笔记本来源成员关系。
+## 24. 添加现有来源仅展示已嵌入来源（新增 2026-06-14）
+
+本轮基于 `codex/processed-source-notebook-reference` 分支，将“未完成嵌入的来源不能通过添加现有来源被选入笔记本”收敛为一个前端选择列表过滤规则，避免把处理状态约束扩散到新增来源路径和后端 reference 语义。
+
+### 24.1 行为决策
+
+- 打开笔记本后的普通“添加来源/新建来源”路径不改变，仍按原流程创建来源并关联笔记本。
+- “添加现有来源”弹窗加载全量来源后，仅展示 `source.embedded === true` 的来源。
+- 未完成嵌入的来源不在弹窗列表里出现，也不显示禁选原因，避免用户看到不可操作项。
+- Knowledge Graph 状态不参与此规则；只要已完成嵌入，即可在“添加现有来源”弹窗中选择。
+- 全选、搜索、手动勾选都只作用于已嵌入且未在当前笔记本中的来源。
+
+**边界**：本轮不新增后端 `409` guard，不改变 `POST /notebooks/{notebook_id}/sources/{source_id}` 的语义，也不改变新建来源时的即时 notebook 关联。这里的限制只针对“添加现有来源”弹窗的候选列表。
+
+### 24.2 验证
+
+```text
+cd frontend && npm test -- AddExistingSourceDialog.test.tsx SourcesColumn.test.tsx
+```
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `frontend/src/components/sources/AddExistingSourceDialog.tsx` | 添加现有来源弹窗仅展示已嵌入来源，搜索/全选/勾选都基于过滤后的集合 |
+| `frontend/src/components/sources/AddExistingSourceDialog.test.tsx` | 回归覆盖未嵌入来源不展示、KG 状态不影响已嵌入来源可选 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 记录本轮行为决策、边界和验证 |
+
+---
+
+> 最后更新：2026-06-14 | 新增 §24（添加现有来源仅展示已嵌入来源）。当前分支 `codex/processed-source-notebook-reference` 只收敛“添加现有来源”弹窗候选列表，不改变新建来源和后端 reference 语义。
