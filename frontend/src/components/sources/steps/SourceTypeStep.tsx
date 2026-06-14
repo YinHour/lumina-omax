@@ -93,12 +93,51 @@ interface SourceTypeStepProps {
   errors: FieldErrors<CreateSourceFormData>
   urlValidationErrors?: { url: string; line: number }[]
   onClearUrlErrors?: () => void
+  sourceBatchLimit?: number | null
+  sourceLimit?: number | null
 }
 
-const MAX_BATCH_SIZE = 50
+const DEFAULT_SOURCE_BATCH_LIMIT = 50
+const MIN_SOURCE_BATCH_LIMIT = 1
+const MAX_SOURCE_BATCH_LIMIT = 200
 
-export function SourceTypeStep({ control, register, setValue, errors, urlValidationErrors, onClearUrlErrors }: SourceTypeStepProps) {
+export function getSourceBatchLimit(limit?: number | null): number {
+  if (
+    typeof limit === 'number' &&
+    Number.isInteger(limit) &&
+    limit >= MIN_SOURCE_BATCH_LIMIT &&
+    limit <= MAX_SOURCE_BATCH_LIMIT
+  ) {
+    return limit
+  }
+  return DEFAULT_SOURCE_BATCH_LIMIT
+}
+
+export function getRemainingSourceSlots(currentCount: number, limit?: number | null): number {
+  const batchLimit = getSourceBatchLimit(limit)
+  if (!Number.isInteger(currentCount) || currentCount < 0) {
+    return batchLimit
+  }
+  return Math.max(batchLimit - currentCount, 0)
+}
+
+function getSourceInputLimit(limit?: number | null): number {
+  if (
+    typeof limit === 'number' &&
+    Number.isInteger(limit) &&
+    limit >= 0 &&
+    limit <= MAX_SOURCE_BATCH_LIMIT
+  ) {
+    return limit
+  }
+  return DEFAULT_SOURCE_BATCH_LIMIT
+}
+
+export function SourceTypeStep({ control, register, setValue, errors, urlValidationErrors, onClearUrlErrors, sourceBatchLimit, sourceLimit }: SourceTypeStepProps) {
   const { t } = useTranslation()
+  const batchLimit = getSourceInputLimit(sourceBatchLimit)
+  const configuredSourceLimit = getSourceBatchLimit(sourceLimit ?? sourceBatchLimit)
+  const isSourceLimitReached = batchLimit === 0
   // Watch the selected type and inputs to detect batch mode
   const selectedType = useWatch({ control, name: 'type' })
   const urlInput = useWatch({ control, name: 'url' })
@@ -151,14 +190,19 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
     return { isBatchMode, itemCount, urlCount, fileCount }
   }, [selectedType, urlInput, fileInput])
 
-  // Check for batch size limit
-  const isOverLimit = itemCount > MAX_BATCH_SIZE
+  // Check against the remaining source slots for the target notebook.
+  const isOverLimit = itemCount > batchLimit
   return (
     <div className="space-y-6">
       <FormSection
         title={t.sources.title}
         description={t.sources.processDescription}
       >
+        {isSourceLimitReached && (
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {t.sources.sourceLimitReached.replace('{count}', configuredSourceLimit.toString())}
+          </div>
+        )}
         <Controller
           control={control}
           name="type"
@@ -192,7 +236,7 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                         {urlCount > 0 && (
                           <Badge variant={isOverLimit ? "destructive" : "secondary"}>
                             {t.sources.urlsCount.replace('{count}', urlCount.toString())}
-                            {isOverLimit && ` (${t.sources.maxItems.replace('{count}', MAX_BATCH_SIZE.toString())})`}
+                            {isOverLimit && ` (${t.sources.maxItems.replace('{count}', batchLimit.toString())})`}
                           </Badge>
                         )}
                       </div>
@@ -241,7 +285,7 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                         {fileCount > 0 && (
                           <Badge variant={isOverLimit ? "destructive" : "secondary"}>
                             {t.sources.filesCount.replace('{count}', fileCount.toString())}
-                            {isOverLimit && ` (${t.sources.maxItems.replace('{count}', MAX_BATCH_SIZE.toString())})`}
+                            {isOverLimit && ` (${t.sources.maxItems.replace('{count}', batchLimit.toString())})`}
                           </Badge>
                         )}
                       </div>
@@ -276,7 +320,7 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                       )}
                       {isOverLimit && selectedType === 'upload' && (
                         <p className="text-sm text-destructive mt-1">
-                          {t.sources.maxFilesAllowed.replace('{count}', MAX_BATCH_SIZE.toString())}
+                          {t.sources.maxFilesAllowed.replace('{count}', batchLimit.toString())}
                         </p>
                       )}
                     </div>

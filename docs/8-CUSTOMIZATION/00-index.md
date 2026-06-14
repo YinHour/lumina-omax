@@ -1857,4 +1857,48 @@ cd frontend && npm test -- AddExistingSourceDialog.test.tsx SourcesColumn.test.t
 
 ---
 
-> 最后更新：2026-06-14 | 新增 §24（添加现有来源仅展示已嵌入来源）。当前分支 `codex/processed-source-notebook-reference` 只收敛“添加现有来源”弹窗候选列表，不改变新建来源和后端 reference 语义。
+## 25. 添加来源数量上限设置（新增 2026-06-14）
+
+本轮基于 `codex/source-add-limit-setting` 分支，将单个笔记本允许包含的来源总数上限做成设置项。默认仍为 50，管理员可在设置页调整。
+
+### 25.1 行为决策
+
+- `ContentSettings.source_batch_limit` 默认值为 50，允许范围为 1-200。
+- 设置 API 的读取和更新响应包含 `source_batch_limit`，现有设置记录缺少该字段时回退到 50。
+- 设置页“文件管理”区域新增“添加来源数量上限”数字输入，沿用现有管理员设置入口。
+- 添加新来源时，打开笔记本路径会按“当前笔记本已有来源数 + 本次新增来源数”判断是否超过上限。
+- 添加新来源窗口在当前笔记本没有剩余槽位时，会直接显示“此笔记本的来源数已达到上限”的提示。
+- 添加现有来源时，弹窗会按当前笔记本剩余槽位限制单选和全选，不能选出超过上限的数量。
+- 非法或缺失的前端设置值在弹窗侧回退到 50，避免旧缓存或异常响应导致无限制添加。
+
+**边界**：本轮不新增后端批量创建接口，也不改变单个 `POST /sources` 或 `POST /notebooks/{notebook_id}/sources/{source_id}` 的语义。这里的限制在打开笔记本的前端添加入口执行，用于防止单个笔记本来源总数超过设置值。
+
+### 25.2 验证
+
+```text
+.venv/bin/python -m pytest tests/test_domain.py::TestContentSettings -q
+cd frontend && npm test -- SourceTypeStep.test.tsx
+cd frontend && npm test -- AddExistingSourceDialog.test.tsx SourceTypeStep.test.tsx
+```
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `open_notebook/domain/content_settings.py` | 新增 `source_batch_limit` 默认值和范围校验 |
+| `api/models.py` | 设置读写模型暴露 `source_batch_limit` |
+| `api/routers/settings.py` | 设置读取、更新、响应带上笔记本来源数量上限 |
+| `api/settings_service.py` | 客户端设置服务读写新增字段并回退默认值 |
+| `frontend/src/app/(dashboard)/settings/components/SettingsForm.tsx` | 文件管理设置区新增数量上限输入 |
+| `frontend/src/components/sources/AddSourceDialog.tsx` | 添加新来源时按目标笔记本剩余槽位限制本次新增数量 |
+| `frontend/src/components/sources/AddExistingSourceDialog.tsx` | 添加现有来源时按剩余槽位限制单选和全选 |
+| `frontend/src/components/sources/AddExistingSourceDialog.test.tsx` | 覆盖 49/50 时添加现有来源最多只能再选 1 个 |
+| `frontend/src/components/sources/steps/SourceTypeStep.tsx` | 来源类型步骤展示剩余槽位、已达上限提示，并导出上限/剩余槽位 helper |
+| `frontend/src/components/sources/steps/SourceTypeStep.test.tsx` | 覆盖配置化上限、异常值回退、剩余槽位计算和已达上限提示 |
+| `frontend/src/lib/locales/en-US/index.ts`、`frontend/src/lib/locales/zh-CN/index.ts` | 新增设置页文案 |
+| `tests/test_domain.py` | 覆盖默认 50 和 1-200 范围校验 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 记录本轮行为决策、边界和验证 |
+
+---
+
+> 最后更新：2026-06-14 | 新增 §25（添加来源数量上限设置）。当前分支 `codex/source-add-limit-setting` 将该设置定义为单个笔记本来源总数上限，覆盖新添加来源和添加现有来源两个前端入口，不新增后端批量创建语义。

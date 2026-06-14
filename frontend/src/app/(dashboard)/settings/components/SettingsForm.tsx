@@ -21,6 +21,7 @@ const settingsSchema = z.object({
   default_content_processing_engine_url: z.enum(['auto', 'firecrawl', 'jina', 'simple']).optional(),
   default_embedding_option: z.enum(['ask', 'always', 'never']).optional(),
   auto_delete_files: z.enum(['yes', 'no']).optional(),
+  source_batch_limit: z.number().int().min(1).max(200).optional(),
   tavily_api_key: z.string().optional().nullable(),
   tavily_include_domains: z.string().optional().nullable(),
 })
@@ -53,6 +54,7 @@ export function SettingsForm() {
       default_content_processing_engine_url: undefined,
       default_embedding_option: undefined,
       auto_delete_files: undefined,
+      source_batch_limit: 50,
       tavily_api_key: '',
       tavily_include_domains: '',
     }
@@ -71,6 +73,7 @@ export function SettingsForm() {
         default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'simple',
         default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
         auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
+        source_batch_limit: settings.source_batch_limit ?? 50,
         tavily_api_key: settings.tavily_api_key || '',
         tavily_include_domains: settings.tavily_include_domains || '',
       }
@@ -183,6 +186,7 @@ export function SettingsForm() {
               </CollapsibleContent>
             </Collapsible>
           </div>
+
         </CardContent>
       </Card>
 
@@ -271,6 +275,28 @@ export function SettingsForm() {
                 <p>{t.settings.filesHelp}</p>
               </CollapsibleContent>
             </Collapsible>
+          </div>
+
+          <div className="space-y-3">
+            <Label htmlFor="source_batch_limit">{t.settings.sourceBatchLimit}</Label>
+            <Controller
+              name="source_batch_limit"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  id="source_batch_limit"
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={field.value ?? 50}
+                  onChange={(event) => field.onChange(event.target.value === '' ? undefined : Number(event.target.value))}
+                  disabled={field.disabled || isLoading}
+                />
+              )}
+            />
+            <p className="text-sm text-muted-foreground">
+              {t.settings.sourceBatchLimitHelp}
+            </p>
           </div>
         </CardContent>
       </Card>

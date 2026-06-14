@@ -20,6 +20,12 @@ class ContentSettings(RecordModel):
     auto_delete_files: Optional[Literal["yes", "no"]] = Field(
         "yes", description="Auto Delete Uploaded Files"
     )
+    source_batch_limit: int = Field(
+        50,
+        ge=1,
+        le=200,
+        description="Maximum number of sources allowed in one notebook",
+    )
     youtube_preferred_languages: Optional[List[str]] = Field(
         ["en", "pt", "es", "de", "nl", "en-GB", "fr", "de", "hi", "ja"],
         description="Preferred languages for YouTube transcripts",

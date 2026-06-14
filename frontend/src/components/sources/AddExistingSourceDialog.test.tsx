@@ -10,6 +10,10 @@ const addSourcesMock = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
 }))
 
+const currentNotebookSourcesMock = vi.hoisted(() => ({
+  data: [] as SourceListResponse[],
+}))
+
 vi.mock('@/lib/api/sources', () => ({
   sourcesApi: {
     list: vi.fn(),
@@ -20,13 +24,30 @@ vi.mock('@/lib/hooks/use-sources', async () => {
   const actual = await vi.importActual<typeof import('@/lib/hooks/use-sources')>('@/lib/hooks/use-sources')
   return {
     ...actual,
-    useSources: () => ({ data: [] }),
+    useSources: () => ({ data: currentNotebookSourcesMock.data }),
     useAddSourcesToNotebook: () => ({
       mutateAsync: addSourcesMock.mutateAsync,
       isPending: false,
     }),
   }
 })
+
+vi.mock('@/lib/hooks/use-settings', () => ({
+  useSettings: () => ({
+    data: {
+      source_batch_limit: 50,
+    },
+  }),
+}))
+
+vi.mock('@/lib/hooks/use-notebooks', () => ({
+  useNotebook: () => ({
+    data: {
+      id: 'notebook:1',
+      source_count: currentNotebookSourcesMock.data.length,
+    },
+  }),
+}))
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -61,6 +82,7 @@ const source = (overrides: Partial<SourceListResponse>): SourceListResponse => (
 describe('AddExistingSourceDialog source filtering', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    currentNotebookSourcesMock.data = []
     vi.mocked(sourcesApi.list).mockResolvedValue({
       items: [
         source({
@@ -101,5 +123,30 @@ describe('AddExistingSourceDialog source filtering', () => {
 
     fireEvent.click(screen.getByText('Select All'))
     expect(screen.getByText('2 sources selected')).toBeInTheDocument()
+  })
+
+  it('limits existing source selection by the remaining notebook source slots', async () => {
+    currentNotebookSourcesMock.data = Array.from({ length: 49 }, (_, index) =>
+      source({
+        id: `source:current-${index}`,
+        title: `Current Source ${index}`,
+      }),
+    )
+
+    render(
+      <AddExistingSourceDialog
+        open
+        onOpenChange={vi.fn()}
+        notebookId="notebook:1"
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    await screen.findByText('Embedded Source')
+
+    fireEvent.click(screen.getByText('Select All'))
+
+    expect(screen.getByText('1 sources selected')).toBeInTheDocument()
+    expect(addSourcesMock.mutateAsync).not.toHaveBeenCalled()
   })
 })

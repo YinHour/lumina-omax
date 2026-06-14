@@ -85,6 +85,7 @@ export interface SettingsResponse {
   default_content_processing_engine_url?: string
   default_embedding_option?: string
   auto_delete_files?: string
+  source_batch_limit?: number
   youtube_preferred_languages?: string[]
   tavily_api_key?: string | null
   tavily_include_domains?: string | null

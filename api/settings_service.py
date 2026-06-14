@@ -33,6 +33,7 @@ class SettingsService:
             ),
             default_embedding_option=settings_data.get("default_embedding_option"),
             auto_delete_files=settings_data.get("auto_delete_files"),
+            source_batch_limit=settings_data.get("source_batch_limit", 50),
             youtube_preferred_languages=settings_data.get(
                 "youtube_preferred_languages"
             ),
@@ -49,6 +50,7 @@ class SettingsService:
             "default_content_processing_engine_url": settings.default_content_processing_engine_url,
             "default_embedding_option": settings.default_embedding_option,
             "auto_delete_files": settings.auto_delete_files,
+            "source_batch_limit": settings.source_batch_limit,
             "youtube_preferred_languages": settings.youtube_preferred_languages,
             "tavily_api_key": settings.tavily_api_key,
             "tavily_include_domains": settings.tavily_include_domains,
@@ -72,6 +74,7 @@ class SettingsService:
             "default_embedding_option"
         )
         settings.auto_delete_files = settings_data.get("auto_delete_files")
+        settings.source_batch_limit = settings_data.get("source_batch_limit", 50)
         settings.youtube_preferred_languages = settings_data.get(
             "youtube_preferred_languages"
         )

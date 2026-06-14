@@ -299,6 +299,7 @@ class SettingsResponse(BaseModel):
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
+    source_batch_limit: int = Field(50, ge=1, le=200)
     youtube_preferred_languages: Optional[List[str]] = None
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
@@ -309,6 +310,7 @@ class SettingsUpdate(BaseModel):
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
+    source_batch_limit: Optional[int] = Field(None, ge=1, le=200)
     youtube_preferred_languages: Optional[List[str]] = None
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
