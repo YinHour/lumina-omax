@@ -70,11 +70,16 @@ export function AddExistingSourceDialog({
   // Client-side filtering (same simple approach as the notebooks page).
   // Supports CJK/English input in real time with no debounce, no Enter key,
   // and no server round-trip.
+  const embeddedSources = useMemo(
+    () => allSources.filter(source => source.embedded),
+    [allSources]
+  )
+
   const filteredSources = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return allSources
-    return allSources.filter(s => (s.title || '').toLowerCase().includes(q))
-  }, [allSources, searchQuery])
+    if (!q) return embeddedSources
+    return embeddedSources.filter(s => (s.title || '').toLowerCase().includes(q))
+  }, [embeddedSources, searchQuery])
 
   // Load all sources initially and reset query when opening
   useEffect(() => {
@@ -84,7 +89,24 @@ export function AddExistingSourceDialog({
     }
   }, [open, loadAllSources])
 
+  useEffect(() => {
+    const selectableSourceIds = new Set(
+      embeddedSources
+        .filter(source => !currentSourceIds.has(source.id))
+        .map(source => source.id)
+    )
+    setSelectedSourceIds(prev => {
+      const next = prev.filter(sourceId => selectableSourceIds.has(sourceId))
+      return next.length === prev.length ? prev : next
+    })
+  }, [embeddedSources, currentSourceIds])
+
   const handleToggleSource = (sourceId: string) => {
+    const source = embeddedSources.find(s => s.id === sourceId)
+    if (!source || currentSourceIds.has(source.id)) {
+      return
+    }
+
     setSelectedSourceIds(prev =>
       prev.includes(sourceId)
         ? prev.filter(id => id !== sourceId)
@@ -161,7 +183,9 @@ export function AddExistingSourceDialog({
 
           {/* Select All */}
           {filteredSources.length > 0 && (() => {
-            const selectableSources = filteredSources.filter(s => !currentSourceIds.has(s.id))
+            const selectableSources = filteredSources.filter(s =>
+              !currentSourceIds.has(s.id)
+            )
             if (selectableSources.length === 0) return null
             const allSelected = selectableSources.every(s => selectedSourceIds.includes(s.id))
             const someSelected = selectableSources.some(s => selectedSourceIds.includes(s.id))
@@ -201,6 +225,7 @@ export function AddExistingSourceDialog({
               <div className="space-y-2 p-4">
                 {filteredSources.map((source) => {
                   const isAlreadyLinked = currentSourceIds.has(source.id)
+                  const isDisabled = isAlreadyLinked
                   const isSelected = selectedSourceIds.includes(source.id)
 
                   return (
@@ -208,12 +233,14 @@ export function AddExistingSourceDialog({
                       key={source.id}
                       className={`flex items-start gap-3 p-3 rounded-lg border transition-colors min-w-0 ${
                         isSelected ? 'bg-accent border-accent-foreground/20' : 'hover:bg-accent/50'
+                      } ${
+                        isDisabled ? 'opacity-70' : ''
                       }`}
                     >
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => handleToggleSource(source.id)}
-                        disabled={isAlreadyLinked}
+                        disabled={isDisabled}
                         className="mt-1"
                       />
                       <div className="flex-1 min-w-0">
