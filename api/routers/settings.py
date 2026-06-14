@@ -19,6 +19,7 @@ async def get_settings():
             default_content_processing_engine_url=settings.default_content_processing_engine_url,
             default_embedding_option=settings.default_embedding_option,
             auto_delete_files=settings.auto_delete_files,
+            source_batch_limit=settings.source_batch_limit,
             youtube_preferred_languages=settings.youtube_preferred_languages,
             tavily_api_key=settings.tavily_api_key,
             tavily_include_domains=settings.tavily_include_domains,
@@ -65,6 +66,8 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.auto_delete_files = cast(
                 Literal["yes", "no"], settings_update.auto_delete_files
             )
+        if settings_update.source_batch_limit is not None:
+            settings.source_batch_limit = settings_update.source_batch_limit
         if settings_update.youtube_preferred_languages is not None:
             settings.youtube_preferred_languages = (
                 settings_update.youtube_preferred_languages
@@ -81,6 +84,7 @@ async def update_settings(settings_update: SettingsUpdate):
             default_content_processing_engine_url=settings.default_content_processing_engine_url,
             default_embedding_option=settings.default_embedding_option,
             auto_delete_files=settings.auto_delete_files,
+            source_batch_limit=settings.source_batch_limit,
             youtube_preferred_languages=settings.youtube_preferred_languages,
             tavily_api_key=settings.tavily_api_key,
             tavily_include_domains=settings.tavily_include_domains,

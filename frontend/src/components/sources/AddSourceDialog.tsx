@@ -22,18 +22,16 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { WizardContainer, WizardStep } from '@/components/ui/wizard-container'
-import { SourceTypeStep, parseAndValidateUrls } from './steps/SourceTypeStep'
+import { SourceTypeStep, getRemainingSourceSlots, getSourceBatchLimit, parseAndValidateUrls } from './steps/SourceTypeStep'
 import { NotebooksStep } from './steps/NotebooksStep'
 import { ProcessingStep } from './steps/ProcessingStep'
-import { useNotebooks } from '@/lib/hooks/use-notebooks'
+import { useNotebook, useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useTransformations } from '@/lib/hooks/use-transformations'
-import { useCreateSource } from '@/lib/hooks/use-sources'
+import { useCreateSource, useSources } from '@/lib/hooks/use-sources'
 import { useSettings } from '@/lib/hooks/use-settings'
 import { CreateSourceRequest } from '@/lib/types/api'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { sourcesApi } from '@/lib/api/sources'
-
-const MAX_BATCH_SIZE = 50
 
 const createSourceSchema = z.object({
   type: z.enum(['link', 'upload', 'text']),
@@ -98,7 +96,7 @@ export function AddSourceDialog({
   onOpenChange, 
   defaultNotebookId 
 }: AddSourceDialogProps) {
-  const { t, language } = useTranslation()
+  const { t } = useTranslation()
 
   const WIZARD_STEPS: readonly WizardStep[] = [
     { number: 1, title: t.sources.addSource, description: t.sources.processDescription },
@@ -134,6 +132,9 @@ export function AddSourceDialog({
   const { data: notebooks = [], isLoading: notebooksLoading } = useNotebooks()
   const { data: transformations = [], isLoading: transformationsLoading } = useTransformations()
   const { data: settings } = useSettings()
+  const sourceBatchLimit = getSourceBatchLimit(settings?.source_batch_limit)
+  const { data: currentDefaultNotebookSources } = useSources(defaultNotebookId)
+  const { data: defaultNotebook } = useNotebook(defaultNotebookId ?? '')
 
   // Form setup
   const {
@@ -234,16 +235,56 @@ export function AddSourceDialog({
     return { isBatchMode, itemCount, parsedUrls, parsedFiles }
   }, [selectedType, watchedUrl, watchedFile])
 
-  // Check for batch size limit
-  const isOverLimit = itemCount > MAX_BATCH_SIZE
+  const selectedNotebookRemainingSlots = useMemo(() => {
+    if (selectedNotebooks.length === 0) {
+      return sourceBatchLimit
+    }
+
+    const sourceCounts = new Map(notebooks.map(notebook => [notebook.id, notebook.source_count]))
+    if (defaultNotebookId) {
+      sourceCounts.set(
+        defaultNotebookId,
+        Math.max(
+          defaultNotebook?.source_count ?? 0,
+          currentDefaultNotebookSources?.length ?? 0,
+          sourceCounts.get(defaultNotebookId) ?? 0
+        )
+      )
+    }
+
+    return Math.min(
+      ...selectedNotebooks.map(notebookId =>
+        getRemainingSourceSlots(sourceCounts.get(notebookId) ?? 0, sourceBatchLimit)
+      )
+    )
+  }, [currentDefaultNotebookSources, defaultNotebook, defaultNotebookId, notebooks, selectedNotebooks, sourceBatchLimit])
+
+  const pendingSourceCount = useMemo(() => {
+    if (selectedType === 'link') {
+      return parsedUrls.length || (watchedUrl?.trim() ? 1 : 0)
+    }
+    if (selectedType === 'upload') {
+      if (watchedFile instanceof FileList) {
+        return watchedFile.length
+      }
+      return watchedFile ? 1 : 0
+    }
+    if (selectedType === 'text') {
+      return watchedContent?.trim() ? 1 : 0
+    }
+    return itemCount
+  }, [itemCount, parsedUrls.length, selectedType, watchedContent, watchedFile, watchedUrl])
+
+  // Check for notebook source count limit.
+  const isOverLimit = pendingSourceCount > selectedNotebookRemainingSlots
 
   // Step validation - now reactive with watched values
   const isStepValid = (step: number): boolean => {
+    if (isOverLimit) return false
+
     switch (step) {
       case 1:
         if (!selectedType) return false
-        // Check batch size limit
-        if (isOverLimit) return false
         // Check for URL validation errors
         if (urlValidationErrors.length > 0) return false
 
@@ -260,7 +301,7 @@ export function AddSourceDialog({
         }
         if (selectedType === 'upload') {
           if (watchedFile instanceof FileList) {
-            return watchedFile.length > 0 && watchedFile.length <= MAX_BATCH_SIZE
+            return watchedFile.length > 0 && watchedFile.length <= selectedNotebookRemainingSlots
           }
           return !!watchedFile
         }
@@ -824,6 +865,8 @@ export function AddSourceDialog({
                 errors={errors}
                 urlValidationErrors={urlValidationErrors}
                 onClearUrlErrors={handleClearUrlErrors}
+                sourceBatchLimit={selectedNotebookRemainingSlots}
+                sourceLimit={sourceBatchLimit}
               />
             )}
             

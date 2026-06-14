@@ -17,8 +17,11 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { sourcesApi } from '@/lib/api/sources'
 import { useSources, useAddSourcesToNotebook } from '@/lib/hooks/use-sources'
+import { useSettings } from '@/lib/hooks/use-settings'
+import { useNotebook } from '@/lib/hooks/use-notebooks'
 import { SourceListResponse } from '@/lib/types/api'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { getRemainingSourceSlots, getSourceBatchLimit } from './steps/SourceTypeStep'
 
 interface AddExistingSourceDialogProps {
   open: boolean
@@ -38,9 +41,17 @@ export function AddExistingSourceDialog({
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([])
   const [allSources, setAllSources] = useState<SourceListResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const { data: settings } = useSettings()
+  const sourceLimit = getSourceBatchLimit(settings?.source_batch_limit)
 
   // Get sources already in this notebook
   const { data: currentNotebookSources } = useSources(notebookId)
+  const { data: currentNotebook } = useNotebook(notebookId)
+  const currentSourceCount = Math.max(
+    currentNotebook?.source_count ?? 0,
+    currentNotebookSources?.length ?? 0
+  )
+  const remainingSourceSlots = getRemainingSourceSlots(currentSourceCount, sourceLimit)
   const currentSourceIds = useMemo(
     () => new Set(currentNotebookSources?.map(s => s.id) || []),
     [currentNotebookSources]
@@ -110,12 +121,14 @@ export function AddExistingSourceDialog({
     setSelectedSourceIds(prev =>
       prev.includes(sourceId)
         ? prev.filter(id => id !== sourceId)
-        : [...prev, sourceId]
+        : prev.length < remainingSourceSlots
+          ? [...prev, sourceId]
+          : prev
     )
   }
 
   const handleAddSelected = async () => {
-    if (selectedSourceIds.length === 0) return
+    if (selectedSourceIds.length === 0 || selectedSourceIds.length > remainingSourceSlots) return
 
     try {
       await addSources.mutateAsync({
@@ -196,7 +209,14 @@ export function AddExistingSourceDialog({
                   if (allSelected) {
                     setSelectedSourceIds(prev => prev.filter(id => !selectableSources.some(s => s.id === id)))
                   } else {
-                    setSelectedSourceIds(prev => [...new Set([...prev, ...selectableSources.map(s => s.id)])])
+                    setSelectedSourceIds(prev => {
+                      const slots = Math.max(remainingSourceSlots - prev.length, 0)
+                      const nextIds = selectableSources
+                        .map(s => s.id)
+                        .filter(id => !prev.includes(id))
+                        .slice(0, slots)
+                      return [...prev, ...nextIds]
+                    })
                   }
                 }}
               >
@@ -225,8 +245,8 @@ export function AddExistingSourceDialog({
               <div className="space-y-2 p-4">
                 {filteredSources.map((source) => {
                   const isAlreadyLinked = currentSourceIds.has(source.id)
-                  const isDisabled = isAlreadyLinked
                   const isSelected = selectedSourceIds.includes(source.id)
+                  const isDisabled = isAlreadyLinked || (!isSelected && selectedSourceIds.length >= remainingSourceSlots)
 
                   return (
                     <div
@@ -281,6 +301,14 @@ export function AddExistingSourceDialog({
               {t.sources.selectedCount.replace('{count}', selectedSourceIds.length.toString())}
             </div>
           )}
+          <div className="text-xs text-muted-foreground">
+            {remainingSourceSlots > 0
+              ? t.sources.sourceLimitRemaining
+                .replace('{remaining}', remainingSourceSlots.toString())
+                .replace('{limit}', sourceLimit.toString())
+              : t.sources.sourceLimitReached.replace('{count}', sourceLimit.toString())
+            }
+          </div>
         </div>
 
         <DialogFooter>
@@ -293,7 +321,7 @@ export function AddExistingSourceDialog({
           </Button>
           <Button
             onClick={handleAddSelected}
-            disabled={selectedSourceIds.length === 0 || addSources.isPending}
+            disabled={selectedSourceIds.length === 0 || selectedSourceIds.length > remainingSourceSlots || addSources.isPending}
           >
             {addSources.isPending ? (
               <>

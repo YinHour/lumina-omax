@@ -374,7 +374,16 @@ class TestContentSettings:
         assert settings.default_content_processing_engine_doc in ["auto", "mineru"]
         assert settings.default_embedding_option == "ask"
         assert settings.auto_delete_files == "yes"
+        assert settings.source_batch_limit == 50
         assert len(settings.youtube_preferred_languages) > 0
+
+    def test_content_settings_rejects_invalid_source_batch_limit(self):
+        """Test source batch limit must stay within the supported range."""
+        with pytest.raises(ValidationError):
+            ContentSettings(source_batch_limit=0)
+
+        with pytest.raises(ValidationError):
+            ContentSettings(source_batch_limit=201)
 
 
 # ============================================================================
