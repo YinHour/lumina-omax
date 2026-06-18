@@ -39,3 +39,45 @@ def test_excel_cleanup_keeps_columns_with_any_value():
     cleaned = _trim_excel_empty_table_rows(_sanitize_excel_table_newlines(markdown))
 
     assert cleaned == markdown
+
+
+def test_excel_cleanup_removes_fully_empty_table():
+    markdown = "\n".join(
+        [
+            "|  |  |",
+            "| --- | --- |",
+            "|  |  |",
+        ]
+    )
+
+    cleaned = _trim_excel_empty_table_rows(_sanitize_excel_table_newlines(markdown))
+
+    assert cleaned == ""
+
+
+def test_excel_cleanup_preserves_text_around_trimmed_table():
+    markdown = "\n".join(
+        [
+            "前置说明",
+            "",
+            "| 产品代号 |  | 结果 |",
+            "| --- | --- | --- |",
+            "| A-1 |  | 合格 |",
+            "",
+            "后续说明",
+        ]
+    )
+
+    cleaned = _trim_excel_empty_table_rows(_sanitize_excel_table_newlines(markdown))
+
+    assert cleaned == "\n".join(
+        [
+            "前置说明",
+            "",
+            "| 产品代号 | 结果 |",
+            "| --- | --- |",
+            "| A-1 | 合格 |",
+            "",
+            "后续说明",
+        ]
+    )

@@ -1258,12 +1258,15 @@ async def check_duplicate_filenames(filenames: List[str]):
         if not normalized_by_original:
             return {"duplicates": []}
 
+        normalized_filenames = sorted(set(normalized_by_original.values()))
         duplicates = await repo_query(
             """
             SELECT VALUE asset.original_filename
             FROM source
             WHERE asset.original_filename != none
-            """
+              AND string::lowercase(string::trim(asset.original_filename)) IN $normalized_filenames
+            """,
+            {"normalized_filenames": normalized_filenames},
         )
 
         existing_normalized = {

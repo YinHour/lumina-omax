@@ -1956,14 +1956,14 @@ git diff --check
 - `.doc` 继续通过 LibreOffice 转 PDF 后提取；`.ppt/.pptx` 同样通过 LibreOffice 转 PDF 后交给 MinerU/文档引擎解析；`.xls` 改为通过 LibreOffice 转 `.xlsx` 后进入 Excel 表格解析，避免旧版 Excel 因 content-core 不识别而断开入库通道。
 - `.xlsx/.xlsm` 仍保持原生表格解析，不转 PDF，避免宽表分页破坏行列结构。
 - 前端上传文件选择器的 `accept` 白名单必须与后端恢复后的能力一致，重新放开 `.doc/.ppt/.xls`，并补齐 `.xlsm`；这覆盖 §18 中旧版 Office 临时禁选的历史限制。
-- Excel Markdown 清洗在修复单元格换行和空白行之外，新增整列为空的列删除；任意行存在值的列都会保留。
+- Excel Markdown 清洗在修复单元格换行和空白行之外，新增整列为空的列删除；任意行存在值的列都会保留。Review 后补充空表移除和表格前后正文保留的回归测试。
 - 全局 Ask 在回答前查询知识库来源总数和已嵌入可检索来源数，在检索过程中收集本轮命中的唯一 `source:*` 记录，并把覆盖统计作为 SSE metadata 返回前端。
 - Ask 最终回答 prompt 明确使用覆盖 metadata，不能把“本次命中来源数”误说成“知识库总来源数”。
 - 前端 Ask 面板显示“来源总数 / 可检索来源 / 本次命中来源”，并在浏览器端保留最近全局 Ask 历史，可恢复问题、答案和覆盖统计。
 - 来源详情页的标题、关闭、三点菜单、源对话按钮和“内容/见解/详情”Tabs 统一放入同一个 sticky 工具区，长内容滚动到底部时仍可操作；笔记本源列表点击来源改为和总来源列表一致，进入完整 `/sources/{id}` 详情页并记录返回笔记本路径，不再通过来源 modal 查看长内容。来源 modal 仍保留固定高度和内部滚动，避免其他 URL modal 入口裁切内容。浏览器 favicon 统一由登录页产品图标 `logo.png` 生成。
 - 笔记本对话面板保留原有左右气泡流排版；仅对 ChatPanel 内的 Radix ScrollArea viewport 增加局部 wrapper 约束，避免长表格、长引用和 `max-w-[80%]` 气泡在特定历史对话中把内部内容层撑宽，导致右侧内容被裁切。
 - 创建笔记本和聚合笔记本的名称必填校验使用当前语言的 `common.nameRequired`，避免中文界面删除名称后出现硬编码英文 `Name is required`。
-- 重名文件检查继续基于 `asset.original_filename`，但改为大小写不敏感并忽略首尾空格；后端返回本次提交的文件名，保证前端“仅上传非重复文件”过滤能命中。后台处理完成重新保存 `Asset` 时必须保留既有 `original_filename`，避免 `.xlsx/.docx` 等经过 `ProcessSourceState` 后丢失原始文件名导致后续查重失效。
+- 重名文件检查继续基于 `asset.original_filename`，但改为大小写不敏感并忽略首尾空格；后端返回本次提交的文件名，保证前端“仅上传非重复文件”过滤能命中。Review 后将归一化匹配下推到 SurrealDB 参数化查询，避免拉取全库文件名再在 Python 侧扫描；空输入/空白输入直接返回无重复且不触发数据库查询。后台处理完成重新保存 `Asset` 时必须保留既有 `original_filename`，避免 `.xlsx/.docx` 等经过 `ProcessSourceState` 后丢失原始文件名导致后续查重失效。
 - `make start-all` 启动日志只 tail 本轮 SurrealDB 输出，API 进程显式加载 `.env`，并等待 `/api/config` ready 后再启动前端，避免 Next.js 在 API 尚未监听时产生 `/api/config` proxy `ECONNREFUSED`。
 - Next.js 16 下 `middleware.ts` 入口迁移为 `proxy.ts`，鉴权与根路径重定向逻辑保持不变，消除启动时的 middleware deprecated warning。
 - 删除重复的 dashboard route-group 根页，根路径跳转统一由 `app/page.tsx` 与 `proxy.ts` 承担，避免 standalone build 复制不存在的 client-reference manifest 时产生 trace warning。
@@ -2009,7 +2009,7 @@ git diff --check
 | `frontend/src/components/source/ChatPanel.tsx`、`frontend/src/components/ui/scroll-area.tsx` | ChatPanel 局部约束 Radix ScrollArea 内部 wrapper，避免长历史消息把对话内容层撑宽 |
 | `frontend/src/components/notebooks/CreateNotebookDialog.tsx`、`frontend/src/components/notebooks/AggregateNotebookDialog.tsx` | 名称必填校验改用当前语言文案，避免硬编码英文提示 |
 | `frontend/src/app/favicon.ico` | 由登录页产品图标生成，统一浏览器 Tab 图标 |
-| `api/routers/sources.py`、`frontend/src/components/sources/AddSourceDialog.tsx`、`open_notebook/graphs/source.py` | 重名检查大小写不敏感；继续上传重复文件提示走 i18n；处理完成保存来源时保留原始文件名 |
+| `api/routers/sources.py`、`frontend/src/components/sources/AddSourceDialog.tsx`、`open_notebook/graphs/source.py` | 重名检查大小写不敏感；后端用 `string::lowercase(string::trim(...)) IN $normalized_filenames` 参数化过滤候选文件名；继续上传重复文件提示走 i18n；处理完成保存来源时保留原始文件名 |
 | `Makefile`、`frontend/src/proxy.ts`、`frontend/src/proxy.test.ts`、`frontend/src/app/(dashboard)/page.tsx`、`open_notebook/database/migrations/19*.surrealql`、`open_notebook/database/migrations/20*.surrealql` | `start-all` 等待 API ready、DB 日志只 tail 本轮输出；Next 入口从 middleware 迁移到 proxy；删除重复 dashboard 根页；补空迁移和 down 文件保持版本连续 |
 | `docs/3-USER-GUIDE/adding-sources.md`、`docs/3-USER-GUIDE/search.md`、`docs/user_docs/3-USER-GUIDE/*` | Help 文档同步旧格式导入、Excel 清理、Ask 覆盖/历史、反爬 URL 限制和重名策略 |
 | `docs/8-CUSTOMIZATION/2026-06-14-用户试用反馈升级说明.md`、`docs/8-CUSTOMIZATION/Lumiton-Omax知涌试用反馈升级说明*.pdf`、`docs/8-CUSTOMIZATION/Lumiton-Omax知涌试用反馈升级说明-商务版.docx`、`docs/superpowers/plans/2026-06-17-feedback-priority-fixes-implementation.md` | 试用反馈升级说明交付材料和本轮实施计划归档 |
