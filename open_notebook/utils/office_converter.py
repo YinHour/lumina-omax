@@ -75,29 +75,31 @@ def convert_to_modern_office_format(file_path: str) -> str:
     If the file is a document/presentation Office format (.doc, .docx, .ppt, .pptx),
     convert it to PDF using LibreOffice so engines like MinerU can process it.
 
-    Spreadsheets are deliberately excluded. Converting .xls/.xlsx to PDF can split
-    wide experimental tables across pages and destroy the row/column structure that
-    AI extraction needs.
+    Modern spreadsheets are deliberately excluded from PDF conversion. Legacy .xls
+    files are converted to .xlsx so the table structure can still be parsed by the
+    Excel extraction path.
     """
     ext = file_path.lower().split('.')[-1]
     
-    if ext not in ['doc', 'docx', 'ppt', 'pptx']:
+    conversion_target = "xlsx" if ext == "xls" else "pdf"
+
+    if ext not in ['doc', 'docx', 'ppt', 'pptx', 'xls']:
         return file_path
         
     outdir = os.path.dirname(file_path)
-    logger.info(f"Converting Office file to PDF: {file_path}")
+    logger.info(f"Converting Office file to {conversion_target.upper()}: {file_path}")
     
     try:
         cmd = get_libreoffice_command()
         subprocess.run([
             cmd, "--headless", "--invisible", "--nodefault", 
-            "--convert-to", "pdf", 
+            "--convert-to", conversion_target,
             "--outdir", outdir, 
             file_path
         ], check=True, capture_output=True)
         
         # If conversion is successful, return the new file path
-        new_file_path = f"{os.path.splitext(file_path)[0]}.pdf"
+        new_file_path = f"{os.path.splitext(file_path)[0]}.{conversion_target}"
         if os.path.exists(new_file_path):
             logger.info(f"Successfully converted to {new_file_path}")
             return new_file_path

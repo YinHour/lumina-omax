@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { SourceDetailContent } from './SourceDetailContent'
 import { sourcesApi } from '@/lib/api/sources'
 import { insightsApi } from '@/lib/api/insights'
@@ -118,6 +118,34 @@ describe('SourceDetailContent header', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the source actions and tabs in a sticky toolbar', async () => {
+    vi.mocked(sourcesApi.get).mockResolvedValue({
+      id: 'source:abc',
+      title: 'Example source',
+      full_text: '# Parsed content',
+      asset: { file_path: 'uploads/example.pdf' },
+      embedded: true,
+      topics: [],
+      created: '2026-06-08T00:00:00.000Z',
+      updated: '2026-06-08T00:00:00.000Z',
+      notebooks: [],
+      file_available: true,
+    } as never)
+
+    const { container } = renderWithQueryClient(<SourceDetailContent sourceId="source:abc" onClose={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Example source')).toBeInTheDocument()
+    })
+
+    const toolbar = container.querySelector('[data-testid="source-detail-toolbar"]')
+    expect(toolbar).toHaveClass('sticky')
+    expect(toolbar).toHaveClass('top-0')
+    expect(within(toolbar as HTMLElement).getByRole('tab', { name: 'Content' })).toBeInTheDocument()
+    expect(within(toolbar as HTMLElement).getByRole('tab', { name: 'Insights' })).toBeInTheDocument()
+    expect(within(toolbar as HTMLElement).getByRole('tab', { name: 'Details' })).toBeInTheDocument()
   })
 
   it('renders standalone image before the image description content', async () => {

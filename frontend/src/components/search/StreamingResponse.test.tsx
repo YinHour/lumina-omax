@@ -63,4 +63,25 @@ describe('StreamingResponse', () => {
     expect(region).not.toHaveClass('max-h-[60vh]')
     expect(region).not.toHaveClass('overflow-y-auto')
   })
+
+  it('renders Ask coverage metadata when provided', () => {
+    render(
+      <StreamingResponse
+        isStreaming={false}
+        strategy={null}
+        answers={[]}
+        finalAnswer={'Answer'}
+        coverage={{
+          total_sources: 32,
+          embedded_sources: 31,
+          retrieved_sources: 10,
+          retrieved_source_ids: ['source:a', 'source:b'],
+        }}
+      />
+    )
+
+    expect(screen.getByText('32')).toBeInTheDocument()
+    expect(screen.getByText('31')).toBeInTheDocument()
+    expect(screen.getByText('10')).toBeInTheDocument()
+  })
 })

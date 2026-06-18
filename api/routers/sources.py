@@ -1250,22 +1250,32 @@ async def retry_source_processing(request: Request, source_id: str):
 async def check_duplicate_filenames(filenames: List[str]):
     """Check which filenames already exist as source original_filename."""
     try:
-        if not filenames:
+        normalized_by_original = {
+            filename: filename.strip().lower()
+            for filename in filenames
+            if filename and filename.strip()
+        }
+        if not normalized_by_original:
             return {"duplicates": []}
 
-        # Query all source assets with original_filename matching any of the provided filenames
         duplicates = await repo_query(
             """
             SELECT VALUE asset.original_filename
             FROM source
-            WHERE asset.original_filename IS NOT NULL
-              AND asset.original_filename IN $filenames
-            """,
-            {"filenames": filenames},
+            WHERE asset.original_filename != none
+            """
         )
 
-        # Deduplicate in Python (VALUE returns one row per match)
-        duplicate_list = list(set(duplicates)) if duplicates else []
+        existing_normalized = {
+            duplicate.strip().lower()
+            for duplicate in duplicates or []
+            if isinstance(duplicate, str) and duplicate.strip()
+        }
+        duplicate_list = [
+            original
+            for original, normalized in normalized_by_original.items()
+            if normalized in existing_normalized
+        ]
 
         return {"duplicates": duplicate_list}
     except Exception as e:

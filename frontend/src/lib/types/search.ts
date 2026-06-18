@@ -42,6 +42,13 @@ export interface AskResponse {
   question: string
 }
 
+export interface AskCoverage {
+  total_sources: number
+  embedded_sources: number
+  retrieved_sources: number
+  retrieved_source_ids: string[]
+}
+
 // SSE Streaming types
 export interface StrategyData {
   reasoning: string
@@ -52,11 +59,16 @@ export interface StrategyData {
 }
 
 export interface AskStreamEvent {
-  type: 'strategy' | 'strategy_reasoning_chunk' | 'answer' | 'final_answer' | 'complete' | 'error'
+  type: 'strategy' | 'strategy_reasoning_chunk' | 'answer' | 'final_answer' | 'coverage' | 'complete' | 'error'
   reasoning?: string
   searches?: Array<{ term: string; instructions: string }>
   content?: string
   chunk?: string
   final_answer?: string
+  coverage?: AskCoverage
+  total_sources?: number
+  embedded_sources?: number
+  retrieved_sources?: number
+  retrieved_source_ids?: string[]
   message?: string
 }

@@ -44,9 +44,9 @@ Sources are the raw materials of your research. This guide covers how to add dif
 
 ### Documents
 - **PDF** (.pdf) — Best support, including scanned PDFs with OCR
-- **Word** (.docx, .doc) — Full support
-- **PowerPoint** (.pptx) — Slides converted to text
-- **Excel** (.xlsx, .xls) — Spreadsheet data
+- **Word** (.docx, .doc) — Full support; legacy `.doc` files are converted through LibreOffice before extraction
+- **PowerPoint** (.pptx, .ppt) — Slides are converted through LibreOffice before extraction
+- **Excel** (.xlsx, .xls, .xlsm) — Spreadsheet data; legacy `.xls` files are converted to `.xlsx` so rows and columns stay readable
 - **EPUB** (.epub) — eBook files
 - **Markdown** (.md, .txt) — Plain text formats
 - **HTML** (.html, .htm) — Web page files
@@ -54,6 +54,8 @@ Sources are the raw materials of your research. This guide covers how to add dif
 **File size limits:** Up to ~100MB (varies by system)
 
 **Processing time:** 10 seconds - 2 minutes (depending on length and file type)
+
+**Excel cleanup:** Spreadsheet extraction removes fully blank rows and fully blank columns from generated Markdown tables. Columns with any value in any row are preserved.
 
 ### Audio & Video
 - **Audio**: MP3, WAV, M4A, OGG, FLAC (~30 seconds - 3 minutes per hour)
@@ -76,6 +78,7 @@ Sources are the raw materials of your research. This guide covers how to add dif
 - Password-protected PDFs — Can't open
 - Pure image files (.jpg, .png) — Except scanned PDFs which have OCR
 - Very large files (>100MB) — Timeout
+- Academic database pages that require human verification or anti-bot challenges, such as many ScienceDirect, OnePetro, and ACS article pages
 
 ---
 
@@ -146,9 +149,11 @@ To enable this feature, configure a Vision Model in **Settings → API Keys → 
 When uploading files, the system checks for duplicates based on **original filename**:
 
 - If a file with the same name already exists in the notebook, you'll be warned
+- Filename matching ignores case and leading/trailing spaces
 - Duplicate check runs before upload to save processing time
 - Files are stored with UUID names for internal consistency, but the original filename is preserved for display and deduplication
 - Downloaded files retain their original filenames
+- If you continue uploading a duplicate, the display title may include a timestamp so the two source records can be distinguished
 
 ---
 
@@ -202,8 +207,10 @@ Processing time: Usually 5-15 seconds
 - Twitter threads (unreliable)
 - Paywalled articles (can't access)
 - JavaScript-heavy sites (content not extracted)
+- Academic database pages that require human verification or anti-bot challenges, such as many ScienceDirect, OnePetro, and ACS article pages
 
 **Pro tip:** If it doesn't work, copy the article text and paste as "Text" instead.
+For anti-bot academic sites, upload the downloaded PDF or paste the article text instead of importing the URL directly.
 
 ### Audio Files
 

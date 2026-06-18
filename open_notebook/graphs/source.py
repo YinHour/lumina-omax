@@ -813,15 +813,72 @@ def _sanitize_excel_table_newlines(content: str) -> str:
 
 
 def _trim_excel_empty_table_rows(content: str) -> str:
-    """Remove fully empty Markdown table rows emitted from formatted Excel ranges."""
+    """Remove fully empty Markdown table rows and columns from Excel Markdown."""
+    def _is_table_line(line: str) -> bool:
+        stripped = line.strip()
+        return stripped.startswith("|") and stripped.endswith("|")
+
+    def _is_separator_cells(cells: List[str]) -> bool:
+        return bool(cells) and all(
+            cell.strip().replace("-", "").replace(":", "") == "" for cell in cells
+        )
+
+    def _split_cells(line: str) -> List[str]:
+        return [cell.strip() for cell in line.strip()[1:-1].split("|")]
+
+    def _format_row(cells: List[str]) -> str:
+        return "| " + " | ".join(cells) + " |"
+
+    def _trim_table_block(block: List[str]) -> List[str]:
+        rows = [_split_cells(line) for line in block]
+        if not rows:
+            return block
+
+        max_cols = max(len(row) for row in rows)
+        normalized_rows = [row + [""] * (max_cols - len(row)) for row in rows]
+        keep_cols: List[int] = []
+        for col_index in range(max_cols):
+            column_values = [row[col_index] for row in normalized_rows]
+            non_separator_values = [
+                value
+                for row, value in zip(normalized_rows, column_values)
+                if not _is_separator_cells(row)
+            ]
+            if any(value.strip() for value in non_separator_values):
+                keep_cols.append(col_index)
+
+        if not keep_cols:
+            return []
+
+        trimmed_rows: List[str] = []
+        for row in normalized_rows:
+            trimmed = [row[index] for index in keep_cols]
+            if _is_separator_cells(row):
+                trimmed_rows.append(_format_row(["---"] * len(trimmed)))
+            elif any(cell.strip() for cell in trimmed):
+                trimmed_rows.append(_format_row(trimmed))
+        return trimmed_rows
+
     result: List[str] = []
+    table_block: List[str] = []
+
+    def _flush_table_block() -> None:
+        nonlocal table_block
+        if table_block:
+            result.extend(_trim_table_block(table_block))
+            table_block = []
+
     for line in content.splitlines():
         stripped = line.strip()
-        if stripped.startswith("|") and stripped.endswith("|"):
+        if _is_table_line(line):
             cells = stripped[1:-1].split("|")
             if cells and all(not cell.strip() for cell in cells):
                 continue
+            table_block.append(line)
+            continue
+        _flush_table_block()
         result.append(line)
+    _flush_table_block()
     return "\n".join(result)
 
 
@@ -1145,6 +1202,15 @@ async def content_process(state: SourceState) -> dict:
             elif engine == "mineru":
                 logger.warning("MinerU does not support this file type. Falling back to simple engine.")
                 state["document_engine"] = "simple"
+
+            if file_path and file_path.lower().endswith(".xls"):
+                from open_notebook.utils.office_converter import (
+                    convert_to_modern_office_format,
+                )
+
+                converted_file_path = convert_to_modern_office_format(file_path)
+                if converted_file_path != file_path:
+                    state["file_path"] = converted_file_path
 
             # Create a new event loop for this thread to run the async function
             loop = asyncio.new_event_loop()
@@ -1494,7 +1560,15 @@ async def save_source(state: SourceState) -> dict:
 
     # Update the source with processed content
     raw_original_filename = getattr(content_state, "original_filename", None)
-    original_filename = raw_original_filename if isinstance(raw_original_filename, str) else None
+    existing_asset = getattr(source, "asset", None)
+    existing_original_filename = (
+        existing_asset.original_filename if existing_asset else None
+    )
+    original_filename = (
+        raw_original_filename
+        if isinstance(raw_original_filename, str)
+        else existing_original_filename
+    )
     source.asset = Asset(
         url=content_state.url,
         file_path=content_state.file_path,

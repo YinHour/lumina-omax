@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Settings, MessageCircleQuestion, Square } from 'lucide-react'
+import { Search, ChevronDown, AlertCircle, Settings, MessageCircleQuestion, Square, History } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { SearchResponse, SearchResult } from '@/lib/types/search'
 import { useAsk } from '@/lib/hooks/use-ask'
@@ -224,7 +224,13 @@ export default function SearchPage() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ask-question')
       localStorage.removeItem('ask-custom-models')
-      localStorage.removeItem('ask-store-state')
+    }
+  }, [ask])
+
+  const handleRestoreAskHistory = useCallback((entryId: string) => {
+    const entry = ask.restoreHistoryEntry(entryId)
+    if (entry) {
+      setAskQuestion(entry.question)
     }
   }, [ask])
 
@@ -424,8 +430,49 @@ export default function SearchPage() {
                   strategy={ask.strategy}
                   answers={ask.answers}
                   finalAnswer={ask.finalAnswer}
+                  coverage={ask.coverage}
                   onSaveRequest={() => setShowSaveDialog(true)}
                 />
+
+                {ask.history.length > 0 && (
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between gap-3">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <History className="h-4 w-4" />
+                        {t.searchPage.askHistory}
+                      </CardTitle>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => ask.clearHistory()}
+                        disabled={ask.isStreaming}
+                      >
+                        {t.searchPage.clearAskHistory}
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {ask.history.slice(0, 6).map((entry) => (
+                        <div key={entry.id} className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0 space-y-1">
+                            <p className="truncate text-sm font-medium">{entry.question}</p>
+                            <p className="line-clamp-2 text-xs text-muted-foreground">{entry.answer}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestoreAskHistory(entry.id)}
+                            disabled={ask.isStreaming}
+                            className="shrink-0"
+                          >
+                            {t.searchPage.restoreHistory}
+                          </Button>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Advanced Models Dialog */}
                 <AdvancedModelsDialog

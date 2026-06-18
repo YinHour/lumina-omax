@@ -85,7 +85,25 @@ export function useAsk() {
                 useAskStore.getState().addAnswer(data.content || '')
               } else if (data.type === 'final_answer') {
                 useAskStore.getState().setFinalAnswer(data.content || '')
+              } else if (data.type === 'coverage') {
+                useAskStore.getState().setCoverage({
+                  total_sources: data.total_sources || 0,
+                  embedded_sources: data.embedded_sources || 0,
+                  retrieved_sources: data.retrieved_sources || 0,
+                  retrieved_source_ids: data.retrieved_source_ids || [],
+                })
               } else if (data.type === 'complete') {
+                if (data.coverage) {
+                  useAskStore.getState().setCoverage(data.coverage)
+                }
+                const finalAnswer = data.final_answer || useAskStore.getState().finalAnswer || ''
+                if (finalAnswer.trim()) {
+                  useAskStore.getState().addHistoryEntry({
+                    question,
+                    answer: finalAnswer,
+                    coverage: data.coverage || useAskStore.getState().coverage,
+                  })
+                }
                 useAskStore.getState().setStreaming(false)
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'Stream error occurred')
@@ -140,10 +158,14 @@ export function useAsk() {
     strategy: store.strategy,
     answers: store.answers,
     finalAnswer: store.finalAnswer,
+    coverage: store.coverage,
+    history: store.history,
     error: store.error,
     sendAsk,
     reset: store.clearState,
     clearState: store.clearState,
+    restoreHistoryEntry: store.restoreHistoryEntry,
+    clearHistory: store.clearHistory,
     stopStreaming,
-  }), [store.isStreaming, store.strategy, store.answers, store.finalAnswer, store.error, sendAsk, store.clearState, stopStreaming])
+  }), [store.isStreaming, store.strategy, store.answers, store.finalAnswer, store.coverage, store.history, store.error, sendAsk, store.clearState, store.restoreHistoryEntry, store.clearHistory, stopStreaming])
 }

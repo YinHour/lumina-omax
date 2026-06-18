@@ -4,10 +4,28 @@ import { SourcesColumn } from './SourcesColumn'
 import type { SourceListResponse } from '@/lib/types/api'
 import type { ContextMode } from '../[id]/page'
 
+const navigationMocks = vi.hoisted(() => ({
+  routerPush: vi.fn(),
+  setReturnTo: vi.fn(),
+}))
+
 vi.mock('@/components/sources/SourceCard', () => ({
-  SourceCard: ({ source }: { source: SourceListResponse }) => (
-    <div data-testid="source-card">{source.title}</div>
+  SourceCard: ({
+    source,
+    onClick,
+  }: {
+    source: SourceListResponse
+    onClick?: (sourceId: string) => void
+  }) => (
+    <button type="button" data-testid="source-card" onClick={() => onClick?.(source.id)}>
+      {source.title}
+    </button>
   ),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: navigationMocks.routerPush }),
+  usePathname: () => '/notebooks/notebook%3A1',
 }))
 
 vi.mock('@/components/sources/AddSourceDialog', () => ({
@@ -28,8 +46,8 @@ vi.mock('@/lib/hooks/use-sources', () => ({
   useRemoveSourceFromNotebook: () => ({ mutateAsync: vi.fn() }),
 }))
 
-vi.mock('@/lib/hooks/use-modal-manager', () => ({
-  useModalManager: () => ({ openModal: vi.fn() }),
+vi.mock('@/lib/hooks/use-navigation', () => ({
+  useNavigation: () => ({ setReturnTo: navigationMocks.setReturnTo }),
 }))
 
 vi.mock('@/lib/stores/notebook-columns-store', () => ({
@@ -141,5 +159,25 @@ describe('SourcesColumn context selection controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '全选' }))
 
     expect(onBulkContextModeChange).toHaveBeenCalledWith('full', ['source:alpha'])
+  })
+
+  it('opens notebook sources through the full source detail page', () => {
+    render(
+      <SourcesColumn
+        sources={sources}
+        isLoading={false}
+        notebookId="notebook:1"
+        notebookName="Notebook One"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alpha Cement Report' }))
+
+    expect(navigationMocks.setReturnTo).toHaveBeenCalledWith(
+      '/notebooks/notebook%3A1',
+      'Notebook One',
+      { highlightItemId: 'source:alpha' }
+    )
+    expect(navigationMocks.routerPush).toHaveBeenCalledWith('/sources/source:alpha')
   })
 })

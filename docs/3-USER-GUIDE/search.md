@@ -198,6 +198,20 @@ Result: Comprehensive answer, with thinking process and final answer rendered se
 
 The Ask workflow combines **Vector Search** (semantic similarity) with **Knowledge Graph** (graph-based entity relationships) in parallel — a **Hybrid RAG** architecture that finds both semantically similar content and structurally related concepts from your research corpus.
 
+### Retrieval Coverage
+
+Ask shows retrieval coverage metadata with every answer:
+
+- **Total sources** — all sources currently stored in the knowledge base
+- **Searchable sources** — sources that have embeddings and can participate in semantic retrieval
+- **Sources retrieved** — unique source records actually matched by this Ask run
+
+Use these numbers to judge answer coverage. If "Sources retrieved" is lower than "Total sources" or "Searchable sources", the answer is based on a retrieved subset and should not be treated as proof that every file was examined.
+
+### Ask History
+
+Completed Ask answers are saved in the Ask History panel in the browser. Opening a history entry restores the question, final answer, and retrieval coverage so you can review prior global questions without rerunning the model.
+
 You can **stop Ask mid-generation** by clicking the Stop button. Already-generated content is preserved.
 
 ### When to Use Ask vs. Simple Search

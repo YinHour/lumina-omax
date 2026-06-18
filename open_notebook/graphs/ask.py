@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, List
+from typing import Annotated, Any, Dict, List
 
 from ai_prompter import Prompter
 from langchain_core.output_parsers.pydantic import PydanticOutputParser
@@ -43,9 +43,49 @@ class Strategy(BaseModel):
 
 class ThreadState(TypedDict):
     question: str
+    corpus_stats: dict
     strategy: Strategy
     answers: Annotated[list, operator.add]
+    retrieved_source_ids: Annotated[list, operator.add]
     final_answer: str
+
+
+def _record_id_to_string(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        table = value.get("tb") or value.get("table")
+        raw_id = value.get("id")
+        if isinstance(raw_id, dict):
+            raw_id = raw_id.get("String") or raw_id.get("string") or raw_id.get("id")
+        if table and raw_id:
+            return f"{table}:{raw_id}"
+    return str(value)
+
+
+def source_ids_from_results(results: List[dict]) -> List[str]:
+    source_ids: List[str] = []
+    for result in results:
+        parent_id = _record_id_to_string(result.get("parent_id"))
+        if not parent_id.startswith("source:"):
+            continue
+        if parent_id not in source_ids:
+            source_ids.append(parent_id)
+    return source_ids
+
+
+def format_coverage_summary(corpus_stats: Dict[str, Any], retrieved_source_ids: List[str]) -> str:
+    unique_retrieved = sorted(set(retrieved_source_ids))
+    total_sources = int(corpus_stats.get("total_sources") or 0)
+    embedded_sources = int(corpus_stats.get("embedded_sources") or 0)
+    return (
+        f"知识库来源总数：{total_sources}\n"
+        f"可检索来源数：{embedded_sources}\n"
+        f"本次检索命中来源数：{len(unique_retrieved)}\n"
+        f"本次检索命中来源ID：{', '.join(unique_retrieved) if unique_retrieved else '无'}"
+    )
 
 
 async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict:
@@ -120,6 +160,7 @@ async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
         payload["results"] = results
         ids = [r["id"] for r in results]
         payload["ids"] = ids
+        source_ids = source_ids_from_results(results)
         system_prompt = Prompter(prompt_template="ask/query_process").render(data=payload)  # type: ignore[arg-type]
         model = await provision_langchain_model(
             system_prompt,
@@ -129,7 +170,10 @@ async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
         )
         ai_message = await model.ainvoke(system_prompt)
         ai_content = extract_text_content(ai_message.content)
-        return {"answers": [clean_thinking_content(ai_content)]}
+        return {
+            "answers": [clean_thinking_content(ai_content)],
+            "retrieved_source_ids": source_ids,
+        }
     except OpenNotebookError:
         raise
     except Exception as e:
@@ -139,7 +183,12 @@ async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
 
 async def write_final_answer(state: ThreadState, config: RunnableConfig) -> dict:
     try:
-        system_prompt = Prompter(prompt_template="ask/final_answer").render(data=state)  # type: ignore[arg-type]
+        prompt_data = dict(state)
+        prompt_data["coverage_summary"] = format_coverage_summary(
+            state.get("corpus_stats", {}),
+            state.get("retrieved_source_ids", []),
+        )
+        system_prompt = Prompter(prompt_template="ask/final_answer").render(data=prompt_data)  # type: ignore[arg-type]
         model = await provision_langchain_model(
             system_prompt,
             config.get("configurable", {}).get("final_answer_model"),

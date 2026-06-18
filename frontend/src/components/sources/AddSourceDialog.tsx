@@ -651,7 +651,7 @@ export function AddSourceDialog({
       }
       
       console.log('Calling onSubmit with dataToSubmit:', dataToSubmit)
-      toast.info('确认继续上传，准备提交...')
+      toast.info(t.sources.continuingDuplicateUpload)
       
       // Now close the warning dialog immediately to avoid any interaction issues
       setShowDuplicateWarning(false)

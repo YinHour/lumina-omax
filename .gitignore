@@ -14,6 +14,7 @@ __pycache__/
 *.so
 todo.md
 temp/
+tmp/
 google-credentials.json
 # Distribution / packaging
 .Python

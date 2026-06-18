@@ -462,122 +462,124 @@ export function SourceDetailContent({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="pb-4 px-2">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <InlineEdit
-              value={source.title || ''}
-              onSave={handleUpdateTitle}
-              className="text-2xl font-bold"
-              inputClassName="text-2xl font-bold"
-              placeholder={t.sources.titlePlaceholder}
-              emptyText={t.sources.untitledSource}
-            />
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t.sources.id}: {source.id}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 pt-1">
-            <Badge variant="secondary" className="text-sm">
-              <span className="inline-flex items-center gap-1.5">
-                {getSourceIcon()}
-                {t.sources.type[getSourceType()]}
-              </span>
-            </Badge>
+      <Tabs defaultValue="content" className="flex min-h-0 flex-1 flex-col gap-0">
+        {/* Header */}
+        <div
+          data-testid="source-detail-toolbar"
+          className="sticky top-0 z-20 border-b bg-background/95 px-2 pb-4 pt-1 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <InlineEdit
+                value={source.title || ''}
+                onSave={handleUpdateTitle}
+                className="text-2xl font-bold"
+                inputClassName="text-2xl font-bold"
+                placeholder={t.sources.titlePlaceholder}
+                emptyText={t.sources.untitledSource}
+              />
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t.sources.id}: {source.id}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 pt-1">
+              <Badge variant="secondary" className="text-sm">
+                <span className="inline-flex items-center gap-1.5">
+                  {getSourceIcon()}
+                  {t.sources.type[getSourceType()]}
+                </span>
+              </Badge>
 
-            {/* Chat with source button - only in modal */}
-            {showChatButton && onChatClick && (
-              <Button variant="outline" size="sm" onClick={onChatClick}>
-                <MessageSquare className="h-4 w-4 mr-2" />
-                {t.chat.chatWith.replace('{name}', t.navigation.sources)}
-              </Button>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label={t.sources.moreActions}>
-                  <MoreVertical className="h-4 w-4" />
+              {/* Chat with source button - only in modal */}
+              {showChatButton && onChatClick && (
+                <Button variant="outline" size="sm" onClick={onChatClick}>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  {t.chat.chatWith.replace('{name}', t.navigation.sources)}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {source.full_text?.trim() && (
-                  <>
-                    <DropdownMenuItem
-                      onClick={handleDownloadMarkdown}
-                      disabled={isDownloadingMarkdown}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {isDownloadingMarkdown ? t.sources.preparing : t.sources.downloadMarkdown}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={handleDownloadPackage}
-                      disabled={isDownloadingPackage}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {isDownloadingPackage ? t.sources.preparing : t.sources.downloadMarkdownPackage}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                {source.asset?.file_path && (
-                  <>
-                    <DropdownMenuItem
-                      onClick={handleDownloadFile}
-                      disabled={isDownloadingFile || fileAvailable === false}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {fileAvailable === false
-                        ? t.sources.fileUnavailable
-                        : isDownloadingFile
-                          ? t.sources.preparing
-                          : t.sources.downloadFile}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                <DropdownMenuItem
-                  onClick={handleEmbedContent}
-                  disabled={isEmbedding || source.embedded}
-                >
-                  <Database className="mr-2 h-4 w-4" />
-                  {isEmbedding ? t.sources.embedding : source.embedded ? t.sources.alreadyEmbedded : t.sources.embedContent}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={handleDelete}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t.sources.deleteSource}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {onClose && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t.common.close}
-                onClick={onClose}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+              )}
 
-      {/* Tabs Content */}
-      <div className="flex-1 overflow-y-auto px-2">
-        <Tabs defaultValue="content" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 sticky top-0 z-10">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label={t.sources.moreActions}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {source.full_text?.trim() && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={handleDownloadMarkdown}
+                        disabled={isDownloadingMarkdown}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isDownloadingMarkdown ? t.sources.preparing : t.sources.downloadMarkdown}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handleDownloadPackage}
+                        disabled={isDownloadingPackage}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isDownloadingPackage ? t.sources.preparing : t.sources.downloadMarkdownPackage}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {source.asset?.file_path && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={handleDownloadFile}
+                        disabled={isDownloadingFile || fileAvailable === false}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {fileAvailable === false
+                          ? t.sources.fileUnavailable
+                          : isDownloadingFile
+                            ? t.sources.preparing
+                            : t.sources.downloadFile}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem
+                    onClick={handleEmbedContent}
+                    disabled={isEmbedding || source.embedded}
+                  >
+                    <Database className="mr-2 h-4 w-4" />
+                    {isEmbedding ? t.sources.embedding : source.embedded ? t.sources.alreadyEmbedded : t.sources.embedContent}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={handleDelete}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t.sources.deleteSource}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {onClose && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t.common.close}
+                  onClick={onClose}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <TabsList className="mt-4 grid w-full grid-cols-3">
             <TabsTrigger value="content">{t.sources.content}</TabsTrigger>
             <TabsTrigger value="insights">
               {t.common.insights} {insights.length > 0 && `(${insights.length})`}
             </TabsTrigger>
             <TabsTrigger value="details">{t.sources.details}</TabsTrigger>
           </TabsList>
+        </div>
 
+        {/* Tabs Content */}
+        <div className="flex-1 overflow-y-auto px-2 pt-4">
           <TabsContent value="content" className="mt-6">
             <Card>
               <CardHeader>
@@ -935,8 +937,8 @@ export function SourceDetailContent({
               onSave={fetchSource}
             />
           </TabsContent>
-        </Tabs>
-      </div>
+        </div>
+      </Tabs>
 
       <SourceInsightDialog
         open={Boolean(selectedInsight)}
