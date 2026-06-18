@@ -349,8 +349,8 @@
 - `api/routers/auth.py:385-393` — `POST /auth/logout`，服务端登出端点（为未来 Token 黑名单预留）
 - `frontend/src/lib/stores/auth-store.ts:208-229` — 登出时调用 `/auth/logout` + 清除 `auth-token` Cookie + 清空 Zustand 状态
 
-### 服务端路由守卫（Middleware）
-- `frontend/src/middleware.ts` — **新增文件**（替代废弃的 `src/proxy.ts`）
+### 服务端路由守卫（Proxy）
+- `frontend/src/proxy.ts` — 服务端路由守卫入口（Next.js 16 约定，§27 从 `middleware.ts` 迁移）
   - 检查 `auth-token` Cookie，无 Cookie 时重定向至 `/login?redirect=原路径`
   - 登录成功后 Cookie 与 localStorage 双写（`SameSite=Lax`，7 天过期）
   - 公开路径排除：`/login`、`/_next`、静态资源
@@ -542,7 +542,7 @@
 | `api/routers/models.py` | Vision model GET/PUT |
 | `api/models.py` | `DefaultModelsResponse` 扩展、`uploader_name`（§12） |
 | `api/rate_limiter.py` | 滑动窗口登录限流（§12 新增） |
-| `frontend/src/middleware.ts` | 服务端路由守卫，Cookie 鉴权（§12 新增） |
+| `frontend/src/proxy.ts` | 服务端路由守卫，Cookie 鉴权（§12 新增，§27 迁移入口） |
 | `frontend/src/lib/stores/auth-store.ts` | Zustand 认证状态管理，双轨登录/注册/登出（§12） |
 | `frontend/src/lib/hooks/use-auth.ts` | React 认证 Hook（§12） |
 | `frontend/src/components/auth/LoginForm.tsx` | Landing Page + 登录/注册表单（§12） |
@@ -1947,4 +1947,75 @@ git diff --check
 
 ---
 
-> 最后更新：2026-06-14 | 新增 §26（导览点击与回答后建议刷新可观测性）。当前分支 `codex/guide-followup-refresh` 保持导览点击复用普通发送路径，将回答后建议生成依据收敛为 question + answer + context，并细化建议失败日志。
+## 27. 试用反馈优先修复：旧格式导入、全局 Ask 覆盖与来源体验（新增 2026-06-17）
+
+本轮基于 `codex/feedback-priority-fixes-0617` 分支，按用户试用反馈优先处理“中期验收前”阻断项：旧版 Office 入库与全局发问可信统计；同时补齐来源详情操作区、产品图标、重复文件提示和 Help 文档。登录鉴权不纳入本轮修复，因为系统已支持一人一号、上传者与上传时间追溯；本次试用无法区分上传者是由于使用了公共试用账号。
+
+### 27.1 行为决策
+
+- `.doc` 继续通过 LibreOffice 转 PDF 后提取；`.ppt/.pptx` 同样通过 LibreOffice 转 PDF 后交给 MinerU/文档引擎解析；`.xls` 改为通过 LibreOffice 转 `.xlsx` 后进入 Excel 表格解析，避免旧版 Excel 因 content-core 不识别而断开入库通道。
+- `.xlsx/.xlsm` 仍保持原生表格解析，不转 PDF，避免宽表分页破坏行列结构。
+- 前端上传文件选择器的 `accept` 白名单必须与后端恢复后的能力一致，重新放开 `.doc/.ppt/.xls`，并补齐 `.xlsm`；这覆盖 §18 中旧版 Office 临时禁选的历史限制。
+- Excel Markdown 清洗在修复单元格换行和空白行之外，新增整列为空的列删除；任意行存在值的列都会保留。Review 后补充空表移除和表格前后正文保留的回归测试。
+- 全局 Ask 在回答前查询知识库来源总数和已嵌入可检索来源数，在检索过程中收集本轮命中的唯一 `source:*` 记录，并把覆盖统计作为 SSE metadata 返回前端。
+- Ask 最终回答 prompt 明确使用覆盖 metadata，不能把“本次命中来源数”误说成“知识库总来源数”。
+- 前端 Ask 面板显示“来源总数 / 可检索来源 / 本次命中来源”，并在浏览器端保留最近全局 Ask 历史，可恢复问题、答案和覆盖统计。
+- 来源详情页的标题、关闭、三点菜单、源对话按钮和“内容/见解/详情”Tabs 统一放入同一个 sticky 工具区，长内容滚动到底部时仍可操作；笔记本源列表点击来源改为和总来源列表一致，进入完整 `/sources/{id}` 详情页并记录返回笔记本路径，不再通过来源 modal 查看长内容。来源 modal 仍保留固定高度和内部滚动，避免其他 URL modal 入口裁切内容。浏览器 favicon 统一由登录页产品图标 `logo.png` 生成。
+- 笔记本对话面板保留原有左右气泡流排版；仅对 ChatPanel 内的 Radix ScrollArea viewport 增加局部 wrapper 约束，避免长表格、长引用和 `max-w-[80%]` 气泡在特定历史对话中把内部内容层撑宽，导致右侧内容被裁切。
+- 创建笔记本和聚合笔记本的名称必填校验使用当前语言的 `common.nameRequired`，避免中文界面删除名称后出现硬编码英文 `Name is required`。
+- 重名文件检查继续基于 `asset.original_filename`，但改为大小写不敏感并忽略首尾空格；后端返回本次提交的文件名，保证前端“仅上传非重复文件”过滤能命中。Review 后将归一化匹配下推到 SurrealDB 参数化查询，避免拉取全库文件名再在 Python 侧扫描；空输入/空白输入直接返回无重复且不触发数据库查询。后台处理完成重新保存 `Asset` 时必须保留既有 `original_filename`，避免 `.xlsx/.docx` 等经过 `ProcessSourceState` 后丢失原始文件名导致后续查重失效。
+- `make start-all` 启动日志只 tail 本轮 SurrealDB 输出，API 进程显式加载 `.env`，并等待 `/api/config` ready 后再启动前端，避免 Next.js 在 API 尚未监听时产生 `/api/config` proxy `ECONNREFUSED`。
+- Next.js 16 下 `middleware.ts` 入口迁移为 `proxy.ts`，鉴权与根路径重定向逻辑保持不变，消除启动时的 middleware deprecated warning。
+- 删除重复的 dashboard route-group 根页，根路径跳转统一由 `app/page.tsx` 与 `proxy.ts` 承担，避免 standalone build 复制不存在的 client-reference manifest 时产生 trace warning。
+- 19/20 号数据库迁移保留为空迁移文件，消除启动时缺失 migration 文件的 warning，并保留版本连续性。
+- `tmp/` 目录加入 `.gitignore`，本轮从反馈 PDF 渲染出的临时 PNG 不纳入版本库；用户确认将试用反馈说明 Markdown、商务版 Word/PDF 和普通版 PDF 作为交付材料纳入本轮变更。
+- `docs/superpowers/plans/2026-06-17-feedback-priority-fixes-implementation.md` 作为本轮实施计划留档，便于后续继续核对优先级和验收范围。
+- ScienceDirect、OnePetro、ACS 等带真人验证或反爬挑战的学术网页暂不做绕过；Help 文档说明推荐上传下载后的 PDF 或粘贴正文。
+
+**边界**：本轮不新增结构化实验索引、自动标签、实验时间线、产品图谱，不改变用户权限模型，不引入新的服务端 Ask 历史表。Ask 历史先采用浏览器端持久化，满足短期回溯。SurrealDB root 密码保持现状；旧 Office 转换仍要求本机安装 LibreOffice 或配置 `SOFFICE_PATH` / `LIBREOFFICE_PATH`。
+
+### 27.2 验证
+
+```text
+.venv/bin/python -m pytest tests/test_office_converter.py tests/test_excel_source_cleanup.py -q
+.venv/bin/python -m pytest tests/test_ask_coverage.py -q
+.venv/bin/python -m pytest tests/test_sources_duplicates.py -q
+.venv/bin/python -m pytest tests/test_graphs.py::TestSaveSourceTitlePreservation -q
+cd frontend && npm test -- --run src/components/sources/steps/SourceTypeStep.test.tsx
+cd frontend && npm test -- --run src/lib/stores/ask-store.test.ts src/components/search/StreamingResponse.test.tsx
+cd frontend && npm test -- --run src/components/source/SourceDetailContent.test.tsx
+cd frontend && npm test -- --run src/app/'(dashboard)'/notebooks/components/SourcesColumn.test.tsx src/components/source/SourceDetailContent.test.tsx
+cd frontend && npm test -- --run src/components/source/ChatPanel.test.tsx
+cd frontend && npm test -- --run src/components/notebooks/CreateNotebookDialog.test.tsx
+cd frontend && npm test -- --run src/proxy.test.ts src/app/globals.test.ts
+cd frontend && npm run build
+make -n start-all
+git diff --check
+```
+
+补充实机验证：本机已安装 LibreOffice 26.2.4；在非 sandbox 环境下用 `data/test-daba/feat-test/测试老格式的docxlsppt/` 中的 `.doc/.xls/.ppt` 样例调用 `convert_to_modern_office_format()`，分别生成 `.pdf/.xlsx/.pdf` 成功。
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `open_notebook/utils/office_converter.py` | `.xls` 转 `.xlsx`，文档/演示仍转 PDF |
+| `open_notebook/graphs/source.py` | `.xls` 提取前转换为 `.xlsx`；Excel Markdown 删除全空列 |
+| `open_notebook/graphs/ask.py`、`prompts/ask/final_answer.jinja` | 收集检索命中来源，向最终回答 prompt 注入覆盖统计 |
+| `api/routers/search.py` | Ask SSE 开始和完成事件返回语料/覆盖 metadata |
+| `frontend/src/lib/stores/ask-store.ts`、`frontend/src/lib/hooks/use-ask.ts`、`frontend/src/lib/types/search.ts` | 保存覆盖统计和浏览器端 Ask 历史；补充 Ask 覆盖 metadata 类型 |
+| `frontend/src/components/search/StreamingResponse.tsx`、`frontend/src/app/(dashboard)/search/page.tsx` | 展示覆盖统计、历史列表和恢复入口 |
+| `frontend/src/components/source/SourceDetailContent.tsx`、`frontend/src/components/source/SourceDialog.tsx`、`frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.tsx`、`frontend/src/components/sources/steps/SourceTypeStep.tsx`、`frontend/src/lib/locales/*/index.ts` | 来源详情标题、操作区和 Tabs sticky 固定；笔记本源点击改走完整来源详情页；弹窗入口保留固定高度和内部内容滚动；上传文件选择器放开 `.doc/.ppt/.xls/.xlsm`；多语言上传/提示文案同步 |
+| `frontend/src/components/source/ChatPanel.tsx`、`frontend/src/components/ui/scroll-area.tsx` | ChatPanel 局部约束 Radix ScrollArea 内部 wrapper，避免长历史消息把对话内容层撑宽 |
+| `frontend/src/components/notebooks/CreateNotebookDialog.tsx`、`frontend/src/components/notebooks/AggregateNotebookDialog.tsx` | 名称必填校验改用当前语言文案，避免硬编码英文提示 |
+| `frontend/src/app/favicon.ico` | 由登录页产品图标生成，统一浏览器 Tab 图标 |
+| `api/routers/sources.py`、`frontend/src/components/sources/AddSourceDialog.tsx`、`open_notebook/graphs/source.py` | 重名检查大小写不敏感；后端用 `string::lowercase(string::trim(...)) IN $normalized_filenames` 参数化过滤候选文件名；继续上传重复文件提示走 i18n；处理完成保存来源时保留原始文件名 |
+| `Makefile`、`frontend/src/proxy.ts`、`frontend/src/proxy.test.ts`、`frontend/src/app/(dashboard)/page.tsx`、`open_notebook/database/migrations/19*.surrealql`、`open_notebook/database/migrations/20*.surrealql` | `start-all` 等待 API ready、DB 日志只 tail 本轮输出；Next 入口从 middleware 迁移到 proxy；删除重复 dashboard 根页；补空迁移和 down 文件保持版本连续 |
+| `docs/3-USER-GUIDE/adding-sources.md`、`docs/3-USER-GUIDE/search.md`、`docs/user_docs/3-USER-GUIDE/*` | Help 文档同步旧格式导入、Excel 清理、Ask 覆盖/历史、反爬 URL 限制和重名策略 |
+| `docs/8-CUSTOMIZATION/2026-06-14-用户试用反馈升级说明.md`、`docs/8-CUSTOMIZATION/Lumiton-Omax知涌试用反馈升级说明*.pdf`、`docs/8-CUSTOMIZATION/Lumiton-Omax知涌试用反馈升级说明-商务版.docx`、`docs/superpowers/plans/2026-06-17-feedback-priority-fixes-implementation.md` | 试用反馈升级说明交付材料和本轮实施计划归档 |
+| `.gitignore` | 忽略 `tmp/` 临时目录，避免 PDF 渲染图片等临时产物进入版本库 |
+| `tests/test_office_converter.py`、`tests/test_excel_source_cleanup.py`、`tests/test_ask_coverage.py`、`tests/test_sources_duplicates.py`、`tests/test_graphs.py`、`frontend/src/components/sources/steps/SourceTypeStep.test.tsx`、`frontend/src/components/search/StreamingResponse.test.tsx`、`frontend/src/components/source/SourceDetailContent.test.tsx`、`frontend/src/components/source/ChatPanel.test.tsx`、`frontend/src/components/notebooks/CreateNotebookDialog.test.tsx`、`frontend/src/app/(dashboard)/notebooks/components/SourcesColumn.test.tsx`、`frontend/src/lib/stores/ask-store.test.ts` | 回归覆盖本轮关键行为 |
+
+---
+
+> 最后更新：2026-06-18 | 新增 §27（试用反馈优先修复）。当前分支 `codex/feedback-priority-fixes-0617` 优先恢复旧版 `.doc/.xls` 入库与全局 Ask 覆盖统计，补齐来源详情操作、产品图标、重名提示、Next 16 启动入口、ChatPanel 历史消息宽度约束、笔记本表单校验本地化、交付文档归档和 Help 文档。

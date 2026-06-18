@@ -22,14 +22,14 @@ import { useNotebooks, useAggregateNotebooks } from '@/lib/hooks/use-notebooks'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { NotebookResponse } from '@/lib/types/api'
 
-const aggregateNotebookSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+const getAggregateNotebookSchema = (nameRequiredMessage: string) => z.object({
+  name: z.string().min(1, nameRequiredMessage),
   description: z.string().optional(),
   password: z.string().optional(),
   creator_name: z.string().optional(),
 })
 
-type AggregateNotebookFormData = z.infer<typeof aggregateNotebookSchema>
+type AggregateNotebookFormData = z.infer<ReturnType<typeof getAggregateNotebookSchema>>
 
 interface AggregateNotebookDialogProps {
   open: boolean
@@ -40,6 +40,7 @@ export function AggregateNotebookDialog({ open, onOpenChange }: AggregateNoteboo
   const { t } = useTranslation()
   const { data: notebooks } = useNotebooks(false)
   const aggregateNotebooks = useAggregateNotebooks()
+  const aggregateNotebookSchema = getAggregateNotebookSchema(t.common.nameRequired)
   
   const [selectedNotebookIds, setSelectedNotebookIds] = useState<Set<string>>(new Set())
   const [step, setStep] = useState<'selection' | 'password'>('selection')

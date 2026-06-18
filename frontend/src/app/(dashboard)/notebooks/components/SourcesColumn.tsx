@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { SourceListResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,7 +21,7 @@ import { useDeleteSource, useRetrySource, useRemoveSourceFromNotebook } from '@/
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useModalManager } from '@/lib/hooks/use-modal-manager'
+import { useNavigation } from '@/lib/hooks/use-navigation'
 import { ContextMode } from '../[id]/page'
 import { CollapsibleColumn, createCollapseButton } from '@/components/notebooks/CollapsibleColumn'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
@@ -47,6 +48,7 @@ export function SourcesColumn({
   sources,
   isLoading,
   notebookId,
+  notebookName,
   onRefresh,
   contextSelections,
   onContextModeChange,
@@ -57,6 +59,9 @@ export function SourcesColumn({
 }: SourcesColumnProps) {
   const { t } = useTranslation()
   const { toast } = useToast()
+  const router = useRouter()
+  const pathname = usePathname()
+  const navigation = useNavigation()
   const user = useAuthStore((s) => s.user)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -140,7 +145,6 @@ export function SourcesColumn({
     )
   }
 
-  const { openModal } = useModalManager()
   const deleteSource = useDeleteSource()
   const retrySource = useRetrySource()
   const removeFromNotebook = useRemoveSourceFromNotebook()
@@ -244,7 +248,12 @@ export function SourcesColumn({
   }
 
   const handleSourceClick = (sourceId: string) => {
-    openModal('source', sourceId)
+    navigation.setReturnTo(
+      pathname || `/notebooks/${encodeURIComponent(notebookId)}`,
+      notebookName || t.navigation.notebooks,
+      { highlightItemId: sourceId }
+    )
+    router.push(`/sources/${sourceId}`)
   }
 
   return (

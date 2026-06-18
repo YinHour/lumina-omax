@@ -41,10 +41,10 @@ vi.mock('@/lib/hooks/use-translation', () => ({
   }),
 }))
 
-function SourceTypeStepHarness(props: { remainingSlots: number; sourceLimit: number }) {
+function SourceTypeStepHarness(props: { remainingSlots: number; sourceLimit: number; type?: 'link' | 'upload' | 'text' }) {
   const form = useForm({
     defaultValues: {
-      type: 'link' as const,
+      type: props.type ?? 'link' as const,
       embed: true,
       async_processing: true,
     },
@@ -88,5 +88,16 @@ describe('SourceTypeStep', () => {
     expect(
       screen.getByText('This notebook already has the maximum 50 source(s).'),
     ).toBeInTheDocument()
+  })
+
+  it('allows selecting legacy and modern Office files', () => {
+    render(<SourceTypeStepHarness remainingSlots={50} sourceLimit={50} type="upload" />)
+
+    const fileInput = screen.getByLabelText('File')
+    const acceptedTypes = fileInput.getAttribute('accept')?.split(',') ?? []
+
+    expect(acceptedTypes).toEqual(
+      expect.arrayContaining(['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx']),
+    )
   })
 })

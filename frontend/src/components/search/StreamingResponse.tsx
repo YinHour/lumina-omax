@@ -13,6 +13,7 @@ import { convertReferencesToMarkdownLinks, createReferenceLinkComponent } from '
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { toast } from '@/lib/hooks/use-toast'
+import type { AskCoverage } from '@/lib/types/search'
 
 interface StrategyData {
   reasoning: string
@@ -24,6 +25,7 @@ interface StreamingResponseProps {
   strategy: StrategyData | null
   answers: string[]
   finalAnswer: string | null
+  coverage?: AskCoverage | null
   onSaveRequest?: () => void
 }
 
@@ -32,6 +34,7 @@ export function StreamingResponse({
   strategy,
   answers,
   finalAnswer,
+  coverage,
   onSaveRequest
 }: StreamingResponseProps) {
   const [strategyOpen, setStrategyOpen] = useState(true)
@@ -169,6 +172,21 @@ export function StreamingResponse({
         </Collapsible>
       )}
 
+      {coverage && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t.searchPage.coverageTitle}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <CoverageMetric label={t.searchPage.totalSources} value={coverage.total_sources} />
+              <CoverageMetric label={t.searchPage.embeddedSources} value={coverage.embedded_sources} />
+              <CoverageMetric label={t.searchPage.retrievedSources} value={coverage.retrieved_sources} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Final Answer Section - Always Open */}
       {finalAnswer && (
         <Card className="border-primary">
@@ -217,6 +235,15 @@ export function StreamingResponse({
           <span>{t.searchPage.processingQuestion}</span>
         </div>
       )}
+    </div>
+  )
+}
+
+function CoverageMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border bg-muted/30 px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
     </div>
   )
 }

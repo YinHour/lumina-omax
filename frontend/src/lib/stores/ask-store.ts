@@ -1,9 +1,18 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { AskCoverage } from '@/lib/types/search'
 
 export interface StrategyData {
   reasoning: string
   searches: Array<{ term: string; instructions: string }>
+}
+
+export interface AskHistoryEntry {
+  id: string
+  question: string
+  answer: string
+  coverage: AskCoverage | null
+  createdAt: string
 }
 
 interface AskState {
@@ -11,6 +20,8 @@ interface AskState {
   strategy: StrategyData | null
   answers: string[]
   finalAnswer: string | null
+  coverage: AskCoverage | null
+  history: AskHistoryEntry[]
   error: string | null
   abortController: AbortController | null
   
@@ -19,6 +30,10 @@ interface AskState {
   updateStrategyReasoning: (chunk: string) => void
   addAnswer: (answer: string) => void
   setFinalAnswer: (answer: string) => void
+  setCoverage: (coverage: AskCoverage | null) => void
+  addHistoryEntry: (entry: Omit<AskHistoryEntry, 'id' | 'createdAt'>) => void
+  restoreHistoryEntry: (id: string) => AskHistoryEntry | null
+  clearHistory: () => void
   setError: (error: string | null) => void
   setAbortController: (controller: AbortController | null) => void
   clearState: () => void
@@ -31,6 +46,8 @@ export const useAskStore = create<AskState>()(
       strategy: null,
       answers: [],
       finalAnswer: null,
+      coverage: null,
+      history: [],
       error: null,
       abortController: null,
 
@@ -46,6 +63,32 @@ export const useAskStore = create<AskState>()(
         answers: [...state.answers, answer]
       })),
       setFinalAnswer: (finalAnswer) => set({ finalAnswer, isStreaming: false }),
+      setCoverage: (coverage) => set({ coverage }),
+      addHistoryEntry: (entry) => set((state) => ({
+        history: [
+          {
+            ...entry,
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            createdAt: new Date().toISOString(),
+          },
+          ...state.history,
+        ].slice(0, 50),
+      })),
+      restoreHistoryEntry: (id) => {
+        const entry = get().history.find((item) => item.id === id) || null
+        if (entry) {
+          set({
+            strategy: null,
+            answers: [],
+            finalAnswer: entry.answer,
+            coverage: entry.coverage,
+            error: null,
+            isStreaming: false,
+          })
+        }
+        return entry
+      },
+      clearHistory: () => set({ history: [] }),
       setError: (error) => set({ error, isStreaming: false }),
       setAbortController: (controller) => set({ abortController: controller }),
       clearState: () => {
@@ -58,6 +101,7 @@ export const useAskStore = create<AskState>()(
           strategy: null,
           answers: [],
           finalAnswer: null,
+          coverage: null,
           error: null,
           abortController: null
         })
@@ -69,6 +113,8 @@ export const useAskStore = create<AskState>()(
         strategy: state.strategy,
         answers: state.answers,
         finalAnswer: state.finalAnswer,
+        coverage: state.coverage,
+        history: state.history,
         error: state.error
         // Exclude isStreaming and abortController
       })

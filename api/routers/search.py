@@ -7,11 +7,31 @@ from loguru import logger
 
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from open_notebook.ai.models import Model, model_manager
+from open_notebook.database.repository import repo_query
 from open_notebook.domain.notebook import text_search, vector_search
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.graphs.ask import graph as ask_graph
 
 router = APIRouter()
+
+
+async def get_ask_corpus_stats() -> dict[str, int]:
+    """Return corpus-level source counts used to qualify global Ask answers."""
+    total_result = await repo_query("SELECT count() AS count FROM source GROUP ALL")
+    embedded_result = await repo_query(
+        """
+        SELECT count() AS count
+        FROM (
+            SELECT source
+            FROM source_embedding
+            GROUP BY source
+        )
+        GROUP ALL
+        """
+    )
+    total_sources = int(total_result[0]["count"]) if total_result else 0
+    embedded_sources = int(embedded_result[0]["count"]) if embedded_result else 0
+    return {"total_sources": total_sources, "embedded_sources": embedded_sources}
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -59,15 +79,23 @@ async def search_knowledge_base(search_request: SearchRequest):
 
 
 async def stream_ask_response(
-    question: str, strategy_model: Model, answer_model: Model, final_answer_model: Model
+    question: str,
+    strategy_model: Model,
+    answer_model: Model,
+    final_answer_model: Model,
+    corpus_stats: dict[str, int],
 ) -> AsyncGenerator[str, None]:
     """Stream the ask response as Server-Sent Events."""
     import asyncio
     try:
         final_answer = None
+        retrieved_source_ids: list[str] = []
+
+        coverage_start = {"type": "coverage", **corpus_stats, "retrieved_sources": 0, "retrieved_source_ids": []}
+        yield f"data: {json.dumps(coverage_start)}\n\n"
 
         async for event in ask_graph.astream_events(
-            input=dict(question=question),  # type: ignore[arg-type]
+            input=dict(question=question, corpus_stats=corpus_stats),  # type: ignore[arg-type]
             config=dict(
                 configurable=dict(
                     strategy_model=strategy_model.id,
@@ -101,6 +129,9 @@ async def stream_ask_response(
                     yield f"data: {json.dumps(strategy_data)}\n\n"
 
                 elif event["name"] == "provide_answer" and "output" in event["data"] and event["data"]["output"] and "answers" in event["data"]["output"]:
+                    for source_id in event["data"]["output"].get("retrieved_source_ids", []):
+                        if source_id not in retrieved_source_ids:
+                            retrieved_source_ids.append(source_id)
                     for answer in event["data"]["output"]["answers"]:
                         answer_data = {"type": "answer", "content": answer}
                         yield f"data: {json.dumps(answer_data)}\n\n"
@@ -111,7 +142,15 @@ async def stream_ask_response(
                     yield f"data: {json.dumps(final_data)}\n\n"
 
         # Send completion signal
-        completion_data = {"type": "complete", "final_answer": final_answer}
+        completion_data = {
+            "type": "complete",
+            "final_answer": final_answer,
+            "coverage": {
+                **corpus_stats,
+                "retrieved_sources": len(retrieved_source_ids),
+                "retrieved_source_ids": retrieved_source_ids,
+            },
+        }
         yield f"data: {json.dumps(completion_data)}\n\n"
 
     except Exception as e:
@@ -156,9 +195,14 @@ async def ask_knowledge_base(ask_request: AskRequest):
             )
 
         # For streaming response
+        corpus_stats = await get_ask_corpus_stats()
         return StreamingResponse(
             stream_ask_response(
-                ask_request.question, strategy_model, answer_model, final_answer_model
+                ask_request.question,
+                strategy_model,
+                answer_model,
+                final_answer_model,
+                corpus_stats,
             ),
             media_type="text/event-stream",
             headers={

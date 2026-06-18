@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from open_notebook.domain.notebook import Source
+from open_notebook.domain.notebook import Asset, Source
 from open_notebook.graphs.prompt import PatternChainState, graph
 from open_notebook.graphs.tools import get_current_timestamp
 from open_notebook.graphs.transformation import (
@@ -275,6 +275,41 @@ class TestSaveSourceTitlePreservation:
         await save_source(state)
 
         assert mock_source.title == "Extracted Title"
+        mock_source.save.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch("open_notebook.graphs.source.Source.get")
+    async def test_original_filename_preserved_when_processing_state_drops_it(self, mock_get):
+        """Original upload filename survives content-core ProcessSourceState filtering."""
+        from content_core.common import ProcessSourceState
+
+        from open_notebook.graphs.source import save_source
+
+        mock_source = MagicMock(spec=Source)
+        mock_source.title = "Processing..."
+        mock_source.asset = Asset(
+            file_path="/tmp/original.xlsx",
+            original_filename="测试查重-原始.xlsx",
+        )
+        mock_source.save = AsyncMock()
+        mock_get.return_value = mock_source
+
+        content_state = ProcessSourceState(
+            title="Extracted Title",
+            file_path="/tmp/processed.xlsx",
+            content="Content",
+        )
+
+        state = {
+            "source_id": "source:123",
+            "content_state": content_state,
+            "embed": False,
+            "apply_transformations": [],
+        }
+
+        await save_source(state)
+
+        assert mock_source.asset.original_filename == "测试查重-原始.xlsx"
         mock_source.save.assert_awaited_once()
 
 

@@ -23,8 +23,8 @@ database:
 		-e SURREAL_EXPERIMENTAL_GRAPHQL=true \
 		surrealdb/surrealdb:v2 \
 		start --log info --user root --pass root rocksdb:/mydata/mydatabase.db 2>/dev/null || docker start surrealdb-v2
-	@pkill -f "[d]ocker logs -f surrealdb-v2" || true
-	@nohup docker logs -f surrealdb-v2 > logs/surrealdb.log 2>&1 &
+	@pkill -f "[d]ocker logs.*surrealdb-v2" || true
+	@nohup docker logs --tail 0 -f surrealdb-v2 > logs/surrealdb.log 2>&1 &
 	@echo "SurrealDB logs -> logs/surrealdb.log"
 
 run:
@@ -209,9 +209,21 @@ start-all:
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
 	@trap 'kill 0; exit 0' INT TERM; \
-	docker logs -f surrealdb-v2 2>&1 | tee logs/surrealdb.log | while IFS= read -r line; do printf '\033[35m[ DB]\033[0m %s\n' "$$line"; done & \
-	LOG_SERVICE=api uv run run_api.py 2>&1 | $(TIMESTAMP_LOG) | tee logs/api.log | while IFS= read -r line; do printf '\033[34m[API]\033[0m %s\n' "$$line"; done & \
+	docker logs --tail 0 -f surrealdb-v2 2>&1 | tee logs/surrealdb.log | while IFS= read -r line; do printf '\033[35m[ DB]\033[0m %s\n' "$$line"; done & \
+	LOG_SERVICE=api uv run --env-file .env run_api.py 2>&1 | $(TIMESTAMP_LOG) | tee logs/api.log | while IFS= read -r line; do printf '\033[34m[API]\033[0m %s\n' "$$line"; done & \
 	LOG_SERVICE=worker uv run --env-file .env surreal-commands-worker --import-modules commands 2>&1 | $(TIMESTAMP_LOG) | tee logs/worker.log | while IFS= read -r line; do printf '\033[33m[WRK]\033[0m %s\n' "$$line"; done & \
+	printf '\033[32m[WEB]\033[0m Waiting for API readiness on http://127.0.0.1:5056/api/config\n'; \
+	api_ready=0; \
+	for i in $$(seq 1 60); do \
+		if curl -fsS http://127.0.0.1:5056/api/config >/dev/null 2>&1; then api_ready=1; break; fi; \
+		sleep 1; \
+	done; \
+	if [ "$$api_ready" != "1" ]; then \
+		printf '\033[31m[ERR]\033[0m API did not become ready within 60 seconds; stopping services.\n'; \
+		kill 0; \
+		exit 1; \
+	fi; \
+	printf '\033[32m[WEB]\033[0m API ready; starting frontend.\n'; \
 	(cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 0.0.0.0 -p 3001) 2>&1 | $(TIMESTAMP_LOG) | tee logs/frontend.log | while IFS= read -r line; do printf '\033[32m[WEB]\033[0m %s\n' "$$line"; done & \
 	wait
 

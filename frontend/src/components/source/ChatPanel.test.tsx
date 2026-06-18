@@ -152,6 +152,27 @@ describe('ChatPanel stop button', () => {
     expect(onSendMessage).toHaveBeenCalledWith('How should we validate this mechanism?', undefined, false)
   })
 
+  it('keeps the chat scroll content constrained to the viewport wrapper', () => {
+    const { container } = render(
+      <ChatPanel
+        {...baseProps}
+        messages={[
+          {
+            id: 'ai-1',
+            type: 'ai',
+            content: [
+              '| source | very long extracted value |',
+              '| --- | --- |',
+              '| pipeline_img.img | source:mgajv5fjc673z9lza17l source:selxd23o70g3cw52pt3n source:z3wu0ugit553ndlhwv3s |',
+            ].join('\n'),
+          },
+        ]}
+      />
+    )
+
+    expect(container.querySelector('[data-slot="scroll-area-viewport"]')).toHaveClass('[&>div]:!block')
+  })
+
   it('disables suggested questions while streaming', () => {
     render(
       <ChatPanel
