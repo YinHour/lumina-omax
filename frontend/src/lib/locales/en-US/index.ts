@@ -257,6 +257,8 @@ export const enUS = {
     title: "Notebooks",
     newNotebook: "New Notebook",
     searchPlaceholder: "Search notebooks...",
+    showMineOnly: "Mine only",
+    noOwnedNotebooks: "No notebooks created by you yet",
     archived: "Archived",
     archive: "Archive",
     unarchive: "Unarchive",

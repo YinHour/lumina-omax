@@ -41,6 +41,7 @@ export interface SourceListResponse {
   asset: {
     file_path?: string
     url?: string
+    original_filename?: string | null
   } | null
   embedded: boolean
   embedded_chunks: number            // ADD: From Python API

@@ -35,6 +35,16 @@ vi.mock('@/lib/hooks/use-translation', () => ({
 }))
 
 describe('CreateNotebookDialog', () => {
+  it('keeps footer actions visually separated', () => {
+    render(<CreateNotebookDialog open onOpenChange={vi.fn()} />)
+
+    const cancelButton = screen.getByRole('button', { name: '取消' })
+    const footer = cancelButton.parentElement
+
+    expect(footer).toHaveClass('gap-3')
+    expect(footer).not.toHaveClass('sm:gap-0')
+  })
+
   it('uses localized validation copy when the notebook name is cleared', async () => {
     render(<CreateNotebookDialog open onOpenChange={vi.fn()} />)
 

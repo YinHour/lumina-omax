@@ -1,3 +1,6 @@
+import ast
+from pathlib import Path
+
 import pytest
 
 
@@ -34,3 +37,24 @@ async def test_check_duplicate_filenames_skips_empty_inputs_without_query(monkey
     result = await sources.check_duplicate_filenames(["", "   ", None])
 
     assert result == {"duplicates": []}
+
+
+def test_source_asset_responses_include_original_filename():
+    source_path = Path(__file__).resolve().parents[1] / "api" / "routers" / "sources.py"
+    tree = ast.parse(source_path.read_text())
+    asset_model_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "AssetModel"
+    ]
+
+    assert asset_model_calls
+    missing_lines = [
+        node.lineno
+        for node in asset_model_calls
+        if "original_filename" not in {keyword.arg for keyword in node.keywords}
+    ]
+
+    assert missing_lines == []

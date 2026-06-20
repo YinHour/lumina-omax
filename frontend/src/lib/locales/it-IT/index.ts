@@ -224,6 +224,8 @@ export const itIT = {
     title: "Quaderni",
     newNotebook: "Nuovo quaderno",
     searchPlaceholder: "Cerca quaderni...",
+    showMineOnly: "Solo i miei",
+    noOwnedNotebooks: "Non hai ancora creato quaderni",
     archived: "Archiviati",
     archive: "Archivia",
     unarchive: "Ripristina",

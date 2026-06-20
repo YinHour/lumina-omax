@@ -81,3 +81,30 @@ def test_excel_cleanup_preserves_text_around_trimmed_table():
             "后续说明",
         ]
     )
+
+
+def test_excel_cleanup_repairs_separator_first_table_with_title_row():
+    markdown = "\n".join(
+        [
+            "# Sheet: Sheet1",
+            "",
+            "| --- | --- | --- | --- | --- | --- |",
+            "| 淘宝天猫团队KPI考核表 |  |  |  |  |  |",
+            "| 序号 | 部门 | KPI考核岗位 | KPI考核关键指标 | 考核目标 | 具体指标数据 |",
+            "| 1 | 运营部 | 网店运营 | PV量：独立访客量 |  |  |",
+        ]
+    )
+
+    cleaned = _trim_excel_empty_table_rows(_sanitize_excel_table_newlines(markdown))
+
+    assert cleaned == "\n".join(
+        [
+            "# Sheet: Sheet1",
+            "",
+            "淘宝天猫团队KPI考核表",
+            "",
+            "| 序号 | 部门 | KPI考核岗位 | KPI考核关键指标 | 考核目标 | 具体指标数据 |",
+            "| --- | --- | --- | --- | --- | --- |",
+            "| 1 | 运营部 | 网店运营 | PV量：独立访客量 |  |  |",
+        ]
+    )

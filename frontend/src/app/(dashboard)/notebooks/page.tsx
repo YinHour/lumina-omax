@@ -1,90 +1,91 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { NotebookList } from './components/NotebookList'
 import { Button } from '@/components/ui/button'
-import { Layers, Plus, RefreshCw } from 'lucide-react'
+import { Layers, Plus, RefreshCw, UserCheck } from 'lucide-react'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { CreateNotebookDialog } from '@/components/notebooks/CreateNotebookDialog'
 import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AggregateNotebookDialog } from '@/components/notebooks/AggregateNotebookDialog'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { sameRecordId } from '@/lib/utils/record-id'
+import type { NotebookResponse } from '@/lib/types/api'
 
 export default function NotebooksPage() {
   const { t } = useTranslation()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [aggregateDialogOpen, setAggregateDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [showMineOnly, setShowMineOnly] = useState(false)
   const { data: notebooks, isLoading, refetch } = useNotebooks(false)
   const { data: archivedNotebooks } = useNotebooks(true)
+  const user = useAuthStore((state) => state.user)
 
   const normalizedQuery = searchTerm.trim().toLowerCase()
+  const isOwnerFiltered = showMineOnly
+
+  const matchesNotebookFilters = useCallback((notebook: NotebookResponse) => {
+    const matchesOwner = !isOwnerFiltered || sameRecordId(notebook.created_by, user?.id)
+    const matchesQuery =
+      !normalizedQuery || notebook.name.toLowerCase().includes(normalizedQuery)
+
+    return matchesOwner && matchesQuery
+  }, [isOwnerFiltered, normalizedQuery, user?.id])
 
   const filteredActive = useMemo(() => {
     if (!notebooks) {
       return undefined
     }
-    const regularNotebooks = notebooks.filter(nb => !nb.is_aggregated)
-    if (!normalizedQuery) {
-      return regularNotebooks
-    }
-    return regularNotebooks.filter((notebook) =>
-      notebook.name.toLowerCase().includes(normalizedQuery)
-    )
-  }, [notebooks, normalizedQuery])
+    return notebooks.filter(nb => !nb.is_aggregated && matchesNotebookFilters(nb))
+  }, [matchesNotebookFilters, notebooks])
 
   const filteredAggregated = useMemo(() => {
     if (!notebooks) {
       return undefined
     }
-    const aggregatedNotebooks = notebooks.filter(nb => nb.is_aggregated)
-    if (!normalizedQuery) {
-      return aggregatedNotebooks
-    }
-    return aggregatedNotebooks.filter((notebook) =>
-      notebook.name.toLowerCase().includes(normalizedQuery)
-    )
-  }, [notebooks, normalizedQuery])
+    return notebooks.filter(nb => nb.is_aggregated && matchesNotebookFilters(nb))
+  }, [matchesNotebookFilters, notebooks])
 
   const filteredArchived = useMemo(() => {
     if (!archivedNotebooks) {
       return undefined
     }
-    if (!normalizedQuery) {
-      return archivedNotebooks
-    }
-    return archivedNotebooks.filter((notebook) =>
-      notebook.name.toLowerCase().includes(normalizedQuery)
-    )
-  }, [archivedNotebooks, normalizedQuery])
+    return archivedNotebooks.filter(matchesNotebookFilters)
+  }, [archivedNotebooks, matchesNotebookFilters])
 
-  const hasArchived = (archivedNotebooks?.length ?? 0) > 0
+  const hasArchived = (filteredArchived?.length ?? 0) > 0 || (archivedNotebooks?.length ?? 0) > 0
   const isSearching = normalizedQuery.length > 0
+  const isFiltering = isSearching || isOwnerFiltered
+  const emptyTitle =
+    isSearching ? t.common.noMatches : isOwnerFiltered ? t.notebooks.noOwnedNotebooks : undefined
+  const emptyDescription = isSearching ? t.common.tryDifferentSearch : undefined
   const activeNotebookSection = (
     <NotebookList
       notebooks={filteredActive}
       isLoading={isLoading}
       title={t.notebooks.activeNotebooks}
-      emptyTitle={isSearching ? t.common.noMatches : undefined}
-      emptyDescription={isSearching ? t.common.tryDifferentSearch : undefined}
-      onAction={!isSearching ? () => setCreateDialogOpen(true) : undefined}
-      actionLabel={!isSearching ? t.notebooks.newNotebook : undefined}
+      emptyTitle={emptyTitle}
+      emptyDescription={emptyDescription}
+      onAction={!isSearching && !isOwnerFiltered ? () => setCreateDialogOpen(true) : undefined}
+      actionLabel={!isSearching && !isOwnerFiltered ? t.notebooks.newNotebook : undefined}
     />
   )
   const aggregatedNotebookSection =
-    filteredAggregated && filteredAggregated.length > 0 ? (
+    filteredAggregated && (filteredAggregated.length > 0 || isFiltering) ? (
       <NotebookList
         notebooks={filteredAggregated}
         isLoading={isLoading}
         title={t.notebooks.aggregatedNotebooks}
         collapsible
         defaultExpanded
-        emptyTitle={isSearching ? t.common.noMatches : undefined}
-        emptyDescription={isSearching ? t.common.tryDifferentSearch : undefined}
+        emptyTitle={emptyTitle}
+        emptyDescription={emptyDescription}
       />
     ) : null
   const archivedNotebookSection = hasArchived ? (
@@ -93,8 +94,8 @@ export default function NotebooksPage() {
       isLoading={false}
       title={t.notebooks.archivedNotebooks}
       collapsible
-      emptyTitle={isSearching ? t.common.noMatches : undefined}
-      emptyDescription={isSearching ? t.common.tryDifferentSearch : undefined}
+      emptyTitle={emptyTitle}
+      emptyDescription={emptyDescription}
     />
   ) : null
 
@@ -125,6 +126,15 @@ export default function NotebooksPage() {
                 }
                 className="w-full sm:w-64"
               />
+              <Button
+                type="button"
+                variant={showMineOnly ? 'secondary' : 'outline'}
+                aria-pressed={showMineOnly}
+                onClick={() => setShowMineOnly((value) => !value)}
+              >
+                <UserCheck className="size-4" />
+                {t.notebooks.showMineOnly}
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setAggregateDialogOpen(true)}

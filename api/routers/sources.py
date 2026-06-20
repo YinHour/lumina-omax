@@ -383,6 +383,9 @@ async def get_sources(
                         if row.get("asset")
                         else None,
                         url=row["asset"].get("url") if row.get("asset") else None,
+                        original_filename=row["asset"].get("original_filename")
+                        if row.get("asset")
+                        else None,
                     )
                     if row.get("asset")
                     else None,
@@ -722,6 +725,9 @@ async def create_source(
                         url=processed_source.asset.url
                         if processed_source.asset
                         else None,
+                        original_filename=processed_source.asset.original_filename
+                        if processed_source.asset
+                        else None,
                     )
                     if processed_source.asset
                     else None,
@@ -870,6 +876,9 @@ async def get_source(source_id: str):
             asset=AssetModel(
                 file_path=source.asset.file_path if source.asset else None,
                 url=source.asset.url if source.asset else None,
+                original_filename=source.asset.original_filename
+                if source.asset
+                else None,
             )
             if source.asset
             else None,
@@ -1095,6 +1104,9 @@ async def update_source(source_id: str, source_update: SourceUpdate):
             asset=AssetModel(
                 file_path=source.asset.file_path if source.asset else None,
                 url=source.asset.url if source.asset else None,
+                original_filename=source.asset.original_filename
+                if source.asset
+                else None,
             )
             if source.asset
             else None,
@@ -1215,6 +1227,9 @@ async def retry_source_processing(request: Request, source_id: str):
                 asset=AssetModel(
                     file_path=source.asset.file_path if source.asset else None,
                     url=source.asset.url if source.asset else None,
+                    original_filename=source.asset.original_filename
+                    if source.asset
+                    else None,
                 )
                 if source.asset
                 else None,
