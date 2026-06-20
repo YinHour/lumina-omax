@@ -224,6 +224,8 @@ export const zhTW = {
     title: "筆記本",
     newNotebook: "新增筆記本",
     searchPlaceholder: "搜尋筆記本...",
+    showMineOnly: "只看我的",
+    noOwnedNotebooks: "還沒有你建立的筆記本",
     archived: "已封存",
     archive: "封存",
     unarchive: "取消封存",

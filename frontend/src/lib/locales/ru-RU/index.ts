@@ -224,6 +224,8 @@ export const ruRU = {
     title: "Блокноты",
     newNotebook: "Новый блокнот",
     searchPlaceholder: "Поиск блокнотов...",
+    showMineOnly: "Только мои",
+    noOwnedNotebooks: "У вас пока нет созданных блокнотов",
     archived: "Архивные",
     archive: "Архивировать",
     unarchive: "Разархивировать",

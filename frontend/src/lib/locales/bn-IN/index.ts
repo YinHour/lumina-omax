@@ -224,6 +224,8 @@ export const bnIN = {
     title: "নোটবুকগুলি",
     newNotebook: "নতুন নোটবুক",
     searchPlaceholder: "নোটবুক অনুসন্ধান...",
+    showMineOnly: "শুধু আমার",
+    noOwnedNotebooks: "আপনার তৈরি কোনো নোটবুক এখনো নেই",
     archived: "আর্কাইভ করা",
     archive: "আর্কাইভ",
     unarchive: "আর্কাইভ বাতিল",

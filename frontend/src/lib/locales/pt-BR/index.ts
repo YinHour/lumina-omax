@@ -224,6 +224,8 @@ export const ptBR = {
     title: "Cadernos",
     newNotebook: "Novo Caderno",
     searchPlaceholder: "Buscar cadernos...",
+    showMineOnly: "Somente meus",
+    noOwnedNotebooks: "Nenhum caderno criado por você ainda",
     archived: "Arquivado",
     archive: "Arquivar",
     unarchive: "Desarquivar",

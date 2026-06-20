@@ -257,6 +257,8 @@ export const zhCN = {
     title: "笔记本",
     newNotebook: "创建笔记本",
     searchPlaceholder: "搜索笔记本...",
+    showMineOnly: "只看我的",
+    noOwnedNotebooks: "还没有你创建的笔记本",
     archived: "已归档",
     archive: "归档",
     unarchive: "取消归档",

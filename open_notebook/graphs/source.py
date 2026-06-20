@@ -829,6 +829,10 @@ def _trim_excel_empty_table_rows(content: str) -> str:
     def _format_row(cells: List[str]) -> str:
         return "| " + " | ".join(cells) + " |"
 
+    def _is_title_row(cells: List[str]) -> bool:
+        non_empty = [cell for cell in cells if cell.strip()]
+        return len(non_empty) == 1 and len(cells) > 1
+
     def _trim_table_block(block: List[str]) -> List[str]:
         rows = [_split_cells(line) for line in block]
         if not rows:
@@ -850,14 +854,44 @@ def _trim_excel_empty_table_rows(content: str) -> str:
         if not keep_cols:
             return []
 
-        trimmed_rows: List[str] = []
+        trimmed_rows: List[tuple[bool, List[str]]] = []
         for row in normalized_rows:
             trimmed = [row[index] for index in keep_cols]
             if _is_separator_cells(row):
-                trimmed_rows.append(_format_row(["---"] * len(trimmed)))
+                trimmed_rows.append((True, ["---"] * len(trimmed)))
             elif any(cell.strip() for cell in trimmed):
-                trimmed_rows.append(_format_row(trimmed))
-        return trimmed_rows
+                trimmed_rows.append((False, trimmed))
+
+        if trimmed_rows and trimmed_rows[0][0] and len(trimmed_rows) > 1:
+            rows_after_separator = trimmed_rows[1:]
+            if (
+                len(rows_after_separator) > 1
+                and not rows_after_separator[0][0]
+                and _is_title_row(rows_after_separator[0][1])
+            ):
+                title = next(
+                    cell.strip() for cell in rows_after_separator[0][1] if cell.strip()
+                )
+                table_rows = rows_after_separator[1:]
+                header = table_rows[0][1]
+                data_rows = table_rows[1:]
+                return [
+                    title,
+                    "",
+                    _format_row(header),
+                    _format_row(["---"] * len(header)),
+                    *[_format_row(row) for _, row in data_rows],
+                ]
+
+            header = rows_after_separator[0][1]
+            data_rows = rows_after_separator[1:]
+            return [
+                _format_row(header),
+                _format_row(["---"] * len(header)),
+                *[_format_row(row) for _, row in data_rows],
+            ]
+
+        return [_format_row(row) for _, row in trimmed_rows]
 
     result: List[str] = []
     table_block: List[str] = []

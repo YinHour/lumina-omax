@@ -2018,4 +2018,35 @@ git diff --check
 
 ---
 
-> 最后更新：2026-06-18 | 新增 §27（试用反馈优先修复）。当前分支 `codex/feedback-priority-fixes-0617` 优先恢复旧版 `.doc/.xls` 入库与全局 Ask 覆盖统计，补齐来源详情操作、产品图标、重名提示、Next 16 启动入口、ChatPanel 历史消息宽度约束、笔记本表单校验本地化、交付文档归档和 Help 文档。
+## 28. PR #26 验证反馈收敛：来源文件名、Excel 表格与笔记本筛选（新增 2026-06-20）
+
+本轮基于 `codex/pr26-feedback-fixes-0620` 分支，处理 PR #26 合并后全量验证发现的两个 bug 和两个笔记本页面体验改进。
+
+### 28.1 行为决策
+
+- 来源 API 响应统一返回 `asset.original_filename`：来源列表、创建处理结果、来源详情、来源更新和重试处理响应都不能只返回 `file_path/url`，避免前端或后续流程无法拿到原始上传文件名。
+- Excel Markdown 清洗在删除空列之外，修复“分隔行先于表头”的非法 GFM 表格：如果 LibreOffice/解析链路输出 `| --- | ... |` 后接单元格标题行和真实表头行，标题行会被提取为普通文本，真实表头下方重建 Markdown 分隔行。
+- 笔记本首页工具栏新增“只看我的”筛选按钮，默认关闭；打开后基于当前登录用户 `id` 与笔记本 `created_by` 做 SurrealDB record id 归一化比较，并与现有名称搜索、活动/聚合/归档分组共同生效。
+- 创建笔记本弹窗底部按钮间距统一调为 `gap-3`，取消和创建按钮在桌面端不再贴在一起。
+
+**边界**：本轮不改变笔记本查询 API，不新增服务端分页或权限过滤；“只看我的”先在前端对已加载笔记本集合过滤，适配当前 24 人以内试用规模。Excel 修复聚焦当前非法 Markdown 表格形态，不尝试恢复 Excel 合并单元格视觉布局。
+
+### 28.2 验证
+
+```text
+.venv/bin/python -m pytest tests/test_excel_source_cleanup.py tests/test_sources_duplicates.py -q
+cd frontend && npm test -- --run src/components/notebooks/CreateNotebookDialog.test.tsx src/app/'(dashboard)'/notebooks/page.test.tsx
+```
+
+### 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `api/routers/sources.py`、`frontend/src/lib/types/api.ts`、`tests/test_sources_duplicates.py` | `AssetModel` 响应补齐 `original_filename`，前端类型同步，并用 AST 测试防止新增响应路径漏传 |
+| `open_notebook/graphs/source.py`、`tests/test_excel_source_cleanup.py` | Excel Markdown 清洗修复 separator-first 表格，标题行转普通文本，真实表头重建合法 GFM 表格 |
+| `frontend/src/app/(dashboard)/notebooks/page.tsx`、`frontend/src/app/(dashboard)/notebooks/page.test.tsx`、`frontend/src/lib/locales/*/index.ts` | 笔记本页新增“只看我的”筛选，和搜索、活动/聚合/归档分组组合生效，多语言文案同步 |
+| `frontend/src/components/notebooks/CreateNotebookDialog.tsx`、`frontend/src/components/notebooks/CreateNotebookDialog.test.tsx` | 创建笔记本弹窗 footer 按钮间距调整并补回归测试 |
+
+---
+
+> 最后更新：2026-06-20 | 新增 §28（PR #26 验证反馈收敛）。当前分支 `codex/pr26-feedback-fixes-0620` 修复来源响应漏传 `original_filename`、Excel 非法 Markdown 表格重建，并补充笔记本首页“只看我的”筛选和创建弹窗按钮间距调整。

@@ -224,6 +224,8 @@ export const jaJP = {
     title: "ノートブック",
     newNotebook: "新規ノートブック",
     searchPlaceholder: "ノートブックを検索...",
+    showMineOnly: "自分のみ",
+    noOwnedNotebooks: "自分が作成したノートブックはまだありません",
     archived: "アーカイブ済み",
     archive: "アーカイブ",
     unarchive: "アーカイブ解除",

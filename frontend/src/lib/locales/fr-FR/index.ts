@@ -224,6 +224,8 @@ export const frFR = {
     title: "Carnets",
     newNotebook: "Nouveau Carnet",
     searchPlaceholder: "Rechercher des carnets...",
+    showMineOnly: "Mes carnets seulement",
+    noOwnedNotebooks: "Aucun carnet créé par vous pour le moment",
     archived: "Archivé",
     archive: "Archiver",
     unarchive: "Désarchiver",
