@@ -7,6 +7,7 @@ data/
 sqlite-db/
 surreal-data/
 docker.env
+/.env
 notebook_data/
 # Python-specific
 *.py[cod]
