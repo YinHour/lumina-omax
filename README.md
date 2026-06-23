@@ -7,7 +7,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/YinHour/lumina-omax">
-    <img src="docs/assets/hero.svg" alt="Lumiton Omax Logo">
+    <img src="frontend/public/logo.png" alt="Lumiton Omax Logo" width="96">
   </a>
 
   <h2 align="center">Lumiton·Omax | 知涌</h2>
