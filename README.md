@@ -1,361 +1,250 @@
 <a id="readme-top"></a>
 
-<!-- [![Contributors][contributors-shield]][contributors-url] -->
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
-<!-- [![LinkedIn][linkedin-shield]][linkedin-url] -->
 
-
-<!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/lfnovo/open-notebook">
-    <img src="docs/assets/hero.svg" alt="Logo">
+  <a href="https://github.com/YinHour/lumina-omax">
+    <img src="docs/assets/hero.svg" alt="Lumiton Omax Logo">
   </a>
 
-  <h3 align="center">Lumiton·Omax</h3>
+  <h2 align="center">Lumiton·Omax | 知涌</h2>
 
   <p align="center">
-    An open source, privacy-focused alternative to Google's Notebook LM!
-    <br /><strong>Join our <a href="https://discord.gg/37XJPXfz2w">Discord server</a> for help, to share workflow ideas, and suggest features!</strong>
+    面向研发资料管理、证据问答和实验复盘的本地优先 AI 科研助手。
     <br />
-    <a href="https://www.open-notebook.ai"><strong>Checkout our website »</strong></a>
+    基于 <a href="https://github.com/lfnovo/open-notebook">Open Notebook</a> 二次开发，强化多人试用、中文体验、来源管理、旧 Office 导入和全局 Ask 可信度。
     <br />
     <br />
-    <a href="docs/0-START-HERE/index.md">📚 Get Started</a>
+    <a href="docs/0-START-HERE/index.md">开始使用</a>
     ·
-    <a href="docs/3-USER-GUIDE/index.md">📖 User Guide</a>
+    <a href="docs/3-USER-GUIDE/index.md">用户指南</a>
     ·
-    <a href="docs/2-CORE-CONCEPTS/index.md">✨ Features</a>
+    <a href="docs/8-CUSTOMIZATION/00-index.md">二开记录</a>
     ·
-    <a href="docs/1-INSTALLATION/index.md">🚀 Deploy</a>
+    <a href="docs/1-INSTALLATION/index.md">部署文档</a>
   </p>
 </div>
 
-<p align="center">
-<a href="https://trendshift.io/repositories/14536" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14536" alt="lfnovo%2Fopen-notebook | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
-
-<div align="center">
-  <!-- Keep these links. Translations will automatically update with the README. -->
-  <a href="https://zdoc.app/de/lfnovo/open-notebook">Deutsch</a> | 
-  <a href="https://zdoc.app/es/lfnovo/open-notebook">Español</a> | 
-  <a href="https://zdoc.app/fr/lfnovo/open-notebook">français</a> | 
-  <a href="https://zdoc.app/ja/lfnovo/open-notebook">日本語</a> | 
-  <a href="https://zdoc.app/ko/lfnovo/open-notebook">한국어</a> | 
-  <a href="https://zdoc.app/pt/lfnovo/open-notebook">Português</a> | 
-  <a href="https://zdoc.app/ru/lfnovo/open-notebook">Русский</a> | 
-  <a href="https://zdoc.app/zh/lfnovo/open-notebook">中文</a>
-</div>
-
-## A private, multi-model, 100% local, full-featured alternative to Notebook LM
-
-![New Notebook](docs/assets/asset_list.png)
-
-In a world dominated by Artificial Intelligence, having the ability to think 🧠 and acquire new knowledge 💡, is a skill that should not be a privilege for a few, nor restricted to a single provider.
-
-**Lumiton·Omax empowers you to:**
-- 🔒 **Control your data** - Keep your research private and secure
-- 🤖 **Choose your AI models** - Support for 18+ providers including OpenAI, Anthropic, Ollama, LM Studio, and more
-- 📚 **Organize multi-modal content** - PDFs, videos, audio, web pages, and more
-- 🎙️ **Generate professional podcasts** - Advanced multi-speaker podcast generation
-- 🔍 **Search intelligently** - Full-text and vector search across all your content
-- 💬 **Chat with context** - AI conversations powered by your research
-- 🌐 **Multi-language UI** - English, Portuguese, Chinese (Simplified & Traditional), Japanese, Russian, and Bengali support
-
-Learn more about our project at [https://www.open-notebook.ai](https://www.open-notebook.ai)
-
 ---
 
-## 🆚 Lumiton·Omax vs Google Notebook LM
+## 项目定位
 
-| Feature | Lumiton·Omax | Google Notebook LM | Advantage |
-|---------|---------------|--------------------|-----------|
-| **Privacy & Control** | Self-hosted, your data | Google cloud only | Complete data sovereignty |
-| **AI Provider Choice** | 18+ providers (OpenAI, Anthropic, Ollama, LM Studio, etc.) | Google models only | Flexibility and cost optimization |
-| **Podcast Speakers** | 1-4 speakers with custom profiles | 2 speakers only | Extreme flexibility |
-| **Content Transformations** | Custom and built-in | Limited options | Unlimited processing power |
-| **API Access** | Full REST API | No API | Complete automation |
-| **Deployment** | Docker, cloud, or local | Google hosted only | Deploy anywhere |
-| **Citations** | Basic references (will improve) | Comprehensive with sources | Research integrity |
-| **Customization** | Open source, fully customizable | Closed system | Unlimited extensibility |
-| **Cost** | Pay only for AI usage | Free tier + Monthly subscription | Transparent and controllable |
+Lumiton·Omax | 知涌是一个可自托管、可选择多模型供应商的 AI 科研资料工作台。它保留了 Open Notebook 的笔记本、来源、笔记、搜索、问答、播客和多模型能力，并在本仓库中围绕企业内网试用和油田化学研发资料场景做了持续二次开发。
 
-**Why Choose Lumiton·Omax?**
-- 🔒 **Privacy First**: Your sensitive research stays completely private
-- 💰 **Cost Control**: Choose cheaper AI providers or run locally with Ollama
-- 🎙️ **Better Podcasts**: Full script control and multi-speaker flexibility vs limited 2-speaker deep-dive format
-- 🔧 **Unlimited Customization**: Modify, extend, and integrate as needed
-- 🌐 **No Vendor Lock-in**: Switch providers, deploy anywhere, own your data
+当前二开重点不是单纯换皮，而是让系统更适合多人试用和真实资料入库：
 
-### Built With
+- 研发历史资料可以持续进入知识库，包括 `.doc`、`.xls`、`.ppt/.pptx`、`.docx/.xlsx/.xlsm`、PDF、网页等常见材料。
+- 全局 Ask 显示来源总数、可检索来源数和本次命中来源数，帮助用户判断回答覆盖是否充分。
+- 来源、笔记本、上传者、重复文件和长文档阅读体验更适合多人协作。
+- 中文界面、登录入口、产品图标、帮助文档和操作提示更贴近正式试用。
+- 局域网源码部署路径经过收敛，浏览器通过前端 `/api` 代理访问后端，避免把本机 `localhost` API 地址暴露给终端用户。
 
-[![Python][Python]][Python-url] [![Next.js][Next.js]][Next-url] [![React][React]][React-url] [![SurrealDB][SurrealDB]][SurrealDB-url] [![LangChain][LangChain]][LangChain-url]
+## 核心能力
 
-## 🚀 Quick Start (2 Minutes)
+### 资料入库与来源管理
 
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed
-- That's it! (API keys configured later in the UI)
+- 支持 PDF、Office 文档、旧版 Office、网页、音频、视频等来源类型。
+- 旧版 Word `.doc`、旧版 Excel `.xls` 和演示文稿可通过 LibreOffice 转换后解析。
+- Excel 表格内容会清理整列空白列，并修复部分旧表格无法按 Markdown 表格渲染的问题。
+- 上传重名文件时支持重复检查，大小写差异和首尾空格也会按重复处理。
+- 用户可以选择“仅上传非重复文件”，减少重复资料进入知识库。
+- 来源列表支持搜索、分页、上传者展示、原始文件名保留和完整来源详情页。
+- 来源详情页的标题、关闭、更多操作、与来源对话和内容 Tab 在长文档阅读时保持易操作。
 
-### Step 1: Get docker-compose.yml
+### 笔记本与多人协作
 
-**Option A:** Download directly
+- 支持多用户账号、注册审批、角色区分、管理员设置和个人资料维护。
+- 笔记本记录创建者，密码管理、归档和删除等操作按创建者权限收敛。
+- 笔记本首页支持“只看我的”，适合多人试用时快速找到自己创建的笔记本。
+- 笔记本可设置来源数量上限，避免单个笔记本过大影响检索和问答体验。
+- 添加现有来源时仅展示已完成处理的来源，并支持搜索、全选和剩余槽位限制。
+- 打开笔记本后可按来源名称筛选，并控制本次聊天引用哪些来源。
+
+### 问答、搜索与研发复盘
+
+- 支持笔记本内对话、来源对话和全局 Ask。
+- 全局 Ask 会展示覆盖统计：来源总数、可检索来源、本次命中来源。
+- 全局 Ask 历史保存在浏览器端，可回看问题、回答和当时的覆盖统计。
+- NotebookLM 风格导览卡片会根据笔记本内容生成摘要和建议问题。
+- 每轮回答后生成下一步建议问题，用户点击即可继续追问。
+- 长耗时问答会显示阶段提示，回答完成后不再等待建议问题生成才恢复输入。
+- 启用联网搜索时增加超时和降级处理，避免长时间停在“正在搜索”状态。
+
+### 界面、部署与可观测性
+
+- 全站 UI 已迁移到“温暖研究”风格：克制的靛蓝主色、柔和表面、响应式布局和移动导航。
+- 登录页、产品图标、浏览器 favicon 和侧边栏品牌统一。
+- 用户帮助中心已同步旧 Office 导入、Excel 清理、Ask 覆盖统计、反爬 URL 边界和重名策略。
+- `make start-all` 会启动 DB、API、worker 和前端，并等待 API ready 后再启动前端。
+- API、worker、前端和 SurrealDB 日志分别写入 `logs/`，聊天链路带有更清楚的 INFO 级可观测日志。
+- Next.js 16 入口已迁移到 `proxy.ts`，生产构建路径固定为 `next build --webpack`。
+
+## 与原版 Open Notebook 的关系
+
+本仓库是面向 Lumiton·Omax | 知涌试用的二开版本，核心架构和大量基础能力来自上游 Open Notebook：
+
+- FastAPI 后端、Next.js 前端、SurrealDB 数据库和 LangGraph 工作流。
+- 多模型供应商支持，依托 Esperanto 接入 OpenAI、Anthropic、Google、Ollama、Mistral、DeepSeek、xAI、OpenRouter 等。
+- 笔记本、来源、笔记、搜索、聊天、播客和内容转换等基础模块。
+
+二开内容主要记录在 [docs/8-CUSTOMIZATION/00-index.md](docs/8-CUSTOMIZATION/00-index.md)。如果要比较上游能力与本仓库改动，应优先阅读该文件。
+
+## 当前源码部署方式
+
+本仓库当前推荐源码方式部署，适合内网试用、二开验证和本地调试。
+
+### 运行环境
+
+- Docker，用于启动 SurrealDB v2。
+- Python / `uv`，用于 API 和后台 worker。
+- Node.js / npm，用于 Next.js 前端。
+- LibreOffice，用于旧版 Office 文件转换和演示文稿转换。
+- 可用的 AI 模型凭据，或者本地 Ollama / OpenAI-compatible 服务。
+
+### 本地启动
+
+1. 准备 `.env`。可参考 [.env.example](.env.example) 和 [CONFIGURATION.md](CONFIGURATION.md)。
+2. 安装前后端依赖。
+3. 启动完整服务：
+
 ```bash
-curl -o docker-compose.yml https://raw.githubusercontent.com/lfnovo/open-notebook/main/docker-compose.yml
+make start-all
 ```
 
-**Option B:** Create the file manually
-Copy this into a new file called `docker-compose.yml`:
+默认端口：
 
-```yaml
-services:
-  surrealdb:
-    image: surrealdb/surrealdb:v2
-    command: start --log info --user root --pass root rocksdb:/mydata/mydatabase.db
-    user: root
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./surreal_data:/mydata
-    restart: always
+| 服务 | 地址 |
+| --- | --- |
+| 前端 | `http://localhost:3001` |
+| API | `http://localhost:5056` |
+| API 文档 | `http://localhost:5056/docs` |
+| SurrealDB | `127.0.0.1:8001` |
 
-  open_notebook:
-    image: lfnovo/open_notebook:v1-latest
-    ports:
-      - "8502:8502"
-      - "5055:5055"
-    environment:
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
-      - SURREAL_URL=ws://surrealdb:8000/rpc
-      - SURREAL_USER=root
-      - SURREAL_PASSWORD=root
-      - SURREAL_NAMESPACE=open_notebook
-      - SURREAL_DATABASE=open_notebook
-    volumes:
-      - ./notebook_data:/app/data
-    depends_on:
-      - surrealdb
-    restart: always
-```
+停止服务：
 
-### Step 2: Set Your Encryption Key
-Edit `docker-compose.yml` and change this line:
-```yaml
-- OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
-```
-to any secret value (e.g., `my-super-secret-key-123`)
-
-### Step 3: Start Services
 ```bash
-docker compose up -d
+make stop-all
 ```
 
-Wait 15-20 seconds, then open: **http://localhost:8502**
+查看服务状态：
 
-### Step 4: Configure AI Provider
-1. Go to **Settings** → **API Keys**
-2. Click **Add Credential**
-3. Choose your provider (OpenAI, Anthropic, Google, etc.)
-4. Paste your API key and click **Save**
-5. Click **Test Connection** → **Discover Models** → **Register Models**
+```bash
+make status
+```
 
-Done! You're ready to create your first notebook.
+> 局域网访问时，用户浏览器应访问前端地址，例如 `http://<部署机器IP>:3001/`。浏览器侧请求应走相对路径 `/api`，由 Next.js 代理到后端；不要让终端用户直接访问部署机本地 `localhost:5056`。
 
-> **Need an API key?** Get one from:
-> [OpenAI](https://platform.openai.com/api-keys) · [Anthropic](https://console.anthropic.com/) · [Google](https://aistudio.google.com/) · [Groq](https://console.groq.com/) (free tier)
+## 常用开发命令
 
-> **Want free local AI?** See [examples/docker-compose-ollama.yml](examples/) for Ollama setup
+```bash
+# 前端 lint、测试和生产构建
+make codex-frontend-check
 
----
+# 后端 ruff 和 pytest
+make codex-backend-check
 
-### 📚 More Installation Options
+# 快速检查 diff 空白问题
+make codex-quick-check
 
-- **[With Ollama (Free Local AI)](examples/docker-compose-ollama.yml)** - Run models locally without API costs
-- **[From Source (Developers)](docs/1-INSTALLATION/from-source.md)** - For development and contributions
-- **[Complete Installation Guide](docs/1-INSTALLATION/index.md)** - All deployment scenarios
+# 仅启动数据库
+make database
 
----
+# 仅启动 API
+make api
 
-### 📖 Need Help?
+# 仅启动 worker
+make worker-start
+```
 
-- **🤖 AI Installation Assistant**: [CustomGPT to help you install](https://chatgpt.com/g/g-68776e2765b48191bd1bae3f30212631-open-notebook-installation-assistant)
-- **🆘 Troubleshooting**: [5-minute troubleshooting guide](docs/6-TROUBLESHOOTING/quick-fixes.md)
-- **💬 Community Support**: [Discord Server](https://discord.gg/37XJPXfz2w)
-- **🐛 Report Issues**: [GitHub Issues](https://github.com/lfnovo/open-notebook/issues)
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=lfnovo/open-notebook&type=date&legend=top-left)](https://www.star-history.com/#lfnovo/open-notebook&type=date&legend=top-left)
-
+更完整的安装说明见 [docs/1-INSTALLATION/index.md](docs/1-INSTALLATION/index.md) 和 [docs/1-INSTALLATION/from-source.md](docs/1-INSTALLATION/from-source.md)。
 
 ## Provider Support Matrix
 
-Thanks to the [Esperanto](https://github.com/lfnovo/esperanto) library, we support this providers out of the box!
+Thanks to the [Esperanto](https://github.com/lfnovo/esperanto) library, this project can work with multiple model providers.
 
-| Provider     | LLM Support | Embedding Support | Speech-to-Text | Text-to-Speech |
-|--------------|-------------|------------------|----------------|----------------|
-| OpenAI       | ✅          | ✅               | ✅             | ✅             |
-| Anthropic    | ✅          | ❌               | ❌             | ❌             |
-| Groq         | ✅          | ❌               | ✅             | ❌             |
-| Google (GenAI) | ✅          | ✅               | ❌             | ✅             |
-| Vertex AI    | ✅          | ✅               | ❌             | ✅             |
-| Ollama       | ✅          | ✅               | ❌             | ❌             |
-| Perplexity   | ✅          | ❌               | ❌             | ❌             |
-| ElevenLabs   | ❌          | ❌               | ✅             | ✅             |
-| Azure OpenAI | ✅          | ✅               | ❌             | ❌             |
-| Mistral      | ✅          | ✅               | ❌             | ❌             |
-| DeepSeek     | ✅          | ❌               | ❌             | ❌             |
-| Voyage       | ❌          | ✅               | ❌             | ❌             |
-| xAI          | ✅          | ❌               | ❌             | ❌             |
-| OpenRouter   | ✅          | ❌               | ❌             | ❌             |
-| DashScope (Qwen) | ✅          | ❌               | ❌             | ❌             |
-| MiniMax      | ✅          | ❌               | ❌             | ❌             |
-| OpenAI Compatible* | ✅          | ❌               | ❌             | ❌             |
+| Provider | LLM Support | Embedding Support | Speech-to-Text | Text-to-Speech |
+| --- | --- | --- | --- | --- |
+| OpenAI | yes | yes | yes | yes |
+| Anthropic | yes | no | no | no |
+| Groq | yes | no | yes | no |
+| Google (GenAI) | yes | yes | no | yes |
+| Vertex AI | yes | yes | no | yes |
+| Ollama | yes | yes | no | no |
+| Perplexity | yes | no | no | no |
+| ElevenLabs | no | no | yes | yes |
+| Azure OpenAI | yes | yes | no | no |
+| Mistral | yes | yes | no | no |
+| DeepSeek | yes | no | no | no |
+| Voyage | no | yes | no | no |
+| xAI | yes | no | no | no |
+| OpenRouter | yes | no | no | no |
+| DashScope (Qwen) | yes | no | no | no |
+| MiniMax | yes | no | no | no |
+| OpenAI Compatible | yes | no | no | no |
 
-*Supports LM Studio and any OpenAI-compatible endpoint
+OpenAI Compatible includes LM Studio and other OpenAI-compatible endpoints.
 
-## ✨ Key Features
+## 文档入口
 
-### Core Capabilities
-- **🔒 Privacy-First**: Your data stays under your control - no cloud dependencies
-- **🎯 Multi-Notebook Organization**: Manage multiple research projects seamlessly
-- **📚 Universal Content Support**: PDFs, videos, audio, web pages, Office docs, and more
-- **🤖 Multi-Model AI Support**: 18+ providers including OpenAI, Anthropic, Ollama, Google, LM Studio, and more
-- **🎙️ Professional Podcast Generation**: Advanced multi-speaker podcasts with Episode Profiles
-- **🔍 Intelligent Search**: Full-text and vector search across all your content
-- **💬 Context-Aware Chat**: AI conversations powered by your research materials
-- **📝 AI-Assisted Notes**: Generate insights or write notes manually
+### 用户文档
 
-### Advanced Features
-- **⚡ Reasoning Model Support**: Full support for thinking models like DeepSeek-R1 and Qwen3
-- **🔧 Content Transformations**: Powerful customizable actions to summarize and extract insights
-- **🌐 Comprehensive REST API**: Full programmatic access for custom integrations [![API Docs](https://img.shields.io/badge/API-Documentation-blue?style=flat-square)](http://localhost:5055/docs)
-- **🔐 Optional Password Protection**: Secure public deployments with authentication
-- **📊 Fine-Grained Context Control**: Choose exactly what to share with AI models
-- **📎 Citations**: Get answers with proper source citations
+- [开始使用](docs/0-START-HERE/index.md)
+- [用户指南](docs/3-USER-GUIDE/index.md)
+- [添加来源](docs/3-USER-GUIDE/adding-sources.md)
+- [搜索与全局 Ask](docs/3-USER-GUIDE/search.md)
+- [界面概览](docs/3-USER-GUIDE/interface-overview.md)
+- [高效对话](docs/3-USER-GUIDE/chat-effectively.md)
 
+### 部署与开发
 
-## Podcast Feature
+- [安装部署](docs/1-INSTALLATION/index.md)
+- [源码部署](docs/1-INSTALLATION/from-source.md)
+- [配置说明](CONFIGURATION.md)
+- [API 参考](docs/7-DEVELOPMENT/api-reference.md)
+- [贡献指南](CONTRIBUTING.md)
+- [二开记录](docs/8-CUSTOMIZATION/00-index.md)
 
-[![Check out our podcast sample](https://img.youtube.com/vi/D-760MlGwaI/0.jpg)](https://www.youtube.com/watch?v=D-760MlGwaI)
+## 近期二开里程碑
 
-## 📚 Documentation
+- 温暖研究风格 UI 和响应式导航。
+- 多用户登录、注册审批、角色权限、个人资料和管理员用户管理。
+- 笔记本创建者权限、密码管理、归档/删除权限收敛。
+- NotebookLM 风格导览卡片和回答后的建议问题。
+- 长耗时问答阶段提示、联网搜索超时降级和聊天链路日志。
+- 来源搜索、分页、跨笔记本来源复用、来源数量上限和已嵌入来源过滤。
+- 旧版 Office 文件入库、Excel 表格清理、全局 Ask 覆盖统计和历史。
+- 重名文件检查、原始文件名保留、来源详情 sticky 操作区和 ChatPanel 长内容宽度约束。
+- `make start-all` 源码启动流程、Next.js 16 proxy 入口和前端 `/api` 代理收敛。
 
-### Getting Started
-- **[📖 Introduction](docs/0-START-HERE/index.md)** - Learn what Lumiton·Omax offers
-- **[⚡ Quick Start](docs/0-START-HERE/quick-start.md)** - Get up and running in 5 minutes
-- **[🔧 Installation](docs/1-INSTALLATION/index.md)** - Comprehensive setup guide
-- **[🎯 Your First Notebook](docs/0-START-HERE/first-notebook.md)** - Step-by-step tutorial
+## 后续方向
 
-### User Guide
-- **[📱 Interface Overview](docs/3-USER-GUIDE/interface-overview.md)** - Understanding the layout
-- **[📚 Notebooks](docs/3-USER-GUIDE/notebooks.md)** - Organizing your research
-- **[📄 Sources](docs/3-USER-GUIDE/sources.md)** - Managing content types
-- **[📝 Notes](docs/3-USER-GUIDE/notes.md)** - Creating and managing notes
-- **[💬 Chat](docs/3-USER-GUIDE/chat.md)** - AI conversations
-- **[🔍 Search](docs/3-USER-GUIDE/search.md)** - Finding information
+根据试用反馈，后续仍建议继续推进：
 
-### Advanced Topics
-- **[🎙️ Podcast Generation](docs/2-CORE-CONCEPTS/podcasts.md)** - Create professional podcasts
-- **[🔧 Content Transformations](docs/2-CORE-CONCEPTS/transformations.md)** - Customize content processing
-- **[🤖 AI Models](docs/4-AI-PROVIDERS/index.md)** - AI model configuration
-- **[🔌 MCP Integration](docs/5-CONFIGURATION/mcp-integration.md)** - Connect with Claude Desktop, VS Code and other MCP clients
-- **[🔧 REST API Reference](docs/7-DEVELOPMENT/api-reference.md)** - Complete API documentation
-- **[🔐 Security](docs/5-CONFIGURATION/security.md)** - Password protection and privacy
-- **[🚀 Deployment](docs/1-INSTALLATION/index.md)** - Complete deployment guides for all scenarios
+- 图片识别从“描述画面”升级为“读取关键数值、判断是否合格、指出异常”。
+- 自动提取产品代号、单体、实验类型等标签。
+- 将 Excel 实验数据拆成结构化记录，形成可搜索、可筛选的实验索引。
+- 按产品形成实验时间线。
+- 展示产品版本演进和复配关联关系。
+- 针对 ScienceDirect、OnePetro、ACS 等强登录或反爬学术站点，继续评估更稳妥的资料导入路径。
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-## 🗺️ Roadmap
-
-### Upcoming Features
-- **Live Front-End Updates**: Real-time UI updates for smoother experience
-- **Async Processing**: Faster UI through asynchronous content processing
-- **Cross-Notebook Sources**: Reuse research materials across projects
-- **Bookmark Integration**: Connect with your favorite bookmarking apps
-
-### Recently Completed ✅
-- **Next.js Frontend**: Modern React-based frontend with improved performance
-- **Comprehensive REST API**: Full programmatic access to all functionality
-- **Multi-Model Support**: 18+ AI providers including OpenAI, Anthropic, Ollama, LM Studio
-- **Advanced Podcast Generator**: Professional multi-speaker podcasts with Episode Profiles
-- **Content Transformations**: Powerful customizable actions for content processing
-- **Enhanced Citations**: Improved layout and finer control for source citations
-- **Multiple Chat Sessions**: Manage different conversations within notebooks
-
-See the [open issues](https://github.com/lfnovo/open-notebook/issues) for a full list of proposed features and known issues.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-## 📖 Need Help?
-- **🤖 AI Installation Assistant**: We have a [CustomGPT built to help you install Lumiton·Omax](https://chatgpt.com/g/g-68776e2765b48191bd1bae3f30212631-open-notebook-installation-assistant) - it will guide you through each step!
-- **New to Lumiton·Omax?** Start with our [Getting Started Guide](docs/0-START-HERE/index.md)
-- **Need installation help?** Check our [Installation Guide](docs/1-INSTALLATION/index.md)
-- **Want to see it in action?** Try our [Quick Start Tutorial](docs/0-START-HERE/quick-start.md)
-
-## 🤝 Community & Contributing
-
-### Join the Community
-- 💬 **[Discord Server](https://discord.gg/37XJPXfz2w)** - Get help, share ideas, and connect with other users
-- 🐛 **[GitHub Issues](https://github.com/lfnovo/open-notebook/issues)** - Report bugs and request features
-- ⭐ **Star this repo** - Show your support and help others discover Lumiton·Omax
-
-### Contributing
-We welcome contributions! We're especially looking for help with:
-- **Frontend Development**: Help improve our modern Next.js/React UI
-- **Testing & Bug Fixes**: Make Lumiton·Omax more robust
-- **Feature Development**: Build the coolest research tool together
-- **Documentation**: Improve guides and tutorials
-
-**Current Tech Stack**: Python, FastAPI, Next.js, React, SurrealDB
-**Future Roadmap**: Real-time updates, enhanced async processing
-
-See our [Contributing Guide](CONTRIBUTING.md) for detailed information on how to get started.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-## 📄 License
+## License
 
 Lumiton·Omax is MIT licensed. See the [LICENSE](LICENSE) file for details.
 
-
-**Community Support**:
-- 💬 [Discord Server](https://discord.gg/37XJPXfz2w) - Get help, share ideas, and connect with users
-- 🐛 [GitHub Issues](https://github.com/lfnovo/open-notebook/issues) - Report bugs and request features
-- 🌐 [Website](https://www.open-notebook.ai) - Learn more about the project
+本仓库基于 Open Notebook 二次开发。上游项目信息、社区和原始文档可参考 [lfnovo/open-notebook](https://github.com/lfnovo/open-notebook)。
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
 <!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/lfnovo/open-notebook.svg?style=for-the-badge
-[contributors-url]: https://github.com/lfnovo/open-notebook/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/lfnovo/open-notebook.svg?style=for-the-badge
-[forks-url]: https://github.com/lfnovo/open-notebook/network/members
-[stars-shield]: https://img.shields.io/github/stars/lfnovo/open-notebook.svg?style=for-the-badge
-[stars-url]: https://github.com/lfnovo/open-notebook/stargazers
-[issues-shield]: https://img.shields.io/github/issues/lfnovo/open-notebook.svg?style=for-the-badge
-[issues-url]: https://github.com/lfnovo/open-notebook/issues
-[license-shield]: https://img.shields.io/github/license/lfnovo/open-notebook.svg?style=for-the-badge
-[license-url]: https://github.com/lfnovo/open-notebook/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/lfnovo
-[product-screenshot]: images/screenshot.png
-[Next.js]: https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white
-[Next-url]: https://nextjs.org/
-[React]: https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black
-[React-url]: https://reactjs.org/
-[Python]: https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white
-[Python-url]: https://www.python.org/
-[LangChain]: https://img.shields.io/badge/LangChain-3A3A3A?style=for-the-badge&logo=chainlink&logoColor=white
-[LangChain-url]: https://www.langchain.com/
-[SurrealDB]: https://img.shields.io/badge/SurrealDB-FF5E00?style=for-the-badge&logo=databricks&logoColor=white
-[SurrealDB-url]: https://surrealdb.com/
+[forks-shield]: https://img.shields.io/github/forks/YinHour/lumina-omax.svg?style=for-the-badge
+[forks-url]: https://github.com/YinHour/lumina-omax/network/members
+[stars-shield]: https://img.shields.io/github/stars/YinHour/lumina-omax.svg?style=for-the-badge
+[stars-url]: https://github.com/YinHour/lumina-omax/stargazers
+[issues-shield]: https://img.shields.io/github/issues/YinHour/lumina-omax.svg?style=for-the-badge
+[issues-url]: https://github.com/YinHour/lumina-omax/issues
+[license-shield]: https://img.shields.io/github/license/YinHour/lumina-omax.svg?style=for-the-badge
+[license-url]: https://github.com/YinHour/lumina-omax/blob/main/LICENSE
