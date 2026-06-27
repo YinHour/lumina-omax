@@ -2049,4 +2049,4 @@ cd frontend && npm test -- --run src/components/notebooks/CreateNotebookDialog.t
 
 ---
 
-> 最后更新：2026-06-20 | 新增 §28（PR #26 验证反馈收敛）。当前分支 `codex/pr26-feedback-fixes-0620` 修复来源响应漏传 `original_filename`、Excel 非法 Markdown 表格重建，并补充笔记本首页“只看我的”筛选和创建弹窗按钮间距调整。
+> 最后更新：2026-06-20 | 新增 §28（PR #26 验证反馈收敛）。该轮分支 `codex/pr26-feedback-fixes-0620` 修复来源响应漏传 `original_filename`、Excel 非法 Markdown 表格重建，并补充笔记本首页“只看我的”筛选和创建弹窗按钮间距调整。
