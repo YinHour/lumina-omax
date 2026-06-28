@@ -23,8 +23,10 @@ interface AskState {
   coverage: AskCoverage | null
   history: AskHistoryEntry[]
   error: string | null
+  errorBubble: string | null
+  activityElapsedSeconds: number
   abortController: AbortController | null
-  
+
   setStreaming: (isStreaming: boolean) => void
   setStrategy: (strategy: StrategyData | null) => void
   updateStrategyReasoning: (chunk: string) => void
@@ -35,6 +37,8 @@ interface AskState {
   restoreHistoryEntry: (id: string) => AskHistoryEntry | null
   clearHistory: () => void
   setError: (error: string | null) => void
+  setErrorBubble: (body: string | null) => void
+  setActivityElapsedSeconds: (seconds: number) => void
   setAbortController: (controller: AbortController | null) => void
   clearState: () => void
 }
@@ -49,6 +53,8 @@ export const useAskStore = create<AskState>()(
       coverage: null,
       history: [],
       error: null,
+      errorBubble: null,
+      activityElapsedSeconds: 0,
       abortController: null,
 
       setStreaming: (isStreaming) => set({ isStreaming }),
@@ -83,6 +89,8 @@ export const useAskStore = create<AskState>()(
             finalAnswer: entry.answer,
             coverage: entry.coverage,
             error: null,
+            errorBubble: null,
+            activityElapsedSeconds: 0,
             isStreaming: false,
           })
         }
@@ -90,6 +98,8 @@ export const useAskStore = create<AskState>()(
       },
       clearHistory: () => set({ history: [] }),
       setError: (error) => set({ error, isStreaming: false }),
+      setErrorBubble: (errorBubble) => set({ errorBubble, isStreaming: false }),
+      setActivityElapsedSeconds: (activityElapsedSeconds) => set({ activityElapsedSeconds }),
       setAbortController: (controller) => set({ abortController: controller }),
       clearState: () => {
         const { abortController } = get()
@@ -103,6 +113,8 @@ export const useAskStore = create<AskState>()(
           finalAnswer: null,
           coverage: null,
           error: null,
+          errorBubble: null,
+          activityElapsedSeconds: 0,
           abortController: null
         })
       }
@@ -116,7 +128,7 @@ export const useAskStore = create<AskState>()(
         coverage: state.coverage,
         history: state.history,
         error: state.error
-        // Exclude isStreaming and abortController
+        // Exclude isStreaming, errorBubble, activityElapsedSeconds, abortController
       })
     }
   )

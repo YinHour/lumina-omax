@@ -26,6 +26,8 @@ interface StreamingResponseProps {
   answers: string[]
   finalAnswer: string | null
   coverage?: AskCoverage | null
+  errorBubble?: string | null
+  activityElapsedSeconds?: number
   onSaveRequest?: () => void
 }
 
@@ -35,6 +37,8 @@ export function StreamingResponse({
   answers,
   finalAnswer,
   coverage,
+  errorBubble,
+  activityElapsedSeconds,
   onSaveRequest
 }: StreamingResponseProps) {
   const [strategyOpen, setStrategyOpen] = useState(true)
@@ -90,7 +94,7 @@ export function StreamingResponse({
     }
   }
 
-  if (!strategy && !answers.length && !finalAnswer && !isStreaming) {
+  if (!strategy && !answers.length && !finalAnswer && !isStreaming && !errorBubble) {
     return null
   }
 
@@ -232,8 +236,28 @@ export function StreamingResponse({
       {isStreaming && !finalAnswer && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <LoadingSpinner size="sm" />
-          <span>{t.searchPage.processingQuestion}</span>
+          <span>
+            {t.searchPage.processingQuestion}
+            {typeof activityElapsedSeconds === 'number' && activityElapsedSeconds > 0
+              ? `（${activityElapsedSeconds}s）`
+              : ''}
+          </span>
         </div>
+      )}
+
+      {/* Inline SSE error bubble (§32). Rendered after any partial answers
+          so users see what was produced before the failure. */}
+      {errorBubble && (
+        <Card>
+          <CardContent className="prose prose-sm dark:prose-invert max-w-none py-4">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+            >
+              {errorBubble}
+            </ReactMarkdown>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

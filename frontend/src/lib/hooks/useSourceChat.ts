@@ -6,6 +6,7 @@ import { toast } from '@/lib/hooks/use-toast'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { sourceChatApi } from '@/lib/api/source-chat'
+import { buildErrorBubbleBody } from '@/lib/chat/error-bubble'
 import {
   SourceChatSession,
   SourceChatMessage,
@@ -14,12 +15,18 @@ import {
   UpdateSourceChatSessionRequest
 } from '@/lib/types/api'
 
+export type SourceChatActivityStatus =
+  | 'awaitingModel'
+  | 'modelStreaming'
+
 export function useSourceChat(sourceId: string) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<SourceChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [activityStatus, setActivityStatus] = useState<SourceChatActivityStatus | null>(null)
+  const [activityElapsedSeconds, setActivityElapsedSeconds] = useState<number>(0)
   const [contextIndicators, setContextIndicators] = useState<SourceChatContextIndicator | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -130,7 +137,10 @@ export function useSourceChat(sourceId: string) {
     }
     setMessages(prev => [...prev, userMessage])
     setIsStreaming(true)
+    setActivityStatus('awaitingModel')
+    setActivityElapsedSeconds(0)
 
+    let inlineStreamError = false
     try {
       const controller = new AbortController()
       abortControllerRef.current = controller
@@ -150,6 +160,87 @@ export function useSourceChat(sourceId: string) {
 
       let buffer = ''
 
+      const handleStreamEvent = (data: {
+        type?: string
+        content?: string
+        message?: string
+        data?: SourceChatContextIndicator
+        stage?: string
+        elapsed_ms?: number
+        error_code?: string
+        timeout_seconds?: number
+      }) => {
+        if (data.type === 'ai_message') {
+          if (!aiMessage) {
+            setActivityStatus('modelStreaming')
+            setActivityElapsedSeconds(0)
+            aiMessage = {
+              id: `ai-${Date.now()}`,
+              type: 'ai',
+              content: data.content || '',
+              timestamp: new Date().toISOString()
+            }
+            setMessages(prev => [...prev, aiMessage!])
+          } else {
+            aiMessage.content += data.content || ''
+            setMessages(prev =>
+              prev.map(msg => msg.id === aiMessage!.id
+                ? { ...msg, content: aiMessage!.content }
+                : msg
+              )
+            )
+          }
+        } else if (data.type === 'heartbeat') {
+          // Backend keep-alive while waiting for first model byte. Surface
+          // elapsed seconds so the UI can show "model still working, waited Ns".
+          if (data.stage === 'awaiting_model' && typeof data.elapsed_ms === 'number') {
+            setActivityStatus('awaitingModel')
+            setActivityElapsedSeconds(Math.max(1, Math.floor(data.elapsed_ms / 1000)))
+          }
+        } else if (data.type === 'context_indicators') {
+          setContextIndicators(data.data ?? null)
+        } else if (data.type === 'error') {
+          // Render SSE errors inline as an AI-role bubble (same pattern as
+          // the notebook chat — see §29.7/§31). The shared helper picks the
+          // localized template per error_code and appends an English
+          // diagnostic block.
+          const { body: bubbleBody } = buildErrorBubbleBody(data, {
+            errorLlmTimeoutPrefix: t.chat.errorLlmTimeoutPrefix,
+            errorLlmTimeout: t.chat.errorLlmTimeoutSource,
+            errorAuthentication: t.chat.errorAuthentication,
+            errorRateLimit: t.chat.errorRateLimit,
+            errorConfiguration: t.chat.errorConfiguration,
+            errorNetwork: t.chat.errorNetwork,
+            errorExternalService: t.chat.errorExternalService,
+            errorInvalidInput: t.chat.errorInvalidInput,
+            errorNotFound: t.chat.errorNotFound,
+            errorInternal: t.chat.errorInternal,
+            errorGeneric: t.chat.errorGeneric,
+          })
+
+          if (!aiMessage) {
+            aiMessage = {
+              id: `ai-error-${Date.now()}`,
+              type: 'ai',
+              content: bubbleBody,
+              timestamp: new Date().toISOString(),
+            }
+            setMessages(prev => [...prev, aiMessage!])
+          } else {
+            aiMessage.content += `\n\n${bubbleBody}`
+            setMessages(prev =>
+              prev.map(msg => msg.id === aiMessage!.id
+                ? { ...msg, content: aiMessage!.content }
+                : msg
+              )
+            )
+          }
+          inlineStreamError = true
+          setActivityStatus(null)
+          setActivityElapsedSeconds(0)
+        }
+      }
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) {
@@ -160,28 +251,7 @@ export function useSourceChat(sourceId: string) {
               if (line.startsWith('data: ')) {
                 try {
                   const data = JSON.parse(line.slice(6))
-                  // Handle final data
-                  if (data.type === 'ai_message') {
-                    if (!aiMessage) {
-                      aiMessage = {
-                        id: `ai-${Date.now()}`,
-                        type: 'ai',
-                        content: data.content || '',
-                        timestamp: new Date().toISOString()
-                      }
-                      setMessages(prev => [...prev, aiMessage!])
-                    } else {
-                      aiMessage.content += data.content || ''
-                      setMessages(prev =>
-                        prev.map(msg => msg.id === aiMessage!.id
-                          ? { ...msg, content: aiMessage!.content }
-                          : msg
-                        )
-                      )
-                    }
-                  } else if (data.type === 'context_indicators') {
-                    setContextIndicators(data.data)
-                  }
+                  handleStreamEvent(data)
                 } catch {}
               }
             }
@@ -190,41 +260,17 @@ export function useSourceChat(sourceId: string) {
         }
 
         buffer += decoder.decode(value, { stream: true })
-        
+
         // Find complete lines in buffer
         let newlineIndex
         while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
           const line = buffer.slice(0, newlineIndex)
           buffer = buffer.slice(newlineIndex + 1)
-          
+
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))
-              
-              if (data.type === 'ai_message') {
-                // Create AI message on first content chunk to avoid empty bubble
-                if (!aiMessage) {
-                  aiMessage = {
-                    id: `ai-${Date.now()}`,
-                    type: 'ai',
-                    content: data.content || '',
-                    timestamp: new Date().toISOString()
-                  }
-                  setMessages(prev => [...prev, aiMessage!])
-                } else {
-                  aiMessage.content += data.content || ''
-                  setMessages(prev =>
-                    prev.map(msg => msg.id === aiMessage!.id
-                      ? { ...msg, content: aiMessage!.content }
-                      : msg
-                    )
-                  )
-                }
-              } else if (data.type === 'context_indicators') {
-                setContextIndicators(data.data)
-              } else if (data.type === 'error') {
-                throw new Error(data.message || 'Stream error')
-              }
+              handleStreamEvent(data)
             } catch (e) {
               if (e instanceof SyntaxError) {
                 console.error('Error parsing SSE data:', e, 'Line:', line)
@@ -239,6 +285,9 @@ export function useSourceChat(sourceId: string) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return
       }
+      // Genuine transport-layer failures still surface as a toast — the
+      // server never had a chance to emit an `error` event. All SSE-signaled
+      // errors are rendered inline as AI bubbles in `handleStreamEvent`.
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
       console.error('Error sending message:', error)
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))
@@ -246,8 +295,13 @@ export function useSourceChat(sourceId: string) {
       setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
     } finally {
       setIsStreaming(false)
-      // Refetch session to get persisted messages
-      refetchCurrentSession()
+      setActivityStatus(null)
+      setActivityElapsedSeconds(0)
+      // Skip refetch when the stream ended with an inline error — the bubble
+      // lives in front-end state only; reloading would wipe it.
+      if (!inlineStreamError) {
+        refetchCurrentSession()
+      }
     }
   }, [sourceId, currentSessionId, refetchCurrentSession, queryClient, t])
 
@@ -256,6 +310,8 @@ export function useSourceChat(sourceId: string) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       setIsStreaming(false)
+      setActivityStatus(null)
+      setActivityElapsedSeconds(0)
     }
   }, [])
 
@@ -287,6 +343,8 @@ export function useSourceChat(sourceId: string) {
     currentSessionId,
     messages,
     isStreaming,
+    activityStatus,
+    activityElapsedSeconds,
     contextIndicators,
     loadingSessions,
     

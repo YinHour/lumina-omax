@@ -59,7 +59,15 @@ export interface StrategyData {
 }
 
 export interface AskStreamEvent {
-  type: 'strategy' | 'strategy_reasoning_chunk' | 'answer' | 'final_answer' | 'coverage' | 'complete' | 'error'
+  type:
+    | 'strategy'
+    | 'strategy_reasoning_chunk'
+    | 'answer'
+    | 'final_answer'
+    | 'coverage'
+    | 'complete'
+    | 'error'
+    | 'heartbeat'
   reasoning?: string
   searches?: Array<{ term: string; instructions: string }>
   content?: string
@@ -71,4 +79,10 @@ export interface AskStreamEvent {
   retrieved_sources?: number
   retrieved_source_ids?: string[]
   message?: string
+  // Heartbeat fields (silence-based keep-alive while a phase is running).
+  stage?: string
+  elapsed_ms?: number
+  // Error fields (§31/§32: stable wire identifier + timeout details).
+  error_code?: string
+  timeout_seconds?: number
 }

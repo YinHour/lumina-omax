@@ -636,4 +636,302 @@ describe('useNotebookChat', () => {
       expect.any(AbortSignal),
     )
   })
+
+  it('surfaces heartbeat events as awaitingModel activity with elapsed seconds', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Heartbeat test',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+
+    let release!: () => void
+    const released = new Promise<void>((resolve) => { release = resolve })
+
+    const heartbeatStream = {
+      getReader: () => {
+        let step = 0
+        return {
+          read: vi.fn(async () => {
+            step += 1
+            if (step === 1) {
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"heartbeat","stage":"awaiting_model","elapsed_ms":5000}\n\n',
+                ),
+              }
+            }
+            if (step === 2) {
+              // Pause until the test inspects the awaitingModel state, then deliver
+              // the final completion frames.
+              await released
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"ai_message","content":"hi"}\n\n' +
+                  'data: {"type":"answer_complete"}\n\n' +
+                  'data: {"type":"complete"}\n\n',
+                ),
+              }
+            }
+            return { done: true, value: undefined }
+          }),
+        }
+      },
+    } as unknown as ReadableStream<Uint8Array>
+
+    chatApiMock.sendMessage.mockResolvedValue(heartbeatStream)
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    let sendPromise: Promise<void>
+    await act(async () => {
+      sendPromise = result.current.sendMessage('Hello?')
+    })
+
+    await waitFor(() => {
+      expect(result.current.activityStatus).toBe('awaitingModel')
+      expect(result.current.activityElapsedSeconds).toBeGreaterThan(0)
+    })
+
+    await act(async () => {
+      release()
+      await sendPromise!
+    })
+
+    expect(result.current.activityStatus).toBeNull()
+    expect(result.current.activityElapsedSeconds).toBe(0)
+  })
+
+  it('renders llm_timeout as an inline AI bubble instead of a toast (scenario A: no prior AI chunks)', async () => {
+    const { toast } = await import('@/lib/hooks/use-toast')
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Timeout test',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+
+    const timeoutStream = {
+      getReader: () => {
+        let step = 0
+        return {
+          read: vi.fn(async () => {
+            step += 1
+            if (step === 1) {
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"error","error_code":"llm_timeout","timeout_seconds":3,"message":"Model response timed out after 3s. Try shrinking the included sources or notes and ask again."}\n\n',
+                ),
+              }
+            }
+            return { done: true, value: undefined }
+          }),
+        }
+      },
+    } as unknown as ReadableStream<Uint8Array>
+
+    chatApiMock.sendMessage.mockResolvedValue(timeoutStream)
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('Slow question')
+    })
+
+    // No toast, no console.error — the timeout is surfaced inline.
+    expect(toast.error).not.toHaveBeenCalled()
+
+    // Human optimistic bubble is preserved (refetch is mocked empty here).
+    const humanMessages = result.current.messages.filter(m => m.type === 'human')
+    expect(humanMessages.length).toBeGreaterThanOrEqual(1)
+
+    // New AI bubble carries the warning prefix + localized body + diagnostic line.
+    const aiMessages = result.current.messages.filter(m => m.type === 'ai')
+    expect(aiMessages.length).toBe(1)
+    const aiContent = aiMessages[0].content
+    expect(aiContent).toContain('⚠️')
+    expect(aiContent.toLowerCase()).toContain('timed out')
+    expect(aiContent).toContain('error_code=llm_timeout')
+    expect(aiContent).toContain('timeout_seconds=3')
+    expect(aiContent).toContain('_Server message_')
+
+    // Activity is reset; input box can accept a new question.
+    expect(result.current.activityStatus).toBeNull()
+    expect(result.current.activityElapsedSeconds).toBe(0)
+    expect(result.current.isSending).toBe(false)
+  })
+
+  it('appends llm_timeout notice to the existing AI bubble when chunks already streamed (scenario B)', async () => {
+    const { toast } = await import('@/lib/hooks/use-toast')
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Mid-stream timeout test',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+
+    const midStreamTimeout = {
+      getReader: () => {
+        let step = 0
+        return {
+          read: vi.fn(async () => {
+            step += 1
+            if (step === 1) {
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"ai_message","content":"partial answer"}\n\n' +
+                  'data: {"type":"error","error_code":"llm_timeout","timeout_seconds":3,"message":"Model response timed out after 3s."}\n\n',
+                ),
+              }
+            }
+            return { done: true, value: undefined }
+          }),
+        }
+      },
+    } as unknown as ReadableStream<Uint8Array>
+
+    chatApiMock.sendMessage.mockResolvedValue(midStreamTimeout)
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('Question that times out mid-stream')
+    })
+
+    expect(toast.error).not.toHaveBeenCalled()
+
+    // Exactly one AI bubble — the timeout notice was appended, not a new bubble.
+    const aiMessages = result.current.messages.filter(m => m.type === 'ai')
+    expect(aiMessages.length).toBe(1)
+    const aiContent = aiMessages[0].content
+    expect(aiContent).toContain('partial answer')
+    expect(aiContent).toContain('⚠️')
+    expect(aiContent).toContain('error_code=llm_timeout')
+
+    expect(result.current.activityStatus).toBeNull()
+    expect(result.current.isSending).toBe(false)
+  })
+
+  it.each([
+    {
+      label: 'rate_limit',
+      code: 'rate_limit',
+      message: 'Rate limit exceeded. Please wait a moment and try again.',
+      expectInBubbleLowercased: ['rate-limited'],
+    },
+    {
+      label: 'authentication',
+      code: 'authentication',
+      message: 'Authentication failed. Please check your API key in Settings -> Credentials.',
+      expectInBubbleLowercased: ['authentication failed'],
+    },
+    {
+      label: 'network',
+      code: 'network',
+      message: 'Could not connect to the AI provider. Please check your network connection and provider URL.',
+      expectInBubbleLowercased: ['could not reach the ai provider'],
+    },
+    {
+      label: 'external_service',
+      code: 'external_service',
+      message: 'The AI provider is temporarily unavailable. Please try again in a few minutes.',
+      expectInBubbleLowercased: ['ai provider returned an error'],
+    },
+    {
+      label: 'unknown code falls back to generic template',
+      code: 'something_weird',
+      message: 'Specific upstream message',
+      expectInBubbleLowercased: ['chat request did not complete'],
+    },
+  ])('renders SSE error_code=$label as inline AI bubble with localized guidance', async ({ code, message, expectInBubbleLowercased }) => {
+    const { toast } = await import('@/lib/hooks/use-toast')
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: `Error ${code} test`,
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+
+    const payload = JSON.stringify({ type: 'error', error_code: code, message })
+    const errorStream = {
+      getReader: () => {
+        let step = 0
+        return {
+          read: vi.fn(async () => {
+            step += 1
+            if (step === 1) {
+              return {
+                done: false,
+                value: new TextEncoder().encode(`data: ${payload}\n\n`),
+              }
+            }
+            return { done: true, value: undefined }
+          }),
+        }
+      },
+    } as unknown as ReadableStream<Uint8Array>
+    chatApiMock.sendMessage.mockResolvedValue(errorStream)
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage(`Trigger ${code}`)
+    })
+
+    expect(toast.error).not.toHaveBeenCalled()
+    const aiMessages = result.current.messages.filter(m => m.type === 'ai')
+    expect(aiMessages.length).toBe(1)
+    const bubble = aiMessages[0].content
+    expect(bubble).toContain('⚠️')
+    expect(bubble).toContain(`error_code=${code}`)
+    expect(bubble).toContain(`_Server message_: ${message}`)
+    const lowered = bubble.toLowerCase()
+    for (const snippet of expectInBubbleLowercased) {
+      expect(lowered).toContain(snippet.toLowerCase())
+    }
+
+    expect(result.current.activityStatus).toBeNull()
+    expect(result.current.activityElapsedSeconds).toBe(0)
+    expect(result.current.isSending).toBe(false)
+  })
 })

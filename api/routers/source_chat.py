@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from typing import AsyncGenerator, List, Optional
 
 from fastapi import APIRouter, HTTPException, Path
@@ -10,6 +11,13 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api.sse_helpers import (
+    env_positive_float,
+    error_code_from_exception,
+    error_sse_event,
+    llm_timeout_sse_event,
+    stream_with_heartbeat_and_timeout,
+)
 from open_notebook.config import LANGGRAPH_SOURCE_CHAT_CHECKPOINT_FILE
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import ChatSession, Source
@@ -21,6 +29,14 @@ from open_notebook.graphs.source_chat import source_chat_state
 from open_notebook.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
+
+
+SOURCE_CHAT_LLM_TIMEOUT_SECONDS = env_positive_float(
+    "SOURCE_CHAT_LLM_TIMEOUT_SECONDS", 240.0
+)
+SOURCE_CHAT_STREAM_HEARTBEAT_SECONDS = env_positive_float(
+    "SOURCE_CHAT_STREAM_HEARTBEAT_SECONDS", 5.0
+)
 
 
 # Request/Response models
@@ -442,7 +458,20 @@ async def delete_source_chat_session(
 async def stream_source_chat_response(
     session_id: str, source_id: str, message: str, model_override: Optional[str] = None, enable_web_search: bool = False
 ) -> AsyncGenerator[str, None]:
-    """Stream the source chat response as Server-Sent Events."""
+    """Stream the source chat response as Server-Sent Events.
+
+    Mirrors the notebook chat helper structure (§29/§31):
+      - emit the user_message echo eagerly so the front-end can keep the
+        optimistic bubble locked in;
+      - run the graph inside a producer task wrapped by
+        ``stream_with_heartbeat_and_timeout`` so the SSE stream gets keep-alive
+        heartbeat events while the model is still computing the first chunk
+        and a stable ``llm_timeout`` error event if the producer blows past
+        ``SOURCE_CHAT_LLM_TIMEOUT_SECONDS``;
+      - on any other exception emit an ``error`` event with a stable
+        ``error_code`` so the front-end can render a localized bubble.
+    """
+    started_at = time.perf_counter()
     try:
         # Get current state from SqliteSaver (same file the streaming writes to)
         from langgraph.checkpoint.sqlite import SqliteSaver
@@ -465,7 +494,7 @@ async def stream_source_chat_response(
         user_message = HumanMessage(content=message)
         state_values["messages"].append(user_message)
 
-        # Send user message event
+        # Send user message event eagerly so the optimistic UI stays in sync.
         user_event = {"type": "user_message", "content": message, "timestamp": None}
         yield f"data: {json.dumps(user_event)}\n\n"
 
@@ -473,147 +502,131 @@ async def stream_source_chat_response(
         config = RunnableConfig(
             configurable={"thread_id": session_id, "model_id": model_override}
         )
-        
-        # Stream the complete AI response if chunks weren't captured properly
-        # (Fall back on final message if no chunks were streamed)
-        yielded_ai_chunks = False
-            
-        async with AsyncSqliteSaver.from_conn_string(LANGGRAPH_SOURCE_CHAT_CHECKPOINT_FILE) as saver:
-            async_graph = source_chat_state.compile(checkpointer=saver)
-            
-            # Use specific events based on LangChain's structure
-            # V2 streaming sends specific events for chat models
-            async for event in async_graph.astream_events(
-                input=state_values, config=config, version="v2"
-            ):
-                kind = event["event"]
-                
-                # Debug output to terminal so we can see what's happening
-                print(f"EVENT: {kind}")
-                
-                # We can also check chat_model_stream for base chat models
-                if kind == "on_chat_model_stream" or kind == "on_llm_stream":
-                    # We got a new chunk from the LLM
-                    # V2 astream_events structure
-                    if "chunk" in event["data"]:
-                        chunk = event["data"]["chunk"]
-                        
-                        # Sometimes content is empty but we should still check it
-                        if hasattr(chunk, "content") and chunk.content:
-                            content = chunk.content
-                            yielded_ai_chunks = True
-                            # If this is our first chunk but it's string content
-                            if isinstance(content, str):
-                                ai_event = {
-                                    "type": "ai_message",
-                                    "content": content,
-                                    "timestamp": None,
-                                }
-                                yield f"data: {json.dumps(ai_event)}\n\n"
-                                # A small sleep to yield control loop back to the server so it flushes
-                                await asyncio.sleep(0.001)
-                            # Also handle dict chunk types
-                            elif isinstance(content, list):
-                                for c in content:
-                                    if isinstance(c, dict) and "text" in c:
-                                        if not c["text"].startswith("<web_search_results>") and not c["text"].endswith("</web_search_results>"):
-                                            ai_event = {
-                                                "type": "ai_message",
-                                                "content": c["text"],
-                                                "timestamp": None,
-                                            }
-                                            yield f"data: {json.dumps(ai_event)}\n\n"
-                                            await asyncio.sleep(0.001)
-                                    elif isinstance(c, str):
-                                        if not c.startswith("<web_search_results>") and not c.endswith("</web_search_results>"):
-                                            ai_event = {
-                                                "type": "ai_message",
-                                                "content": c,
-                                                "timestamp": None,
-                                            }
-                                            yield f"data: {json.dumps(ai_event)}\n\n"
-                                            await asyncio.sleep(0.001)
-                                        
-                        # Also handle direct content streams if chunk is just a string or dict
-                        elif isinstance(chunk, str) and chunk:
-                            if not chunk.startswith("<web_search_results>") and not chunk.endswith("</web_search_results>"):
+
+        async def run_producer(out_queue: asyncio.Queue) -> None:
+            yielded_ai_chunks = False
+
+            async with AsyncSqliteSaver.from_conn_string(LANGGRAPH_SOURCE_CHAT_CHECKPOINT_FILE) as saver:
+                async_graph = source_chat_state.compile(checkpointer=saver)
+
+                async for event in async_graph.astream_events(
+                    input=state_values, config=config, version="v2"
+                ):
+                    kind = event["event"]
+
+                    if kind == "on_chat_model_stream" or kind == "on_llm_stream":
+                        if "chunk" in event["data"]:
+                            chunk = event["data"]["chunk"]
+
+                            if hasattr(chunk, "content") and chunk.content:
+                                content = chunk.content
                                 yielded_ai_chunks = True
-                                ai_event = {
-                                    "type": "ai_message",
-                                    "content": chunk,
-                                    "timestamp": None,
-                                }
-                                yield f"data: {json.dumps(ai_event)}\n\n"
-                                await asyncio.sleep(0.001)
-                        elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
-                            if not chunk["content"].startswith("<web_search_results>") and not chunk["content"].endswith("</web_search_results>"):
+                                if isinstance(content, str):
+                                    ai_event = {
+                                        "type": "ai_message",
+                                        "content": content,
+                                        "timestamp": None,
+                                    }
+                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                elif isinstance(content, list):
+                                    for c in content:
+                                        if isinstance(c, dict) and "text" in c:
+                                            if not c["text"].startswith("<web_search_results>") and not c["text"].endswith("</web_search_results>"):
+                                                ai_event = {
+                                                    "type": "ai_message",
+                                                    "content": c["text"],
+                                                    "timestamp": None,
+                                                }
+                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                        elif isinstance(c, str):
+                                            if not c.startswith("<web_search_results>") and not c.endswith("</web_search_results>"):
+                                                ai_event = {
+                                                    "type": "ai_message",
+                                                    "content": c,
+                                                    "timestamp": None,
+                                                }
+                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+                            elif isinstance(chunk, str) and chunk:
+                                if not chunk.startswith("<web_search_results>") and not chunk.endswith("</web_search_results>"):
+                                    yielded_ai_chunks = True
+                                    ai_event = {
+                                        "type": "ai_message",
+                                        "content": chunk,
+                                        "timestamp": None,
+                                    }
+                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                            elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
+                                if not chunk["content"].startswith("<web_search_results>") and not chunk["content"].endswith("</web_search_results>"):
+                                    yielded_ai_chunks = True
+                                    ai_event = {
+                                        "type": "ai_message",
+                                        "content": chunk["content"],
+                                        "timestamp": None,
+                                    }
+                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+                    elif kind == "on_chat_model_end":
+                        if "output" in event["data"] and "content" in event["data"]["output"]:
+                            if not yielded_ai_chunks:
                                 yielded_ai_chunks = True
-                                ai_event = {
-                                    "type": "ai_message",
-                                    "content": chunk["content"],
-                                    "timestamp": None,
-                                }
-                                yield f"data: {json.dumps(ai_event)}\n\n"
-                                await asyncio.sleep(0.001)
-                            
-                # Some models yield raw strings in astream_events instead of chunk objects
-                elif kind == "on_chat_model_end":
-                    if "output" in event["data"] and "content" in event["data"]["output"]:
-                        # Capture the full message at the end just in case stream events were empty
-                        if not yielded_ai_chunks:
-                            yielded_ai_chunks = True
-                            content = event["data"]["output"]["content"]
-                            if isinstance(content, str):
-                                if not content.startswith("<web_search_results>") and not content.endswith("</web_search_results>"):
-                                    # Split into smaller chunks so it looks like streaming
-                                    chunk_size = 50
-                                    for i in range(0, len(content), chunk_size):
-                                        ai_event = {
-                                            "type": "ai_message",
-                                            "content": content[i:i+chunk_size],
-                                            "timestamp": None,
-                                        }
-                                        yield f"data: {json.dumps(ai_event)}\n\n"
-                                        await asyncio.sleep(0.01)
-                                    
-                elif kind == "on_chain_end" and event["name"] == "LangGraph":
-                    # Graph finished, we can extract any context_indicators from final state
-                    final_state = event["data"]["output"]
-                    
-                    # Check for context indicators in the final state values
-                    # With astream_events, output might look different depending on graph structure
-                    if isinstance(final_state, dict):
-                        context_indicators = None
-                        if "source_chat_agent" in final_state and isinstance(final_state["source_chat_agent"], dict):
-                            # Extract final message if not streamed
-                            if not yielded_ai_chunks and "messages" in final_state["source_chat_agent"]:
-                                msg = final_state["source_chat_agent"]["messages"]
-                                if hasattr(msg, "content"):
-                                    # Need to stream out chunk by chunk if we are falling back to the whole message
-                                    # to ensure it at least shows up
-                                    content_text = msg.content
-                                    if content_text:
-                                        # Split into smaller chunks so it looks like streaming
+                                content = event["data"]["output"]["content"]
+                                if isinstance(content, str):
+                                    if not content.startswith("<web_search_results>") and not content.endswith("</web_search_results>"):
                                         chunk_size = 50
-                                        for i in range(0, len(content_text), chunk_size):
+                                        for i in range(0, len(content), chunk_size):
                                             ai_event = {
                                                 "type": "ai_message",
-                                                "content": content_text[i:i+chunk_size],
+                                                "content": content[i:i+chunk_size],
                                                 "timestamp": None,
                                             }
-                                            yield f"data: {json.dumps(ai_event)}\n\n"
-                                            await asyncio.sleep(0.01)
-                                    
-                            context_indicators = final_state["source_chat_agent"].get("context_indicators")
-                        elif "context_indicators" in final_state:
-                            context_indicators = final_state["context_indicators"]
-                            
-                        if context_indicators:
-                            context_event = {
-                                "type": "context_indicators",
-                                "data": context_indicators,
-                            }
-                            yield f"data: {json.dumps(context_event)}\n\n"
+                                            await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+                    elif kind == "on_chain_end" and event["name"] == "LangGraph":
+                        final_state = event["data"]["output"]
+                        if isinstance(final_state, dict):
+                            context_indicators = None
+                            if "source_chat_agent" in final_state and isinstance(final_state["source_chat_agent"], dict):
+                                if not yielded_ai_chunks and "messages" in final_state["source_chat_agent"]:
+                                    msg = final_state["source_chat_agent"]["messages"]
+                                    if hasattr(msg, "content"):
+                                        content_text = msg.content
+                                        if content_text:
+                                            chunk_size = 50
+                                            for i in range(0, len(content_text), chunk_size):
+                                                ai_event = {
+                                                    "type": "ai_message",
+                                                    "content": content_text[i:i+chunk_size],
+                                                    "timestamp": None,
+                                                }
+                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+                                context_indicators = final_state["source_chat_agent"].get("context_indicators")
+                            elif "context_indicators" in final_state:
+                                context_indicators = final_state["context_indicators"]
+
+                            if context_indicators:
+                                context_event = {
+                                    "type": "context_indicators",
+                                    "data": context_indicators,
+                                }
+                                await out_queue.put(f"data: {json.dumps(context_event)}\n\n")
+
+        try:
+            async for chunk in stream_with_heartbeat_and_timeout(
+                run_producer=run_producer,
+                timeout_seconds=SOURCE_CHAT_LLM_TIMEOUT_SECONDS,
+                heartbeat_seconds=SOURCE_CHAT_STREAM_HEARTBEAT_SECONDS,
+                started_at=started_at,
+            ):
+                yield chunk
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Source chat streaming timed out after {SOURCE_CHAT_LLM_TIMEOUT_SECONDS}s "
+                f"(session={session_id}, source={source_id})"
+            )
+            yield llm_timeout_sse_event(SOURCE_CHAT_LLM_TIMEOUT_SECONDS)
+            return
 
         # Send completion signal
         completion_event = {"type": "complete"}
@@ -624,10 +637,10 @@ async def stream_source_chat_response(
 
         from open_notebook.utils.error_classifier import classify_error
 
-        _, user_message = classify_error(e)
+        exc_class, user_message = classify_error(e)
+        code = error_code_from_exception(exc_class)
         logger.error(f"Error in source chat streaming: {str(e)}\n{traceback.format_exc()}")
-        error_event = {"type": "error", "message": user_message}
-        yield f"data: {json.dumps(error_event)}\n\n"
+        yield error_sse_event(code, user_message)
 
 
 @router.post("/sources/{source_id}/chat/sessions/{session_id}/messages")
