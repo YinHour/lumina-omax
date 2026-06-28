@@ -2050,3 +2050,676 @@ cd frontend && npm test -- --run src/components/notebooks/CreateNotebookDialog.t
 ---
 
 > 最后更新：2026-06-20 | 新增 §28（PR #26 验证反馈收敛）。该轮分支 `codex/pr26-feedback-fixes-0620` 修复来源响应漏传 `original_filename`、Excel 非法 Markdown 表格重建，并补充笔记本首页“只看我的”筛选和创建弹窗按钮间距调整。
+
+---
+
+## 29. 笔记本对话流式心跳与 LLM 主回答超时（新增 2026-06-27）
+
+本轮基于用户 6 月 24 日报告的「笔记本内问答卡顿」反馈：同一问题反复问 4 次，第一次几分钟无反应，第二次卡 20 多分钟需强退；用户描述「界面卡住，然后直接跳出答案，无法区分是工作中还是卡死」，并把模型自陈的「搜索调用次数用完了」当成系统状态。
+
+### 29.1 根因再调查
+
+针对 `notebook:vag7xkr2po6ah7951w2w`（11 源「标准」笔记本）、`chat_session:d376g2oopg9nles9raay`（GB/T 8077-2023 问题）实测：
+
+| 场景 | TTFT | model_end | 总耗时 | 备注 |
+|---|---|---|---|---|
+| `enable_web_search=false`（11 源 / 127,620 tokens 上下文 / 历史 65 条消息） | 6.3 s | 26.5 s | 33.8 s | 流式 3,218 字符正常 |
+| `enable_web_search=true` | 7.9 s | 29.6 s | 37.6 s | 本次模型未触发 Tavily 调用，无 `web_search_*` 日志 |
+
+后端日志 `chat_trace=691965eb4bf3 step=first_ai_chunk elapsed_ms=6263`、`main_answer_end answer_chars=3218 elapsed_ms=26445`：系统今天是健康的。「卡顿」并非 DeepSeek 慢，而是叠加因素：
+
+- 历史 65 条消息 + 127k tokens 上下文，DeepSeek-V4-Pro TTFT 在 6–8 秒，遇排队/网络抖动可能更长；
+- 用户陈述「卡 20 分钟只能退出」对应的真实路径是：当时上一轮模型决定调用 Tavily，Tavily 在月底配额（免费档 1000/月）耗尽时返回失败 + `_claim_tavily_call(trace_id, max_calls=2)` 达上限时返回中文化的「搜索调用次数用完了」给模型，进而被模型直接转述给用户；
+- 关键缺陷：**首字节到达前 SSE 通道完全静默，无心跳、无超时**；中间任何一跳的 idle timeout 或 API 重启都会让前端永远停在「正在生成」。
+
+模型在以前轮次中提到的「搜索调用次数用完了」是 `open_notebook/graphs/tools.py:121-125` 真实返回的字符串被模型翻成中文，不是 hallucination，但也不代表向量检索或 DeepSeek 配额耗尽。
+
+### 29.2 A 层修复（本轮范围）
+
+#### 后端 `api/routers/chat.py`
+
+- 新增 `CHAT_LLM_TIMEOUT_SECONDS` 环境变量（默认 `240` 秒），由 `_env_positive_float()` 解析；非法/非正值回退默认。
+- 新增 `CHAT_STREAM_HEARTBEAT_SECONDS` 环境变量（默认 `5` 秒），同样校验。
+- `stream_chat_response` 重构为「producer + heartbeat consumer」结构：
+  - `run_graph_producer()` 协程独占执行原有 `astream_events` 处理逻辑，把 SSE 字符串推入 `asyncio.Queue`；
+  - `run_heartbeat_emitter()` 协程每 `CHAT_STREAM_HEARTBEAT_SECONDS` 秒在 `out_queue` 写一条 `{"type":"heartbeat","stage":"awaiting_model","elapsed_ms":...}`，**收到首个 ai chunk 后立即停止**；
+  - `finalize_producer()` 用 `asyncio.wait_for(producer_task, timeout=CHAT_LLM_TIMEOUT_SECONDS)` 包裹，超时时主回答 raise `asyncio.TimeoutError` 传到外层；
+  - 外层 generator 仅做 `out_queue.get()` 取出 SSE 串后 `yield`，与具体事件类型解耦，保证客户端不会被任何单个 chunk 阻塞。
+- `first_ai_chunk` 与 `main_answer_end` INFO 日志新增 `model_first_byte_ms`、`heartbeats_sent` 字段，便于复盘 TTFT 与心跳触发情况。
+- 新增 `asyncio.TimeoutError` 分支：写 `request_timeout` INFO 日志（含 `timeout_seconds` 与 `total_ms`），向客户端发送 `{"type":"error","error_code":"llm_timeout","timeout_seconds":...,"message":...}` SSE 事件。
+- 新增辅助函数 `heartbeat_sse_event(stage, elapsed_ms)` 与 `_env_positive_float(name, default)`，便于测试和后续扩展。
+
+#### 前端 `frontend/src/lib/hooks/useNotebookChat.ts`
+
+- `NotebookChatActivityStatus` 增加 `awaitingModel`、`modelStreaming` 两个阶段（合计 5 个）。
+- 新增 `activityElapsedSeconds` 状态：解析 SSE `heartbeat` 事件时从 `elapsed_ms` 折算秒数，进入 `awaitingModel` 状态。
+- `ai_message` 首次到达时切换到 `modelStreaming` 并重置 `activityElapsedSeconds`；流结束、取消、错误时全部归零。
+- `error` 事件新增 `error_code === 'llm_timeout'` 分支：取 `t.chat.errorLlmTimeout` 模板（含 `{seconds}` 占位符），如果后端提供 `timeout_seconds` 则插值；后端 `message` 优先级最高。
+- `cancelStreaming` 同步清零 `activityElapsedSeconds`。
+- 返回值新增 `activityElapsedSeconds`，由 `ChatColumn → ChatPanel` 透传。
+
+#### 前端 `frontend/src/components/source/ChatPanel.tsx` 与 `ChatColumn.tsx`
+
+- `ChatActivityStatus` 同步增加 `awaitingModel`、`modelStreaming`。
+- `ChatPanel` 新增 `activityElapsedSeconds` prop，文案为「正在等待模型响应（{N}s）」/「模型已开始输出...」。
+- `ChatColumn` 透传 `chat.activityElapsedSeconds`。
+
+#### i18n `frontend/src/lib/locales/{en-US,zh-CN}/index.ts`
+
+- 新增 3 个键：`chat.activityAwaitingModel`、`chat.activityModelStreaming`、`chat.errorLlmTimeout`。
+- 其他 7 个 locale（`zh-TW`/`ja-JP`/`fr-FR`/`ru-RU`/`pt-BR`/`it-IT`/`bn-IN`）原本就没有 `chat.activity*` 系列键，沿用 en-US fallback，未在本轮强行追加（保留与既有约定一致）。
+
+**未做的事**：B 层（`NOTEBOOK_CHAT_CONTEXT_MAX_CHARS` 默认从 200,000 调到 120,000、历史窗口截断）按本轮商定**延后**，C 层（Tavily 配额监控/帮助文档说明）也未在本轮触碰。仅做 A 层「让用户能看到在工作 + 服务侧能主动失败」。
+
+### 29.3 行为决策
+
+- 心跳 5 秒间隔是平衡参数：足够频繁让用户看到「还在工作」，又不至于污染 SSE 通道；可通过 `CHAT_STREAM_HEARTBEAT_SECONDS` 调整。
+- 超时 240 秒覆盖大上下文 + 网络抖动的合理上限。实测 11 源 / 127k tokens / 65 条历史的 TTFT 6–8 s + 总耗时 30–40 s，240 s 留出 5× 余量。
+- 心跳事件**仅**在首字节到达前发送，避免与 ai_message 流相互干扰。
+- 超时 SSE 事件使用结构化 `error_code=llm_timeout` + `timeout_seconds`，前端可走专门的本地化分支；后端 `message` 仍提供英文降级文本。
+- 心跳与超时仅作用于笔记本聊天 (`/chat/execute`)。`/source/{id}/chat`、`/ask` 等其它 SSE 流暂未引入心跳机制，本轮先聚焦 P0 路径。
+- 不动 RAG 上下文构建、不动 LangGraph 节点逻辑、不动 Tavily 调用上限。
+
+### 29.4 验证
+
+#### 抓日志（A 层动手前的 baseline）
+
+```text
+# Baseline (web=false), trace=691965eb4bf3
+t=0.083 HTTP 200
+t=0.085 user_message echoed
+t=6.345 FIRST ai_message
+t=26.530 answer_complete ai_chars=3218
+t=33.890 suggested_questions qs=3
+t=33.890 complete
+
+# enable_web_search=true, trace=661a9b0372c4
+t=0.080 HTTP 200
+t=7.943 FIRST ai_message
+t=29.656 answer_complete ai_chars=3539
+t=37.628 suggested_questions
+```
+
+#### 单元/集成测试
+
+```text
+.venv/bin/python -m pytest tests/test_chat_heartbeat_sse.py -q
+4 passed, 1 warning
+
+.venv/bin/python -m pytest tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_chat_context_budget.py tests/test_chat_heartbeat_sse.py tests/test_tavily_search_timeout.py -q
+17 passed, 1 warning
+
+.venv/bin/python -m ruff check api/routers/chat.py tests/test_chat_heartbeat_sse.py
+All checks passed
+```
+
+#### 前端测试 / lint / build
+
+```text
+cd frontend && npx vitest run src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.test.tsx
+24 passed (10 + 14)
+
+cd frontend && npm run lint
+0 errors, 4 existing warnings
+
+cd frontend && npm run build
+exit 0
+```
+
+#### 实机回归（A 层落地后真实 `/chat/execute`）
+
+```text
+trace=10c0de9b2cc1 (web=false)
+t=0.181 HTTP 200
+t=5.186 HB stage=awaiting_model elapsed_ms=5006   ← 新心跳事件
+t=7.004 FIRST ai_message
+t=45.559 answer_complete
+t=51.482 suggested_questions
+
+API log:
+first_ai_chunk chunk_chars=2 elapsed_ms=6823 model_first_byte_ms=6823 heartbeats_sent=1
+main_answer_end answer_chars=9714 elapsed_ms=45374 model_first_byte_ms=6823 heartbeats_sent=1
+```
+
+心跳和新日志字段在真实链路中按预期工作。
+
+#### 测试副作用 / 会话状态
+
+诊断与回归共调用真实 `/chat/execute` 3 次，每次 1 user + 1 ai。已用 SQLite checkpoint snapshot 回滚 web_search + smoke 2 次的痕迹；用户原会话 `chat_session:d376g2oopg9nles9raay` 现在保留 baseline 一轮（GB/T 8077-2023 的有效回答），从用户角度看相当于「之前那条悬而未决的提问得到了答案」。
+
+```text
+git diff --check
+rc=0
+```
+
+### 29.5 未尽事宜
+
+1. **B 层：上下文/历史瘦身** —— `NOTEBOOK_CHAT_CONTEXT_MAX_CHARS` 默认 200,000 调到 120,000、历史消息窗口截断（最近 N 轮 + 早期摘要）。本轮未做，留作独立 PR，避免和 SSE/timeout 行为变更混在一起。
+2. **C 层：Tavily 商务侧** —— 当前 Tavily 失败时模型把英文降级文本翻成中文给用户，并无面向用户的「联网搜索本月配额已用完」明确提示；管理员无法在 UI 看到 Tavily 当月用量。下一轮可在 Settings 加 Tavily 使用量探针，并在帮助文档显式澄清「模型说『搜索次数用完』≠ DeepSeek 配额耗尽，是 Tavily 工具上限」。
+3. **`source_chat.py` 与 `/ask` 的心跳** —— 本轮只覆盖笔记本聊天（`/chat/execute`），其他长链路 SSE（源聊天、全局 Ask）暂未引入心跳机制。
+4. **i18n 完整性** —— `chat.activity*` 系列在 7 个非主用 locale 仍走 en-US fallback，与既有现状一致。如要严格化全 locale 完整性检查，应整批补齐而非只补这次新增的 3 个键。
+5. **DeepSeek 商务版/扩容/预警** —— 用户问题三的「DeepSeek API 是正式商用版还是测试版/总配额/预警/扩容」属于商务侧问题，须在 DeepSeek 控制台核对：当前账户类型、月度调用上限、单次 token 上限、计费阶梯、是否能开启用量阈值告警。本轮代码侧已确认 `credentials` 中 DeepSeek 模型走 `provider=deepseek` 的标准 Esperanto 链路，无任何「检索次数耗尽」的本地降级路径，模型自陈的配额话术不能作为系统状态依据。
+
+### 29.6 文件索引
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `api/routers/chat.py` | 新增 `_env_positive_float`、`heartbeat_sse_event`；`CHAT_LLM_TIMEOUT_SECONDS`/`CHAT_STREAM_HEARTBEAT_SECONDS` 环境变量；`stream_chat_response` 重构为 producer/heartbeat consumer + `asyncio.wait_for` 超时；`first_ai_chunk` / `main_answer_end` 日志新增 `model_first_byte_ms`/`heartbeats_sent`；新增 `request_timeout` 分支 |
+| `tests/test_chat_heartbeat_sse.py` | **新增** —— heartbeat SSE 事件 shape、env 解析、producer+heartbeat 交错产出、超时 SSE 事件四个用例 |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | `NotebookChatActivityStatus` 增加 awaitingModel / modelStreaming；`activityElapsedSeconds` 状态；heartbeat 事件解析；`llm_timeout` error_code 本地化处理；`activityElapsedSeconds` 暴露给消费方 |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | **新增 2 个用例** —— heartbeat 触发 awaitingModel + elapsedSeconds；llm_timeout error 本地化 toast |
+| `frontend/src/components/source/ChatPanel.tsx` | `ChatActivityStatus` 增加 awaitingModel / modelStreaming；新增 `activityElapsedSeconds` prop；文案表合并并支持秒数后缀 |
+| `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx` | 透传 `chat.activityElapsedSeconds` |
+| `frontend/src/lib/locales/en-US/index.ts` | 新增 `chat.activityAwaitingModel` / `activityModelStreaming` / `errorLlmTimeout` |
+| `frontend/src/lib/locales/zh-CN/index.ts` | 同上中文翻译 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节记录 |
+
+---
+
+### 29.7 llm_timeout 错误转气泡（用户测试反馈收敛 2026-06-28）
+
+**触发**：用户用 `CHAT_LLM_TIMEOUT_SECONDS=3` 手测超时分支时反馈两点：
+
+1. Sonner toast 仅显示约 4 秒就消失，用户「一闪而过没反应过来」；
+2. 文案仍是后端英文 `Model response timed out after 3s. Try shrinking the included sources or notes and ask again.`，中文用户读起来不友好，且「shrink sources」对用户没有明确的可操作手段（用户不知道在哪压缩上下文）。
+
+#### 决策
+
+把 `error_code === "llm_timeout"` 的 SSE error **从 toast 改为 AI 角色对话气泡**。具体：
+
+- 气泡内容三段式：`⚠️ 系统提示：` 前缀 + 本地化主体（含 `{seconds}` 占位符替换 + 操作指引）+ 英文诊断段（`error_code` / `timeout_seconds` / `Server message`）。
+- 主体文案 i18n，描述用户**实际能在 UI 上做的事**：在左侧「来源」栏将不相关的来源切换为「仅参考见解」或「不参考」，或为本次问题新建一个对话会话后重试。
+- 诊断段保留英文 / 原始 server message 不翻译，目的是稳定 identifier，便于用户截图或复制反馈给开发者时方便日志搜索。
+- 不再 throw `StreamSignaledError`，不再 `toast.error`，不再 `console.error`——消除 Next.js dev 的红色 Console Error 浮层和「一闪而过」的 toast。
+- **不持久化进 LangGraph checkpoint**：超时时 `astream_events` 已被 cancel，后端只持久化 user 消息，AI 节点没完成；前端的错误气泡只活在 React state 里，刷新页面后消失。这是有意的，避免把「⚠️ 系统提示」当作上一轮 AI 输出污染下一轮 RAG prompt。
+- 流处理结束后跳过 `refetchCurrentSession()`（用 `inlineStreamError` flag 守门），避免后端 `currentSession.messages` 为空导致前端气泡被覆盖。
+- 用户的 optimistic 提问气泡**保留**（与原来 toast 路径下被删除的行为不同）。
+- 状态机收尾走 `markAnswerComplete()`：`isSending=false`、`activityStatus=null`、`activityElapsedSeconds=0`，输入框立刻可以继续提问。
+
+#### 两种渲染场景
+
+- **场景 A** —— 首字节到达前就超时（典型）：新建一条 type=`ai`、id=`ai-error-${Date.now()}` 的气泡。
+- **场景 B** —— 已经流了部分 AI 输出后超时（少见，模型流到一半被强切）：把错误说明追加到现有 `aiMessage.content` 末尾，不另起气泡。
+
+#### 范围边界
+
+- 仅 `error_code === "llm_timeout"` 走气泡路径。其它 SSE error（`StreamSignaledError`、Network、Authentication 等无 `error_code` 字段）仍走 toast 兜底，下一轮再统一收敛。
+- 仅笔记本聊天 `/chat/execute`。源聊天 `/source/{id}/chat`、全局 `/ask` 暂未覆盖。
+
+#### i18n 变更
+
+- 新增 `chat.errorLlmTimeoutPrefix`：zh-CN 「⚠️ 系统提示：」、en-US 「⚠️ System notice: 」。
+- 改写 `chat.errorLlmTimeout` 为两段（用 `\n\n` 分隔），主体含 `{seconds}` 占位符，操作指引明确指向左侧来源栏的三态切换。
+
+#### 验证
+
+```text
+cd frontend && npx vitest run src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.test.tsx
+25 passed (11 + 14)
+
+cd frontend && npx eslint src/lib/hooks/useNotebookChat.ts src/lib/hooks/useNotebookChat.test.tsx src/lib/locales/en-US/index.ts src/lib/locales/zh-CN/index.ts
+rc=0
+
+cd frontend && npm run lint
+0 errors, 4 pre-existing warnings
+
+cd frontend && npm run build
+exit 0
+
+.venv/bin/python -m pytest tests/test_chat_heartbeat_sse.py -q
+4 passed, 1 warning   (后端无改动，确认未误伤)
+
+git diff --check
+rc=0
+```
+
+测试用例改造：
+
+- 原 `shows a localized error toast when the server reports llm_timeout` 用例改造为 `renders llm_timeout as an inline AI bubble instead of a toast (scenario A: no prior AI chunks)`：断言 `toast.error` **未** 被调用、人类气泡保留、AI 气泡含 `⚠️` + `timed out` + `error_code=llm_timeout` + `timeout_seconds=3` + `_Server message_`、`activityStatus=null`、`isSending=false`。
+- 新增用例 `appends llm_timeout notice to the existing AI bubble when chunks already streamed (scenario B)`：mock 先发 `ai_message` chunk「partial answer」，再发 error；断言 AI 气泡仍只有 1 条、内容同时包含 `partial answer` 和 `⚠️` + `error_code=llm_timeout`。
+
+#### 实机回归（用户做）
+
+`.env` 临时 `CHAT_LLM_TIMEOUT_SECONDS=3` + 浏览器硬刷新后发问，期望：
+
+- 约 3 秒后看到一条带「⚠️ 系统提示：」前缀的 AI 气泡，中文版含操作指引和英文诊断段；
+- **无** 红色 Console Error 浮层、**无** 一闪而过的 toast；
+- 用户提问气泡保留，输入框可继续提问；
+- 测完把 `.env` 里 `CHAT_LLM_TIMEOUT_SECONDS` 改回默认（删行 or `=240`）、`make start-all` 重启 API。
+
+#### 未尽事宜
+
+1. **其它 SSE error 体验闭环**：Network/RateLimit/Authentication 等仍走 toast；后端目前只有 `llm_timeout` 一种 error 带 `error_code` 字段。下一轮可考虑给所有 stream-signaled error 加 `error_code` 并统一走气泡路径，或把 toast `duration` 调长（10–15s）。
+2. **源聊天和 Ask**：`/source/{id}/chat`、`/ask` 暂未引入心跳/超时/气泡机制，留作后续。
+3. **可视化区分**：当前气泡仅靠 `⚠️` 前缀和 markdown 分隔线区分系统提示和 LLM 真实答案。若后续要做专门的样式（背景色/边框），需要扩展 `NotebookChatMessage` 类型加 `isSystemNotice` flag 并改 ChatPanel 渲染，本轮不做。
+4. **场景 B 实际触发条件**：当前后端 `asyncio.wait_for(producer_task, ...)` 的 cancel 会让已 yield 的 ai_message chunk 与后续不再产生 chunk 之间产生 race；理论上场景 B 仅在 chunk 已写入 queue 后才被外层超时干掉时出现，实际频次低。代码路径已覆盖但生产环境难复现。
+
+#### 文件索引（§29.7 新增）
+
+| 文件 | 涉及改动 |
+|------|----------|
+| `frontend/src/lib/hooks/useNotebookChat.ts` | llm_timeout 分支不再 throw；新建/追加 AI 气泡；`inlineStreamError` flag 跳过 refetch |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | 原 llm_timeout toast 用例改造为 scenario A 内嵌气泡断言；新增 scenario B 用例 |
+| `frontend/src/lib/locales/en-US/index.ts` | 新增 `chat.errorLlmTimeoutPrefix`；改写 `chat.errorLlmTimeout` 两段式 + 操作指引 |
+| `frontend/src/lib/locales/zh-CN/index.ts` | 同上中文 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节 §29.7 记录 |
+
+---
+
+> 最后更新：2026-06-27 | 新增 §29（笔记本对话流式心跳与 LLM 主回答超时）。分支聚焦「让用户看到在工作 + 服务侧能主动失败」的 A 层修复；B 层（上下文/历史瘦身）和 C 层（Tavily 配额监控/帮助文档）留作后续。
+
+---
+
+## 30. 笔记本对话上下文与历史窗口瘦身（B 层 · 新增 2026-06-28）
+
+§29 实测发现：DeepSeek-V4-Pro 在 11 源 / 127k tokens 上下文 + 65 条历史消息的情况下 TTFT 在 6–8 秒，本身健康；但默认 `NOTEBOOK_CHAT_CONTEXT_MAX_CHARS=200000` 字符（≈ 120k tokens）几乎把 large-context 模型压到上限，没有余量应对网络抖动 / 历史增长 / 工具调用的额外 prompt。同时 `state["messages"]` 全量进 prompt，长会话场景中"历史"会和"来源全文"一起膨胀。
+
+本轮按 §29.5 的"未尽事宜 #1"做的窄修复：仅默认值 + 单次 LLM 调用的窗口切片，**不动 LangGraph checkpoint、不动 UI、不动用户配置**。
+
+### 30.1 行为决策
+
+- `NOTEBOOK_CHAT_CONTEXT_MAX_CHARS` 默认 `200000` → `120000`：≈ 72k tokens。给 deepseek-v4-pro 留约 50k tokens 余量给「历史 + system prompt + 模型输出 8192 max_tokens + 工具调用」。
+- 新增 `CHAT_HISTORY_MAX_MESSAGES` 环境变量（默认 `12`）：在 `open_notebook/graphs/chat.py:call_model_with_messages` 内**仅切片传给 LLM 的 payload**，LangGraph checkpoint 中的 `state["messages"]` 不变。
+- `CHAT_HISTORY_MAX_MESSAGES <= 0` 视为禁用，行为退回 §29 之前的全量历史。
+- 历史窗口取最后 N 条（最近优先）。**本轮不做「早期摘要」**——既要避免引入新的 LLM 调用，也避免摘要质量参差不齐影响多轮上下文连贯性。
+- 触发裁剪时打 `step=history_truncated` INFO 日志，含 `total_messages` / `kept_messages` / `dropped_messages` / `max_messages`。
+- `step=model_start` 日志同步新增 `history_total` / `history_kept`，可与裁剪日志对照。
+- 没有面向用户的 UI 提示：用户感知不到历史被切（再问下一句模型会从最近 12 条上下文里接），但日志里能追溯。
+
+### 30.2 行为边界与不动的事
+
+- 不动 `trim_context_data_to_char_budget` 字段平均裁剪算法（§29 已有），只动它的默认阈值参数。
+- 不动 `chat/system.jinja` Prompt（领域专家结构化框架保留）。
+- 不动 `state.context` / `state.context_config` —— 来源/笔记的 full_text vs insights 三态选择继续由前端 UI 主导。
+- 不动 `large_context_model = deepseek-v4-pro` 自动切换阈值（仍是 `provision.py:23` 的 105,000 tokens，由 `token_count(content)` 估算）。
+- **不动 LangGraph checkpoint**：`state["messages"]` 始终是完整 65 条，用户切回会话能看到完整聊天记录；下次提问只是 LLM 看到最近 12 条。
+
+### 30.3 文件改动
+
+| 文件 | 改动 |
+|------|------|
+| `api/routers/chat.py:33` | `NOTEBOOK_CHAT_CONTEXT_MAX_CHARS` 默认 `200000` → `120000` |
+| `open_notebook/graphs/chat.py` | 新增 `_env_positive_int` 与 `_select_history_window` helpers；`call_model_with_messages` 取 `CHAT_HISTORY_MAX_MESSAGES`（默认 12）后切片 `state["messages"]`；`model_start` 日志补 `history_total` / `history_kept`；触发裁剪时打 `history_truncated` INFO |
+| `tests/test_chat_context_budget.py` | 新增 8 个用例 —— 默认阈值 120000 验证、`_env_positive_int` 4 种输入分支、`_select_history_window` 切片行为（包括禁用与小于上限的情况）、`history_truncated` 日志字段断言 |
+
+### 30.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_chat_context_budget.py -q
+9 passed, 1 warning
+
+.venv/bin/python -m pytest tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_chat_context_budget.py tests/test_chat_heartbeat_sse.py tests/test_tavily_search_timeout.py tests/test_graphs.py -q
+38 passed, 6 warnings
+
+.venv/bin/python -m ruff check api/routers/chat.py open_notebook/graphs/chat.py tests/test_chat_context_budget.py
+All checks passed
+
+cd frontend && npx vitest run src/lib/hooks/useNotebookChat.test.tsx
+11 passed   # 确认 §29 前端逻辑未被后端默认值变更影响
+
+git diff --check
+rc=0
+```
+
+### 30.5 实机回归（建议步骤，未做）
+
+- API 服务在重启后生效（`make start-all`）；`uvicorn --reload` 不会自动重读环境变量，但 chat.py 内的 `_env_positive_int("CHAT_HISTORY_MAX_MESSAGES", 12)` 在每次 `call_model_with_messages` 都重新读取 `os.environ`，所以新值随时生效。`NOTEBOOK_CHAT_CONTEXT_MAX_CHARS` 是模块级常量、需要重启 API 才能改动生效。
+- 在 11 源 / 65 条历史的「标准」笔记本里发问题，期望：
+  - `logs/api.log` 出现 `step=context_build_end context_chars=120000 context_tokens=...约 72k... context_trimmed=True context_max_chars=120000`；
+  - `step=history_truncated total_messages=66 kept_messages=12 dropped_messages=54 max_messages=12`；
+  - `step=model_start ... payload_messages=13 history_total=66 history_kept=12`；
+  - 答案质量按 12 条最近上下文回答；TTFT 应该比 §29 实测的 6–8 秒**略有下降**（payload 更小），但本质仍受 DeepSeek 服务端 first-token 影响。
+
+### 30.6 未尽事宜
+
+1. **早期摘要**（rolling summary）—— 长会话超过 N 条后用一次轻量 LLM 调用把早期 30 条压成一段摘要，作为「系统提示」前置。本轮不做，等 §B 层落地稳定后再单独评估。
+2. **来源/笔记的 context 裁剪粒度**—— 当前是字段级别均分裁剪；可考虑按 token 数而非字符数、按相关度排序优先保留 head 段落等更精细方案。延后。
+3. **前端用户感知**—— 用户当前无 UI 提示「上下文已裁剪」/「历史已截断」。如果用户反馈"AI 答非所问，好像忘了前面的问题"，需要再考虑是否在 ChatPanel 顶部加一个非阻塞 badge。延后。
+4. **`CHAT_HISTORY_MAX_MESSAGES=12` 是否合适**—— 12 条 ≈ 6 轮人类+AI 对话。在科研对话场景下追问较多，可能 8–10 轮更合适；待真实使用后调。环境变量可灵活调整。
+
+---
+
+> 最后更新：2026-06-28 | 新增 §30（B 层上下文/历史瘦身）。本轮：默认 `NOTEBOOK_CHAT_CONTEXT_MAX_CHARS` 200000→120000；新增 `CHAT_HISTORY_MAX_MESSAGES=12` 切片单次 LLM 调用 payload，不动 LangGraph checkpoint。配套 8 个新单元测试与 INFO 日志可观测性。
+
+---
+
+## 31. 笔记本对话所有 SSE 错误统一走气泡（新增 2026-06-28）
+
+§29.7 把 `error_code === "llm_timeout"` 的 SSE error 从 toast 改成对话气泡，避免一闪而过 + 英文不友好。本轮把这套机制覆盖**所有**笔记本对话 SSE 错误：限流、鉴权失败、模型未配置、网络中断、上游 5xx 等。
+
+### 31.1 行为决策
+
+- 后端 `/chat/execute` 的 `except Exception` 分支调用 `classify_error(e)` 后，新增一个 `chat_error_code_from_exception(exc_class)` 把典型异常类映射到**稳定的小写下划线** wire identifier：
+  - `AuthenticationError` → `authentication`
+  - `RateLimitError` → `rate_limit`
+  - `ConfigurationError` → `configuration`
+  - `NetworkError` → `network`
+  - `ExternalServiceError` → `external_service`
+  - `InvalidInputError` → `invalid_input`
+  - `NotFoundError` → `not_found`
+  - `OpenNotebookError`（基类兜底） → `internal_error`
+  - 未识别 → `internal_error`
+- SSE error 事件 schema 扩展：`{"type":"error","error_code":"<stable-id>","message":"<server-friendly text>"}`；`message` 保留 `classify_error` 的英文 user_message，供诊断段展示。
+- `request_failed` INFO 日志同步新增 `classified_as` / `error_code`，便于排查"哪个原始异常被分类成了哪个 code"。
+- 前端 `useNotebookChat.ts` 的 `error` 分支不再按 `error_code === "llm_timeout"` 做特殊判断 —— 全部 SSE error 走统一的「内联 AI 气泡」路径，按 `error_code` 字典查找对应的本地化模板：
+  - 已知 code → 取对应 `t.chat.error<Code>` 模板（含主体 + 操作指引）；
+  - 未知 code → 取 `t.chat.errorGeneric` 通用模板；
+  - 模板里支持 `{seconds}` 占位符（只对 `llm_timeout` 有意义，其它 code 模板不含该占位符，做安全 replace 不影响渲染）。
+- 气泡结构与 §29.7 一致：⚠️ 前缀 + 本地化主体 + `---` 分隔 + 英文诊断段（`error_code=...` + 可选 `timeout_seconds=...` + `_Server message_: ...`）。
+- `StreamSignaledError` 类已删除：原 §29.7 引入它用于区分"SSE 信号错误"与"transport 错误"，现在 SSE 错误一律转气泡、不再 throw，类本身成为死代码。
+- `catch (err)` 兜底**保留** toast 路径：留给真正的 transport-layer 失败（Next.js 代理 reset、SSE 连接未建立就失败、fetch reject），这类错误后端根本没机会发 `error` 事件。
+
+### 31.2 i18n 文案
+
+`en-US` 与 `zh-CN` 的 `chat` 区段新增 8 条键：
+
+- `errorAuthentication` — API key 失效
+- `errorRateLimit` — 限流（建议等待 / 换模型）
+- `errorConfiguration` — 没有默认模型（指向 Settings → Models）
+- `errorNetwork` — 连不上（本地模型建议检查 Ollama 进程）
+- `errorExternalService` — 上游 5xx / 上下文超长 / 请求体过大
+- `errorInvalidInput` — 供应商拒绝请求
+- `errorNotFound` — 笔记本/会话/模型不存在
+- `errorInternal` — 内部错误，建议把诊断块发给团队
+- `errorGeneric` — 未识别 code 时的兜底模板
+
+每条都做了两段式：主体（一句话说现象）`\n\n` 操作指引（用户能做什么）。
+
+其它 7 个 locale（`zh-TW` / `ja-JP` / `fr-FR` / `ru-RU` / `pt-BR` / `it-IT` / `bn-IN`）沿用 en-US fallback，与既有约定一致。
+
+### 31.3 不动的事
+
+- `classify_error` 关键字规则表（`open_notebook/utils/error_classifier.py`）保持原样：本轮只在 SSE 输出侧加 wire identifier 映射，不改动分类逻辑。
+- 异常类层级（`open_notebook/exceptions.py`）保持原样。
+- 源聊天 (`/source/{id}/chat`) 与全局 Ask (`/ask`) 仍走旧路径（toast）；这两条的迁移留给 §2（下一轮）。
+- 任何不通过 SSE error 事件传递的失败（例如 401 中间件层、HTTP 500 在 SSE 建立前发生）依旧走 catch 兜底的 toast，不在本轮范围内。
+
+### 31.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_chat_heartbeat_sse.py -q
+7 passed, 1 warning   # 含 2 个新增：
+                      #  - test_chat_error_code_from_exception_known_classes
+                      #  - test_chat_error_code_from_exception_unknown_falls_back
+                      #  - test_stream_chat_response_emits_error_code_for_rate_limit
+
+.venv/bin/python -m pytest tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_chat_context_budget.py tests/test_chat_heartbeat_sse.py tests/test_tavily_search_timeout.py tests/test_graphs.py -q
+41 passed, 6 warnings
+
+.venv/bin/python -m ruff check api/routers/chat.py tests/test_chat_heartbeat_sse.py
+All checks passed
+
+cd frontend && npx vitest run src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.test.tsx
+30 passed (16 + 14)   # 新增 5 个参数化用例覆盖 rate_limit / authentication / network / external_service / 未知 code
+
+cd frontend && npm run lint
+0 errors, 4 pre-existing warnings
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+rc=0
+```
+
+### 31.5 实机回归建议
+
+要演示效果但暂时没法刻意触发各种 provider 错误时，推荐两种最容易触发的：
+
+- **rate_limit**：暂时把 `model_override` 切到一个调用频率很高的模型，连发多条问题；DeepSeek/Qwen 偶尔会返回 429。
+- **authentication**：在 Settings → API Keys 里把当前生效的 DeepSeek credential 故意改成错的值，发一条问题；测完别忘了改回来。
+- **internal_error / generic**：把 `api/routers/chat.py` 中 `call_model_with_messages` 临时插一行 `raise RuntimeError("boom")`；非常容易复现。
+
+期望（中文界面）：
+- 气泡前缀「⚠️ 系统提示：」；
+- 中文主体说明现象 + 用户可操作的步骤；
+- 分隔线下方完整英文 `_Diagnostic_: error_code=<x>` + `_Server message_: <classify_error 返回的英文>`；
+- 无红色 Console Error 浮层、无 toast；
+- 用户提问气泡保留、输入框可继续问下一条。
+
+### 31.6 未尽事宜
+
+1. **源聊天 / Ask 一致化**：`/source/{id}/chat` 和 `/ask` 走自己的 SSE 协议，错误仍 toast。下一轮 §2 心跳/超时扩展时一并改造。
+2. **`error_code` 标准化为枚举**：当前 wire identifier 在前后端各维护一份，可以放到共享的常量文件（前端 `types/api.ts`、后端 `exceptions.py` 旁的小常量模块），避免未来分叉。本轮不做，等 §2 一并整理。
+3. **细粒度的诊断信息**：例如 `rate_limit` 可以从 provider 响应解析出 `Retry-After` 秒数附在 SSE 字段里，前端模板做更精确的提示「请等 30 秒后重试」。本轮不动 `classify_error` 关键字规则，未做。
+4. **生产环境实测样本**：当前只在单元测试中模拟了 `RateLimitError`，真实 DeepSeek 限流响应是否一定命中 `["rate limit", "429", "too many requests", "quota exceeded"]` 之一需要后续观察。
+
+### 31.7 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `api/routers/chat.py` | 新增 `_ERROR_CODE_BY_EXCEPTION_NAME` + `chat_error_code_from_exception`；`except Exception` 分支输出 `error_code` 与 `request_failed` 日志补 `classified_as`/`error_code` |
+| `tests/test_chat_heartbeat_sse.py` | 新增 3 个用例：`test_chat_error_code_from_exception_known_classes` / `_unknown_falls_back` / `test_stream_chat_response_emits_error_code_for_rate_limit` |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | `error` 分支不再仅判 `llm_timeout`，按 `error_code` 字典分派；删除 `StreamSignaledError` 死代码；catch 兜底注释明确仅处理 transport-layer 失败 |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | 新增 5 个参数化用例覆盖 `rate_limit` / `authentication` / `network` / `external_service` / 未知 code |
+| `frontend/src/lib/locales/en-US/index.ts` | `chat` 区段新增 8 个 error 模板键 |
+| `frontend/src/lib/locales/zh-CN/index.ts` | 同上中文翻译 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节 §31 记录 |
+
+---
+
+> 最后更新：2026-06-28 | 新增 §31（笔记本对话所有 SSE 错误统一走气泡）。本轮：后端 SSE error 加 `error_code` 字段并映射 8 种典型异常；前端按 code 字典分发本地化模板；删除 `StreamSignaledError` 死代码；i18n 新增 8 条 zh-CN/en-US 错误文案。配套 8 个新单元测试。
+
+---
+
+## 32. 心跳 / 超时 / 错误气泡统一到三条 SSE 流（新增 2026-06-28）
+
+§29–§31 把心跳、`llm_timeout` 超时事件、`error_code` 错误气泡三件事在笔记本对话 (`/chat/execute`) 跑通。本轮把这三件事**抽到一个共享模块**，并把同样能力接到源聊天 (`/sources/{id}/chat/sessions/{session_id}/messages`) 与全局 Ask (`/search/ask`)。同时按用户反馈把 `error_code` 标准化到前后端各一份常量映射，避免今后分叉。
+
+### 32.1 行为决策
+
+- **后端共享 helper** `api/sse_helpers.py`：
+  - `heartbeat_sse_event(stage, elapsed_ms)` / `llm_timeout_sse_event(timeout_seconds)` / `error_sse_event(error_code, message, **extra)` 统一三类 SSE 事件的 wire 格式；
+  - `ERROR_CODE_BY_EXCEPTION_NAME` 字典 + `error_code_from_exception(exc_class)` 从 §31 的 chat.py 提取；
+  - `env_positive_float(name, default)` 通用 env 解析；
+  - `stream_with_heartbeat_and_timeout(...)` 是核心 helper：包装一个 producer coroutine、在 `asyncio.Queue` 上 fan-in 心跳事件、`asyncio.wait_for` 包裹超时。两种心跳模式：
+    - **`heartbeat_until_first_item=True`**（聊天式）：固定周期发心跳，**首个 producer item 到达后停**。token 流自身就是 keep-alive。
+    - **`heartbeat_until_first_item=False`**（Ask 式）：基于**静默时长**触发心跳，只要 producer 沉默超过 `heartbeat_seconds` 就发一条。多阶段 pipeline 在阶段之间可能长时间静默，这种模式才能持续提示用户。
+- **三个 router 接入方式**：
+  - `api/routers/chat.py`：保留原有的 producer/heartbeat 双任务实现 + heartbeats_sent/model_first_byte_ms 观测字段。这次仅把 `heartbeat_sse_event` / `chat_error_code_from_exception` / `_env_positive_float` 改成从 `api.sse_helpers` 重新导出，旧 API（包括所有现存测试 import 路径）一字不动。
+  - `api/routers/source_chat.py`：`user_message` 事件仍 eagerly yield（不进入心跳缓冲），其后把整个 `astream_events` 循环放进 `run_producer(queue)`，由 helper 处理心跳和超时。新增环境变量 `SOURCE_CHAT_LLM_TIMEOUT_SECONDS`（默认 240）和 `SOURCE_CHAT_STREAM_HEARTBEAT_SECONDS`（默认 5）。`asyncio.TimeoutError` 分支显式 yield `llm_timeout_sse_event`；任何 `classify_error()` 命中的异常 yield `error_sse_event(code, msg)`。
+  - `api/routers/search.py`：Ask 是多阶段 pipeline（strategy → search → answer → final_answer），用静默式心跳。`coverage_start` 仍 eagerly yield 作为流的开始，然后整个 `ask_graph.astream_events` 进 producer。新增环境变量 `ASK_LLM_TIMEOUT_SECONDS`（默认 480，Ask 链路通常比单轮对话更长）和 `ASK_STREAM_HEARTBEAT_SECONDS`（默认 10，避免静默阶段间过密心跳）。
+- **前端共享 helper** `frontend/src/lib/chat/error-bubble.ts`：
+  - 把 §29.7/§31 的 bubble 渲染逻辑抽成 `buildErrorBubbleBody(payload, templates)`：根据 `error_code` 在传入的 `templates` 字典里查 `errorLlmTimeout` / `errorAuthentication` / ... 等，未知 code 走 `errorGeneric`。
+  - 输出统一的 markdown 主体：⚠️ 前缀 + 本地化主体 + `---` 分隔 + 英文诊断段（`error_code` + 可选 `timeout_seconds` + 原始 `Server message`）。
+  - 类型 `ChatErrorCode` 在这里集中声明，与后端 `_ERROR_CODE_BY_EXCEPTION_NAME` 对齐；前端用 wire 字符串 + 默认 `errorGeneric` fallback，遇到后端新增 code 不会崩。
+- **三个前端入口接入**：
+  - `useNotebookChat.ts`：原 §31 的内联 codeTemplates 字典 + 拼接逻辑替换为一次 `buildErrorBubbleBody(...)` 调用。行为完全不变，仍然不抛 `StreamSignaledError`、仍然内联气泡、仍然跳过 `refetchCurrentSession`。
+  - `useSourceChat.ts`：新增 `SourceChatActivityStatus`（`'awaitingModel' | 'modelStreaming'`）+ `activityElapsedSeconds`；解析 `heartbeat` / `error` SSE 事件，错误也走气泡，`inlineStreamError` flag 跳过 `refetchCurrentSession` 防止覆盖气泡；`cancelStreaming` 同步清零 activity 状态。`sources/[id]/page.tsx` 把 `chat.activityStatus` / `activityElapsedSeconds` 透传给 `ChatPanel`。
+  - `use-ask.ts`：Ask 没有「气泡列表」，所以把错误以 markdown body 形式存在 store 的 `errorBubble: string | null` 字段里；`StreamingResponse` 在最终回答区域下方渲染该 markdown 气泡。同时新增 `activityElapsedSeconds` 字段供 loading 指示器显示「已等待 N 秒」；`ask-store.ts` partialize 中**不持久化** `errorBubble` / `activityElapsedSeconds` / `isStreaming`，刷新页面后气泡消失，符合「仅前端内存」的既有约定。
+- **不动的事**：
+  - 不改 `classify_error` 关键字规则表；
+  - 不动 chat.py 的 producer/heartbeat 实现（复用了 helper 的话需要把所有 chat 专属日志字段从 chat.py 移到 helper 里，会引入 N 个回调参数 + 测试改造；性价比不高，本轮选择继续在 chat.py 自带的实现）。这意味着 chat.py 暂时**没有用** `stream_with_heartbeat_and_timeout`，但已经导出共享常量 + helper 函数，未来需要时再迁移。
+  - 不动笔记本对话 §29.7/§31 行为（现有 30 个前端用例 + 26 个后端用例继续保证）。
+  - i18n：复用 §31 的 `chat.errorLlmTimeoutPrefix` / `errorLlmTimeout` / `errorAuthentication` 等 11 条键，**未新增**。
+
+### 32.2 配置参数
+
+| 环境变量 | 默认值 | 作用域 |
+|---|---|---|
+| `CHAT_LLM_TIMEOUT_SECONDS` | 240 | 笔记本对话 |
+| `CHAT_STREAM_HEARTBEAT_SECONDS` | 5 | 笔记本对话 |
+| `SOURCE_CHAT_LLM_TIMEOUT_SECONDS` | 240 | 源聊天（新增） |
+| `SOURCE_CHAT_STREAM_HEARTBEAT_SECONDS` | 5 | 源聊天（新增） |
+| `ASK_LLM_TIMEOUT_SECONDS` | 480 | 全局 Ask（新增） |
+| `ASK_STREAM_HEARTBEAT_SECONDS` | 10 | 全局 Ask（新增） |
+
+Ask 默认值更宽松：流程涉及多次模型调用 + 向量检索 + 最终综合，TTFT 自然更长；心跳周期同样放宽，避免阶段间间隔 5–10 秒就连发好几条心跳污染流。
+
+### 32.3 测试
+
+新增后端测试：
+
+- `tests/test_sse_helpers.py`（11 个用例）：
+  - `heartbeat_sse_event` / `llm_timeout_sse_event` / `error_sse_event` shape 断言；
+  - `error_code_from_exception` 对所有 8 种类型 + 未知类的映射；
+  - `env_positive_float` 合法 / 非法 / 0 / 未设置四种分支；
+  - `stream_with_heartbeat_and_timeout` 在「至首个 item」与「基于静默」两种模式下分别能交错出心跳；
+  - 整体超时被 `asyncio.TimeoutError` 抛出；
+  - producer 抛 `RateLimitError` 时该异常被 helper 正确传播；
+  - `on_heartbeat_sent` 回调单调递增。
+- `tests/test_source_chat_heartbeat_sse.py`（2 个用例）：
+  - producer 抛 `RateLimitError` → SSE 输出 `error_code=rate_limit` + 原始 message；
+  - producer 完全 hang → SSE 输出 `error_code=llm_timeout` + `timeout_seconds`，没有 `ai_message` / `complete`。
+- `tests/test_ask_heartbeat_sse.py`（3 个用例）：
+  - producer 抛 `RateLimitError` → SSE 第一条仍是 `coverage`，最后一条是 `error` + `error_code=rate_limit`；
+  - producer hang → `llm_timeout` SSE 事件 + 没有 `complete`；
+  - producer 静默 250ms 后再 yield → 期间产生**至少 1 条** heartbeat SSE 事件，静默式心跳生效。
+
+新增前端测试：
+
+- `frontend/src/lib/chat/error-bubble.test.ts`（5 个用例）：
+  - `llm_timeout` seconds 占位符替换；
+  - `authentication` 渲染含本地化指引 + 诊断段、不带 `timeout_seconds`；
+  - 未知 code 走 `errorGeneric` 但仍嵌入 `_Server message_`；
+  - 缺失 `error_code` 字段 → 默认到 `internal_error`；
+  - 无 `message` 字段时省略 `_Server message_` 行。
+- `frontend/src/lib/hooks/useSourceChat.test.tsx`（3 个用例）：
+  - SSE `llm_timeout` 走内联气泡（scenario A，无前置 AI chunk），不弹 toast；
+  - SSE `rate_limit` 走内联气泡，命中 i18n `rate-limited` 文案；
+  - heartbeat 事件触发 `awaitingModel` 状态 + `activityElapsedSeconds`。
+- `frontend/src/lib/hooks/use-ask.test.tsx`（3 个用例）：
+  - SSE `llm_timeout` 写入 store `errorBubble`，不弹 toast，`isStreaming` 归 false；
+  - heartbeat → `activityElapsedSeconds` 在流结束时清零；
+  - SSE `rate_limit` → `errorBubble` 含 `_Server message_`。
+
+### 32.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_sse_helpers.py tests/test_chat_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_chat_context_budget.py tests/test_tavily_search_timeout.py tests/test_source_chat_heartbeat_sse.py tests/test_ask_heartbeat_sse.py tests/test_graphs.py -q
+57 passed, 6 warnings
+
+.venv/bin/python -m ruff check api/sse_helpers.py api/routers/chat.py api/routers/source_chat.py api/routers/search.py tests/test_sse_helpers.py tests/test_chat_heartbeat_sse.py tests/test_chat_context_budget.py tests/test_source_chat_heartbeat_sse.py tests/test_ask_heartbeat_sse.py
+All checks passed
+
+cd frontend && npx vitest run
+29 passed | 1 skipped (30 files)
+144 passed | 9 skipped (153 tests)
+
+cd frontend && npm run lint
+0 errors, 4 pre-existing warnings
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+rc=0
+```
+
+### 32.5 实机回归建议
+
+笔记本对话路径已经在 §29.7/§31 实测通过；本轮主要新增的是源聊天和 Ask。
+
+最容易测的两个分支：
+
+- **源聊天 llm_timeout**：临时 `SOURCE_CHAT_LLM_TIMEOUT_SECONDS=3` + 重启 API + 在源详情页发问。期望：~3s 后出现「⚠️ 系统提示：模型响应超过 3 秒未返回」的对话气泡，包含英文诊断段；用户提问气泡保留；输入框可继续问。
+- **Ask llm_timeout**：`ASK_LLM_TIMEOUT_SECONDS=3` + 重启 API + 在搜索页 Ask 一个问题。期望：先看到 coverage 数字，然后流式中断、在 StreamingResponse 底部出现 markdown 错误气泡（同样的 ⚠️ + 主体 + 诊断段）；toast 不弹。
+
+**rate_limit / authentication**：临时把对应 credential 改错或频繁触发模型，三条路径都能复现。
+
+### 32.6 未尽事宜
+
+1. **DeepSeek 真实限流响应观察**：在生产中真实命中 `RateLimitError` 关键字需要等到 DeepSeek 实际返回 429 / `quota exceeded` 等关键词。如果他们的限流响应是非典型字符串，可能命中 `internal_error` 降级。届时根据 `request_failed` 日志里的 `classified_as` 字段调整 `_CLASSIFICATION_RULES`。
+2. **chat.py 迁移到共享 helper**：本轮没动 `api/routers/chat.py` 的 producer/heartbeat 主循环，避免触动 §29 大量测试。未来如果要把日志字段（`model_first_byte_ms` / `heartbeats_sent` / `request_timeout`）也下沉到 helper，需要给 helper 增加更多 hook 参数 + 改造现有 chat 测试。建议等 chat / source-chat / ask 都跑稳一段时间后再评估是否值得统一。
+3. **Ask 心跳被笔记本对话风格的客户端覆盖**：Ask 客户端 (`use-ask.ts`) 暂时只把心跳 `elapsed_ms` 映射到 store 的 `activityElapsedSeconds`，没有像聊天侧那样有「awaitingModel / modelStreaming」二态切换。Ask 流的状态机更复杂（strategy / answers / final_answer），二态切换概念不直接对应。当前实现是「显示已等待 N 秒」，但不区分「在 strategy 阶段」/「在 answer 阶段」。后续如果用户反馈想知道「卡在哪个阶段」，可以扩展心跳事件附带 `stage` 详情，或在 `use-ask.ts` 维护更细粒度的当前阶段。
+4. **`error_code` 标准化为运行时共享枚举**：当前前后端各维护一份字符串列表（后端 `ERROR_CODE_BY_EXCEPTION_NAME`、前端 `ChatErrorCode` 类型 + `buildErrorBubbleBody` 字典）。这一轮**没有**抽到一个真正的 wire schema 文件（例如 OpenAPI / Pydantic schema 直接导出 TS 类型），因为 codegen 改造涉及 build pipeline。短期靠测试 + 文档保证两边对齐：后端测试断言每个 `error_code` 输出，前端测试断言每个 code 渲染正确气泡。
+
+### 32.7 场景化 llm_timeout 文案（用户实测反馈收敛 2026-06-28）
+
+**用户反馈**：实测在源聊天和全局 Ask 两个场景触发 `CHAT_LLM_TIMEOUT_SECONDS`/`SOURCE_CHAT_LLM_TIMEOUT_SECONDS`/`ASK_LLM_TIMEOUT_SECONDS` 都能正确弹出错误气泡，但气泡文案显示「在左侧"来源"栏中将不相关来源切换为'仅参考见解'或'不参考'，或新建对话会话后重试」——这条指引是为**笔记本对话**写的，源聊天和 Ask 两个页面**根本没有"左侧来源栏"**，新建会话也不一定能改善结果。
+
+**根因**：§29.7 写的 `chat.errorLlmTimeout` 一直只针对笔记本对话场景；§32 三个场景接入共享 helper 时**复用了同一条 i18n key**，导致文案跨场景错配。
+
+#### 行为决策
+
+把 `chat.errorLlmTimeout` 拆为三条独立 i18n key，按 SSE 调用方场景选择：
+
+| key | 适用场景 | 引导重点 |
+|---|---|---|
+| `chat.errorLlmTimeoutNotebook` | 笔记本对话 | 左侧"来源"栏三态切换 + 新建会话 |
+| `chat.errorLlmTimeoutSource` | 源聊天 | 重试为主 + 反复出现时新建会话清空历史 |
+| `chat.errorLlmTimeoutAsk` | 全局 Ask | 说明 Ask 多步调用耗时长 + 建议拆分大问题 |
+
+**`error-bubble.ts` 共享 helper 不变**：仍接受名为 `errorLlmTimeout` 的字段，三个调用方各自在调用 helper 时把对应场景的 i18n 文案传进去。这样 helper 完全不感知 surface 概念、保持纯粹；调用方一眼看到 i18n key 后缀就知道选了对的场景文案，新加调用点也不会误用通用 key。
+
+其它 8 条 errorXxx 文案**不拆**：`errorAuthentication` / `errorConfiguration` / `errorRateLimit` 等的引导跨场景适用（都是"去 Settings 看 API Key/Models"或"等限流恢复"），没必要拆分。如果未来某个 code 在某个场景需要差异化文案，按本轮模式再拆即可。
+
+#### 文案
+
+**zh-CN**：
+
+- `errorLlmTimeoutNotebook`：「模型响应超过 {seconds} 秒未返回。\n\n你可以在左侧"来源"栏中，将不相关的来源切换为"仅参考见解"或"不参考"，或为本次问题新建一个对话会话后重试。」
+- `errorLlmTimeoutSource`：「模型响应超过 {seconds} 秒未返回。\n\n可能是该来源内容较长或模型负载较高。请稍后重试；如果反复出现，考虑为本问题新建一个会话以清空历史记录。」
+- `errorLlmTimeoutAsk`：「问答超过 {seconds} 秒未返回。\n\nAsk 会调用多次模型以生成检索策略、逐源回答和最终综合，耗时较长。请稍后重试；如果问题范围较广，可以尝试拆分为几个更具体的问题分别提问。」
+
+**en-US** 对应翻译完整保留同样的引导逻辑，全部含 "timed out" 关键短语，方便国际化用户和技术支持沟通。
+
+#### 不动
+
+- 共享 helper `frontend/src/lib/chat/error-bubble.ts` 接口/实现/测试。
+- 后端代码（`api/routers/{chat,source_chat,search}.py` 与 `api/sse_helpers.py`）。
+- `chat.errorLlmTimeoutPrefix`（⚠️ 前缀文案）与其它 8 个错误模板。
+
+#### 验证
+
+```text
+cd frontend && npx vitest run src/lib/chat/error-bubble.test.ts src/lib/hooks/useNotebookChat.test.tsx src/lib/hooks/useSourceChat.test.tsx src/lib/hooks/use-ask.test.tsx
+27 passed (5 + 16 + 3 + 3)
+
+cd frontend && npx vitest run
+144 passed | 9 skipped
+
+cd frontend && npx eslint src/lib/hooks/{useNotebookChat,useSourceChat,use-ask}.ts src/lib/locales/{en-US,zh-CN}/index.ts
+rc=0
+
+cd frontend && npm run lint
+0 errors, 4 pre-existing warnings
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+rc=0
+```
+
+测试断言均使用 `toLowerCase().toContain('timed out')` / `toLowerCase().toContain('rate-limited')` 等英文关键短语，三条新模板都涵盖这些关键词，因此前端用例无需修改主体逻辑。
+
+#### 实机回归建议
+
+按场景分别用临时 timeout 值触发：
+
+- **笔记本对话**：`CHAT_LLM_TIMEOUT_SECONDS=3` → 期望气泡含「在左侧'来源'栏中」字样
+- **源聊天**：`SOURCE_CHAT_LLM_TIMEOUT_SECONDS=3` → 期望气泡含「考虑为本问题新建一个会话以清空历史记录」、**不含**「左侧'来源'栏」
+- **全局 Ask**：`ASK_LLM_TIMEOUT_SECONDS=3` → 期望气泡含「Ask 会调用多次模型」与「拆分为几个更具体的问题」、**不含**「左侧'来源'栏」
+
+测完恢复 `.env` 默认值并 `make start-all`。
+
+### 32.8 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `api/sse_helpers.py` | **新增** — `heartbeat_sse_event` / `llm_timeout_sse_event` / `error_sse_event` / `ERROR_CODE_BY_EXCEPTION_NAME` / `error_code_from_exception` / `env_positive_float` / `stream_with_heartbeat_and_timeout` |
+| `api/routers/chat.py` | 把本地 `_env_positive_float` / `heartbeat_sse_event` / `_ERROR_CODE_BY_EXCEPTION_NAME` / `chat_error_code_from_exception` 改为从 `api.sse_helpers` 重新导出 |
+| `api/routers/source_chat.py` | 接入 `stream_with_heartbeat_and_timeout`；新增 `SOURCE_CHAT_LLM_TIMEOUT_SECONDS` / `SOURCE_CHAT_STREAM_HEARTBEAT_SECONDS`；error 分支输出 `error_code` + structured `llm_timeout` event |
+| `api/routers/search.py` | 接入 `stream_with_heartbeat_and_timeout`（静默式心跳）；新增 `ASK_LLM_TIMEOUT_SECONDS` / `ASK_STREAM_HEARTBEAT_SECONDS`；error 分支输出 `error_code` |
+| `frontend/src/lib/chat/error-bubble.ts` | **新增** — `buildErrorBubbleBody` 共享 helper、`ChatErrorCode` 类型、`ErrorBubbleTemplates` 接口 |
+| `frontend/src/lib/chat/error-bubble.test.ts` | **新增** — 5 个用例覆盖 llm_timeout / authentication / 未知 code / 缺 error_code / 缺 message |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | 错误分支改为调用 `buildErrorBubbleBody`；§32.7 改传 `t.chat.errorLlmTimeoutNotebook` |
+| `frontend/src/lib/hooks/useSourceChat.ts` | 新增 `SourceChatActivityStatus` + `activityElapsedSeconds`；解析 heartbeat / SSE error；错误转气泡；`inlineStreamError` flag 跳过 refetch；§32.7 改传 `t.chat.errorLlmTimeoutSource` |
+| `frontend/src/lib/hooks/useSourceChat.test.tsx` | **新增** — 3 个用例（llm_timeout 气泡 / rate_limit 气泡 / heartbeat 状态） |
+| `frontend/src/lib/hooks/use-ask.ts` | 解析 heartbeat / SSE error；错误写入 store `errorBubble`；保留 toast 兜底给 transport 失败；§32.7 改传 `t.chat.errorLlmTimeoutAsk` |
+| `frontend/src/lib/hooks/use-ask.test.tsx` | **新增** — 3 个用例（llm_timeout 气泡 / heartbeat 计数 / rate_limit 气泡） |
+| `frontend/src/lib/stores/ask-store.ts` | 新增 `errorBubble` / `activityElapsedSeconds` 字段及 actions；partialize 排除 |
+| `frontend/src/lib/types/search.ts` | `AskStreamEvent` 增加 `heartbeat` / `error_code` / `timeout_seconds` / `stage` / `elapsed_ms` 字段 |
+| `frontend/src/lib/locales/en-US/index.ts` | §32.7：`errorLlmTimeout` 拆为 `errorLlmTimeoutNotebook` / `errorLlmTimeoutSource` / `errorLlmTimeoutAsk` |
+| `frontend/src/lib/locales/zh-CN/index.ts` | §32.7：同上中文 |
+| `frontend/src/components/search/StreamingResponse.tsx` | 接受 `errorBubble` / `activityElapsedSeconds` props；loading 指示器追加秒数；新增 markdown 渲染的错误气泡卡片 |
+| `frontend/src/app/(dashboard)/search/page.tsx` | StreamingResponse 透传 `ask.errorBubble` / `ask.activityElapsedSeconds` |
+| `frontend/src/app/(dashboard)/sources/[id]/page.tsx` | ChatPanel 透传 `chat.activityStatus` / `chat.activityElapsedSeconds` |
+| `tests/test_sse_helpers.py` | **新增** — 11 个用例覆盖共享 helper 的全部公开 API |
+| `tests/test_source_chat_heartbeat_sse.py` | **新增** — 源聊天 error_code / llm_timeout 路径回归 |
+| `tests/test_ask_heartbeat_sse.py` | **新增** — Ask error_code / llm_timeout / 静默式心跳路径回归 |
+
+---
+
+> 最后更新：2026-06-28 | 新增 §32（心跳/超时/错误气泡统一到三条 SSE 流）+ §32.7（按 surface 拆分 `errorLlmTimeout` 文案，源聊天和 Ask 不再误用笔记本对话的"左侧来源栏"指引）。本轮：抽 `api/sse_helpers.py` + `frontend/src/lib/chat/error-bubble.ts` 两个共享 helper；源聊天和 Ask 接入 heartbeat / llm_timeout / error_code；前端 `useSourceChat` / `use-ask` / `StreamingResponse` 同步；后端 ruff + pytest 57 passed，前端 vitest 144 passed。

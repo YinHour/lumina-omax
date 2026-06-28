@@ -32,7 +32,12 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { NotebookGuideCard } from './NotebookGuideCard'
 import { SuggestedQuestionList } from './SuggestedQuestionList'
 
-type ChatActivityStatus = 'gettingContext' | 'searchingWeb' | 'thinking'
+type ChatActivityStatus =
+  | 'gettingContext'
+  | 'searchingWeb'
+  | 'thinking'
+  | 'awaitingModel'
+  | 'modelStreaming'
 
 interface NotebookContextStats {
   sourcesInsights: number
@@ -70,6 +75,7 @@ interface ChatPanelProps {
   isGuideLoading?: boolean
   suggestedQuestionsByMessageId?: Record<string, string[]>
   activityStatus?: ChatActivityStatus | null
+  activityElapsedSeconds?: number
   onRegenerateGuide?: () => void
 }
 
@@ -96,6 +102,7 @@ export function ChatPanel({
   isGuideLoading = false,
   suggestedQuestionsByMessageId = {},
   activityStatus,
+  activityElapsedSeconds,
   onRegenerateGuide,
 }: ChatPanelProps) {
   const { t } = useTranslation()
@@ -262,11 +269,24 @@ export function ChatPanel({
     messages[messages.length - 1]?.type === 'human'
   )
   const activityStatusLabel = activityStatus
-    ? {
-        gettingContext: t.chat.activityGettingContext,
-        searchingWeb: t.chat.activitySearchingWeb,
-        thinking: t.chat.activityThinking,
-      }[activityStatus]
+    ? (() => {
+        const labelMap: Record<ChatActivityStatus, string> = {
+          gettingContext: t.chat.activityGettingContext,
+          searchingWeb: t.chat.activitySearchingWeb,
+          thinking: t.chat.activityThinking,
+          awaitingModel: t.chat.activityAwaitingModel,
+          modelStreaming: t.chat.activityModelStreaming,
+        }
+        const base = labelMap[activityStatus]
+        if (
+          activityStatus === 'awaitingModel' &&
+          typeof activityElapsedSeconds === 'number' &&
+          activityElapsedSeconds > 0
+        ) {
+          return `${base}（${activityElapsedSeconds}s）`
+        }
+        return base
+      })()
     : null
 
   return (

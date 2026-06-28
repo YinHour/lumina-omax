@@ -101,6 +101,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       messages={chat.messages}
       isStreaming={chat.isSending}
       activityStatus={chat.activityStatus}
+      activityElapsedSeconds={chat.activityElapsedSeconds}
       notebookGuide={notebookGuide}
       isGuideLoading={sources.length > 0 && (guideLoading || guideFetching)}
       suggestedQuestionsByMessageId={chat.suggestedQuestionsByMessageId}

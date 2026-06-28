@@ -30,7 +30,29 @@ router = APIRouter()
 
 SUGGESTED_QUESTIONS_TIMEOUT_SECONDS = 8.0
 NOTEBOOK_CHAT_CONTEXT_MAX_CHARS = int(
-    os.environ.get("NOTEBOOK_CHAT_CONTEXT_MAX_CHARS", "200000")
+    os.environ.get("NOTEBOOK_CHAT_CONTEXT_MAX_CHARS", "120000")
+)
+
+
+# Shared SSE helpers (heartbeat / timeout / error_code) live in api.sse_helpers
+# so source_chat.py and search.py can reuse the exact same primitives. The
+# names below are re-exported so existing call sites and tests stay stable.
+from api.sse_helpers import (  # noqa: E402
+    ERROR_CODE_BY_EXCEPTION_NAME as _ERROR_CODE_BY_EXCEPTION_NAME,  # noqa: F401
+)
+from api.sse_helpers import (
+    env_positive_float as _env_positive_float,
+)
+from api.sse_helpers import (
+    error_code_from_exception as chat_error_code_from_exception,  # noqa: F401
+)
+from api.sse_helpers import (
+    heartbeat_sse_event,  # noqa: F401
+)
+
+CHAT_LLM_TIMEOUT_SECONDS = _env_positive_float("CHAT_LLM_TIMEOUT_SECONDS", 240.0)
+CHAT_STREAM_HEARTBEAT_SECONDS = _env_positive_float(
+    "CHAT_STREAM_HEARTBEAT_SECONDS", 5.0
 )
 
 
@@ -635,128 +657,195 @@ async def stream_chat_response(
         first_ai_chunk_logged = False
         final_answer_parts: list[str] = []
 
+        # Producer/consumer split so the consumer can interleave heartbeats while
+        # the model is still computing the first chunk, and so the whole graph
+        # invocation can be enforced with a single timeout budget.
+        out_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        _PRODUCER_DONE = None  # sentinel pushed when graph stream finishes
+        heartbeat_count = 0
+        model_first_byte_ms: Optional[int] = None
+
         def observe_ai_chunk(content: str) -> None:
-            nonlocal yielded_ai_chunks, first_ai_chunk_logged
+            nonlocal yielded_ai_chunks, first_ai_chunk_logged, model_first_byte_ms
             yielded_ai_chunks = True
             final_answer_parts.append(content)
             if not first_ai_chunk_logged:
                 first_ai_chunk_logged = True
+                model_first_byte_ms = elapsed_ms(started_at)
                 log_chat_info(
                     trace_id,
                     "first_ai_chunk",
                     chunk_chars=len(content),
-                    elapsed_ms=elapsed_ms(started_at),
+                    elapsed_ms=model_first_byte_ms,
+                    model_first_byte_ms=model_first_byte_ms,
+                    heartbeats_sent=heartbeat_count,
                 )
-            
-        async with AsyncSqliteSaver.from_conn_string(LANGGRAPH_CHAT_CHECKPOINT_FILE) as saver:
-            async_graph = agent_state.compile(checkpointer=saver)
-            log_chat_info(
-                trace_id,
-                "graph_start",
-                history_messages=len(state_values.get("messages", [])),
-                context_sources=len(context.get("sources", [])),
-                context_notes=len(context.get("notes", [])),
-            )
-            
-            async for event in async_graph.astream_events(
-                input=state_values, config=config, version="v2"
-            ):
-                kind = event["event"]
-                
-                if kind == "on_chat_model_stream" or kind == "on_llm_stream":
-                    if "chunk" in event["data"]:
-                        chunk = event["data"]["chunk"]
-                        
-                        if hasattr(chunk, "content") and chunk.content:
-                            content = chunk.content
-                            if isinstance(content, str):
-                                if not content.startswith("<web_search_results>") and not content.endswith("</web_search_results>"):
-                                    observe_ai_chunk(content)
-                                    ai_event = {
-                                        "type": "ai_message",
-                                        "content": content,
-                                        "timestamp": None,
-                                    }
-                                    yield f"data: {json.dumps(ai_event)}\n\n"
-                                    await asyncio.sleep(0.001)
-                            elif isinstance(content, list):
-                                for c in content:
-                                    if isinstance(c, dict) and "text" in c:
-                                        if not c["text"].startswith("<web_search_results>") and not c["text"].endswith("</web_search_results>"):
-                                            observe_ai_chunk(c["text"])
-                                            ai_event = {
-                                                "type": "ai_message",
-                                                "content": c["text"],
-                                                "timestamp": None,
-                                            }
-                                            yield f"data: {json.dumps(ai_event)}\n\n"
-                                            await asyncio.sleep(0.001)
-                                    elif isinstance(c, str):
-                                        if not c.startswith("<web_search_results>") and not c.endswith("</web_search_results>"):
-                                            observe_ai_chunk(c)
-                                            ai_event = {
-                                                "type": "ai_message",
-                                                "content": c,
-                                                "timestamp": None,
-                                            }
-                                            yield f"data: {json.dumps(ai_event)}\n\n"
-                                            await asyncio.sleep(0.001)
-                                        
-                        elif isinstance(chunk, str) and chunk:
-                            if not chunk.startswith("<web_search_results>") and not chunk.endswith("</web_search_results>"):
-                                observe_ai_chunk(chunk)
-                                ai_event = {
-                                    "type": "ai_message",
-                                    "content": chunk,
-                                    "timestamp": None,
-                                }
-                                yield f"data: {json.dumps(ai_event)}\n\n"
-                                await asyncio.sleep(0.001)
-                        elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
-                            if not chunk["content"].startswith("<web_search_results>") and not chunk["content"].endswith("</web_search_results>"):
-                                observe_ai_chunk(chunk["content"])
-                                ai_event = {
-                                    "type": "ai_message",
-                                    "content": chunk["content"],
-                                    "timestamp": None,
-                                }
-                                yield f"data: {json.dumps(ai_event)}\n\n"
-                                await asyncio.sleep(0.001)
-                            
-                elif kind == "on_chat_model_end":
-                    if "output" in event["data"] and "content" in event["data"]["output"]:
-                        if not yielded_ai_chunks:
-                            content = event["data"]["output"]["content"]
-                            if isinstance(content, str):
-                                chunk_size = 50
-                                for i in range(0, len(content), chunk_size):
-                                    observe_ai_chunk(content[i:i+chunk_size])
-                                    ai_event = {
-                                        "type": "ai_message",
-                                        "content": content[i:i+chunk_size],
-                                        "timestamp": None,
-                                    }
-                                    yield f"data: {json.dumps(ai_event)}\n\n"
-                                    await asyncio.sleep(0.01)
-                                    
-                elif kind == "on_chain_end" and event["name"] == "LangGraph":
-                    final_state = event["data"]["output"]
-                    if isinstance(final_state, dict) and "agent" in final_state:
-                        if not yielded_ai_chunks and "messages" in final_state["agent"]:
-                            msg = final_state["agent"]["messages"]
-                            if hasattr(msg, "content"):
-                                content_text = msg.content
-                                if content_text:
-                                    chunk_size = 50
-                                    for i in range(0, len(content_text), chunk_size):
-                                        observe_ai_chunk(content_text[i:i+chunk_size])
+
+        async def run_graph_producer() -> None:
+            async with AsyncSqliteSaver.from_conn_string(
+                LANGGRAPH_CHAT_CHECKPOINT_FILE
+            ) as saver:
+                async_graph = agent_state.compile(checkpointer=saver)
+                log_chat_info(
+                    trace_id,
+                    "graph_start",
+                    history_messages=len(state_values.get("messages", [])),
+                    context_sources=len(context.get("sources", [])),
+                    context_notes=len(context.get("notes", [])),
+                )
+
+                async for event in async_graph.astream_events(
+                    input=state_values, config=config, version="v2"
+                ):
+                    kind = event["event"]
+
+                    if kind == "on_chat_model_stream" or kind == "on_llm_stream":
+                        if "chunk" in event["data"]:
+                            chunk = event["data"]["chunk"]
+
+                            if hasattr(chunk, "content") and chunk.content:
+                                content = chunk.content
+                                if isinstance(content, str):
+                                    if not content.startswith("<web_search_results>") and not content.endswith("</web_search_results>"):
+                                        observe_ai_chunk(content)
                                         ai_event = {
                                             "type": "ai_message",
-                                            "content": content_text[i:i+chunk_size],
+                                            "content": content,
                                             "timestamp": None,
                                         }
-                                        yield f"data: {json.dumps(ai_event)}\n\n"
-                                        await asyncio.sleep(0.01)
+                                        await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                elif isinstance(content, list):
+                                    for c in content:
+                                        if isinstance(c, dict) and "text" in c:
+                                            if not c["text"].startswith("<web_search_results>") and not c["text"].endswith("</web_search_results>"):
+                                                observe_ai_chunk(c["text"])
+                                                ai_event = {
+                                                    "type": "ai_message",
+                                                    "content": c["text"],
+                                                    "timestamp": None,
+                                                }
+                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                        elif isinstance(c, str):
+                                            if not c.startswith("<web_search_results>") and not c.endswith("</web_search_results>"):
+                                                observe_ai_chunk(c)
+                                                ai_event = {
+                                                    "type": "ai_message",
+                                                    "content": c,
+                                                    "timestamp": None,
+                                                }
+                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+                            elif isinstance(chunk, str) and chunk:
+                                if not chunk.startswith("<web_search_results>") and not chunk.endswith("</web_search_results>"):
+                                    observe_ai_chunk(chunk)
+                                    ai_event = {
+                                        "type": "ai_message",
+                                        "content": chunk,
+                                        "timestamp": None,
+                                    }
+                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                            elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
+                                if not chunk["content"].startswith("<web_search_results>") and not chunk["content"].endswith("</web_search_results>"):
+                                    observe_ai_chunk(chunk["content"])
+                                    ai_event = {
+                                        "type": "ai_message",
+                                        "content": chunk["content"],
+                                        "timestamp": None,
+                                    }
+                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+                    elif kind == "on_chat_model_end":
+                        if "output" in event["data"] and "content" in event["data"]["output"]:
+                            if not yielded_ai_chunks:
+                                content = event["data"]["output"]["content"]
+                                if isinstance(content, str):
+                                    chunk_size = 50
+                                    for i in range(0, len(content), chunk_size):
+                                        observe_ai_chunk(content[i:i+chunk_size])
+                                        ai_event = {
+                                            "type": "ai_message",
+                                            "content": content[i:i+chunk_size],
+                                            "timestamp": None,
+                                        }
+                                        await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+                    elif kind == "on_chain_end" and event["name"] == "LangGraph":
+                        final_state = event["data"]["output"]
+                        if isinstance(final_state, dict) and "agent" in final_state:
+                            if not yielded_ai_chunks and "messages" in final_state["agent"]:
+                                msg = final_state["agent"]["messages"]
+                                if hasattr(msg, "content"):
+                                    content_text = msg.content
+                                    if content_text:
+                                        chunk_size = 50
+                                        for i in range(0, len(content_text), chunk_size):
+                                            observe_ai_chunk(content_text[i:i+chunk_size])
+                                            ai_event = {
+                                                "type": "ai_message",
+                                                "content": content_text[i:i+chunk_size],
+                                                "timestamp": None,
+                                            }
+                                            await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+
+        async def run_heartbeat_emitter() -> None:
+            # Emit a heartbeat every CHAT_STREAM_HEARTBEAT_SECONDS until the first
+            # AI chunk arrives, so the client can show "still working" even before
+            # any token is produced. Cancellation is the normal stop condition.
+            nonlocal heartbeat_count
+            try:
+                while not first_ai_chunk_logged:
+                    await asyncio.sleep(CHAT_STREAM_HEARTBEAT_SECONDS)
+                    if first_ai_chunk_logged:
+                        return
+                    heartbeat_count += 1
+                    await out_queue.put(
+                        heartbeat_sse_event(
+                            "awaiting_model", elapsed_ms(started_at)
+                        )
+                    )
+            except asyncio.CancelledError:
+                return
+
+        producer_task = asyncio.create_task(run_graph_producer())
+        heartbeat_task = asyncio.create_task(run_heartbeat_emitter())
+
+        async def finalize_producer() -> None:
+            try:
+                await asyncio.wait_for(
+                    producer_task, timeout=CHAT_LLM_TIMEOUT_SECONDS
+                )
+            finally:
+                await out_queue.put(_PRODUCER_DONE)
+
+        finalize_task = asyncio.create_task(finalize_producer())
+
+        try:
+            while True:
+                item = await out_queue.get()
+                if item is _PRODUCER_DONE:
+                    break
+                yield item
+                await asyncio.sleep(0.001)
+        except asyncio.TimeoutError:
+            raise
+        finally:
+            heartbeat_task.cancel()
+            if not producer_task.done():
+                producer_task.cancel()
+            for task in (heartbeat_task, producer_task, finalize_task):
+                try:
+                    await task
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                except Exception:
+                    # Surfaced via finalize_task below or via outer except
+                    pass
+
+        # Re-raise underlying producer error if any (preserved across cancellation).
+        if finalize_task.done():
+            exc = finalize_task.exception()
+            if exc is not None:
+                raise exc
 
         answer = "".join(final_answer_parts)
         log_chat_info(
@@ -764,6 +853,8 @@ async def stream_chat_response(
             "main_answer_end",
             answer_chars=len(answer),
             elapsed_ms=elapsed_ms(started_at),
+            model_first_byte_ms=model_first_byte_ms if model_first_byte_ms is not None else -1,
+            heartbeats_sent=heartbeat_count,
         )
         yield answer_complete_sse_event()
 
@@ -781,19 +872,53 @@ async def stream_chat_response(
         completion_event = {"type": "complete"}
         yield f"data: {json.dumps(completion_event)}\n\n"
 
+    except asyncio.TimeoutError:
+        import traceback
+
+        logger.error(
+            "chat_trace={} step=request_timeout total_ms={} timeout_seconds={}\n{}".format(
+                trace_id,
+                elapsed_ms(started_at),
+                CHAT_LLM_TIMEOUT_SECONDS,
+                traceback.format_exc(),
+            )
+        )
+        log_chat_info(
+            trace_id,
+            "request_timeout",
+            timeout_seconds=CHAT_LLM_TIMEOUT_SECONDS,
+            total_ms=elapsed_ms(started_at),
+        )
+        timeout_event = {
+            "type": "error",
+            "error_code": "llm_timeout",
+            "timeout_seconds": CHAT_LLM_TIMEOUT_SECONDS,
+            "message": (
+                f"Model response timed out after {int(CHAT_LLM_TIMEOUT_SECONDS)}s. "
+                "Try shrinking the included sources or notes and ask again."
+            ),
+        }
+        yield f"data: {json.dumps(timeout_event)}\n\n"
     except Exception as e:
         import traceback
 
         from open_notebook.utils.error_classifier import classify_error
-        _, user_message = classify_error(e)
+        exc_class, user_message = classify_error(e)
+        error_code = chat_error_code_from_exception(exc_class)
         logger.error(f"Error in chat streaming: {str(e)}\n{traceback.format_exc()}")
         log_chat_info(
             trace_id,
             "request_failed",
             error_type=type(e).__name__,
+            classified_as=exc_class.__name__,
+            error_code=error_code,
             total_ms=elapsed_ms(started_at),
         )
-        error_event = {"type": "error", "message": user_message}
+        error_event = {
+            "type": "error",
+            "error_code": error_code,
+            "message": user_message,
+        }
         yield f"data: {json.dumps(error_event)}\n\n"
     finally:
         chat_trace_id.reset(trace_token)

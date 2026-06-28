@@ -16,6 +16,7 @@ import {
   BuildContextResponse
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
+import { buildErrorBubbleBody } from '@/lib/chat/error-bubble'
 
 interface UseNotebookChatParams {
   notebookId: string
@@ -24,7 +25,13 @@ interface UseNotebookChatParams {
   contextSelections: ContextSelections
 }
 
-export type NotebookChatActivityStatus = 'gettingContext' | 'searchingWeb' | 'thinking'
+export type NotebookChatActivityStatus =
+  | 'gettingContext'
+  | 'searchingWeb'
+  | 'thinking'
+  | 'awaitingModel'
+  | 'modelStreaming'
+
 
 export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
   const { t } = useTranslation()
@@ -34,6 +41,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const [suggestedQuestionsByMessageId, setSuggestedQuestionsByMessageId] = useState<Record<string, string[]>>({})
   const [isSending, setIsSending] = useState(false)
   const [activityStatus, setActivityStatus] = useState<NotebookChatActivityStatus | null>(null)
+  const [activityElapsedSeconds, setActivityElapsedSeconds] = useState<number>(0)
   const [tokenCount, setTokenCount] = useState<number>(0)
   const [charCount, setCharCount] = useState<number>(0)
   const isSendingRef = useRef(false)
@@ -274,6 +282,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     isSendingRef.current = true
     setIsSending(true)
     setActivityStatus('gettingContext')
+    setActivityElapsedSeconds(0)
 
     const userMessageId = `temp-${Date.now()}`
     const userMessage: NotebookChatMessage = {
@@ -317,7 +326,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
       // Build context
       const context = await buildContext()
-      setActivityStatus(enableWebSearch ? 'searchingWeb' : 'thinking')
+      setActivityStatus(enableWebSearch ? 'searchingWeb' : 'awaitingModel')
+      setActivityElapsedSeconds(0)
       
       // Create abort controller for cancellation
       abortController = new AbortController()
@@ -340,16 +350,21 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       const decoder = new TextDecoder()
       let aiMessage: NotebookChatMessage | null = null
       let pendingSuggestedQuestions: string[] | null = null
+      let inlineStreamError = false
       let buffer = ''
       const markAnswerComplete = () => {
         isSendingRef.current = false
         setActivityStatus(null)
+        setActivityElapsedSeconds(0)
         setIsSending(false)
       }
 
-      const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown }) => {
+      const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown; stage?: string; elapsed_ms?: number; error_code?: string; timeout_seconds?: number }) => {
         if (data.type === 'ai_message') {
-          setActivityStatus(null)
+          if (!aiMessage) {
+            setActivityStatus('modelStreaming')
+            setActivityElapsedSeconds(0)
+          }
           if (!aiMessage) {
             aiMessage = {
               id: `ai-${Date.now()}`,
@@ -367,6 +382,13 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
               )
             )
           }
+        } else if (data.type === 'heartbeat') {
+          // Backend keep-alive while waiting for first model byte. Surface elapsed
+          // seconds so the UI can show "model still working, waited Ns".
+          if (data.stage === 'awaiting_model' && typeof data.elapsed_ms === 'number') {
+            setActivityStatus('awaitingModel')
+            setActivityElapsedSeconds(Math.max(1, Math.floor(data.elapsed_ms / 1000)))
+          }
         } else if (data.type === 'suggested_questions') {
           const questions = Array.isArray(data.questions)
             ? data.questions.filter((question): question is string => typeof question === 'string' && question.trim().length > 0).slice(0, 3)
@@ -382,7 +404,43 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         } else if (data.type === 'answer_complete') {
           markAnswerComplete()
         } else if (data.type === 'error') {
-          throw new Error(data.message || 'Stream error')
+          // All chat SSE errors render as an inline AI-role bubble (see §29.7
+          // and §31). Bubble layout is shared with source chat / ask via
+          // `buildErrorBubbleBody`.
+          const { body: bubbleBody } = buildErrorBubbleBody(data, {
+            errorLlmTimeoutPrefix: t.chat.errorLlmTimeoutPrefix,
+            errorLlmTimeout: t.chat.errorLlmTimeoutNotebook,
+            errorAuthentication: t.chat.errorAuthentication,
+            errorRateLimit: t.chat.errorRateLimit,
+            errorConfiguration: t.chat.errorConfiguration,
+            errorNetwork: t.chat.errorNetwork,
+            errorExternalService: t.chat.errorExternalService,
+            errorInvalidInput: t.chat.errorInvalidInput,
+            errorNotFound: t.chat.errorNotFound,
+            errorInternal: t.chat.errorInternal,
+            errorGeneric: t.chat.errorGeneric,
+          })
+
+          if (!aiMessage) {
+            aiMessage = {
+              id: `ai-error-${Date.now()}`,
+              type: 'ai',
+              content: bubbleBody,
+              timestamp: new Date().toISOString(),
+            }
+            setMessages(prev => [...prev, aiMessage!])
+          } else {
+            aiMessage.content += `\n\n${bubbleBody}`
+            setMessages(prev =>
+              prev.map(msg => msg.id === aiMessage!.id
+                ? { ...msg, content: aiMessage!.content }
+                : msg
+              )
+            )
+          }
+          inlineStreamError = true
+          markAnswerComplete()
+          return
         }
       }
 
@@ -428,30 +486,40 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         }
       }
 
-      // Refetch current session to get updated data and persistence
-      const refetchResult = await refetchCurrentSession()
-      let persistedMessages = refetchResult.data?.messages
-      if (!persistedMessages && pendingSuggestedQuestions) {
-        const refreshedSession = await chatApi.getSession(sessionId)
-        queryClient.setQueryData(QUERY_KEYS.notebookChatSession(sessionId), refreshedSession)
-        persistedMessages = refreshedSession.messages
-      }
-      const persistedAiMessage = persistedMessages
-        ?.filter(msg => msg.type === 'ai')
-        .at(-1)
-      if (pendingSuggestedQuestions && persistedAiMessage) {
-        const questions = pendingSuggestedQuestions
-        setSuggestedQuestionsByMessageId(prev => ({
-          ...prev,
-          [persistedAiMessage.id]: questions,
-        }))
-        pendingSuggestedQuestionsRef.current = null
+      // Refetch current session to get updated data and persistence. Skip
+      // this when the stream ended with an inline error (e.g. llm_timeout):
+      // that bubble lives only in front-end state, and reloading the
+      // persisted session would overwrite it with the empty/last-known
+      // server state.
+      if (!inlineStreamError) {
+        const refetchResult = await refetchCurrentSession()
+        let persistedMessages = refetchResult.data?.messages
+        if (!persistedMessages && pendingSuggestedQuestions) {
+          const refreshedSession = await chatApi.getSession(sessionId)
+          queryClient.setQueryData(QUERY_KEYS.notebookChatSession(sessionId), refreshedSession)
+          persistedMessages = refreshedSession.messages
+        }
+        const persistedAiMessage = persistedMessages
+          ?.filter(msg => msg.type === 'ai')
+          .at(-1)
+        if (pendingSuggestedQuestions && persistedAiMessage) {
+          const questions = pendingSuggestedQuestions
+          setSuggestedQuestionsByMessageId(prev => ({
+            ...prev,
+            [persistedAiMessage.id]: questions,
+          }))
+          pendingSuggestedQuestionsRef.current = null
+        }
       }
     } catch (err: unknown) {
       // AbortError is user-initiated cancellation, not a real error
       if (err instanceof DOMException && err.name === 'AbortError') {
         return
       }
+      // Genuine transport-layer failures (e.g. Next.js proxy reset, network
+      // dropped before SSE was established) still surface as a toast — the
+      // server never had a chance to emit an `error` event. All SSE-signaled
+      // errors are rendered inline as AI bubbles in `handleStreamEvent`.
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
       console.error('Error sending message:', error)
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))
@@ -460,6 +528,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     } finally {
       isSendingRef.current = false
       setActivityStatus(null)
+      setActivityElapsedSeconds(0)
       setIsSending(false)
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null
@@ -482,6 +551,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       abortControllerRef.current = null
       isSendingRef.current = false
       setActivityStatus(null)
+      setActivityElapsedSeconds(0)
       setIsSending(false)
     }
   }, [])
@@ -552,6 +622,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     suggestedQuestionsByMessageId,
     isSending,
     activityStatus,
+    activityElapsedSeconds,
     loadingSessions,
     tokenCount,
     charCount,

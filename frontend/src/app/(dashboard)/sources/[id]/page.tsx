@@ -58,6 +58,8 @@ export default function SourceDetailPage({ params }: { params: Promise<{ id: str
           <ChatPanel
             messages={chat.messages}
             isStreaming={chat.isStreaming}
+            activityStatus={chat.activityStatus}
+            activityElapsedSeconds={chat.activityElapsedSeconds}
             contextIndicators={chat.contextIndicators}
             onSendMessage={(message, model, enableWebSearch) => chat.sendMessage(message, model, enableWebSearch)}
             modelOverride={chat.currentSession?.model_override}

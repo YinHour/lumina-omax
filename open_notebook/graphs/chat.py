@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Annotated, Optional
 
 from ai_prompter import Prompter
@@ -18,6 +19,46 @@ from open_notebook.utils.error_classifier import classify_error
 from open_notebook.utils.text_utils import extract_text_content
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    """Read a positive int env var with safe fallback to ``default``."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(f"Invalid {name}={raw!r}; using default {default}")
+        return default
+    return value if value > 0 else default
+
+
+def _select_history_window(
+    messages: list, max_messages: int, trace_id: str
+) -> list:
+    """Return the most recent ``max_messages`` items from ``messages``.
+
+    The full history is preserved in LangGraph state (checkpoint). This
+    only narrows what we hand to the LLM in a single turn so that long
+    sessions do not blow up the prompt budget. ``max_messages <= 0``
+    disables the cap.
+    """
+    if max_messages <= 0 or len(messages) <= max_messages:
+        return list(messages)
+
+    trimmed = list(messages[-max_messages:])
+    dropped = len(messages) - len(trimmed)
+    logger.info(
+        "chat_trace={} step=history_truncated total_messages={} kept_messages={} dropped_messages={} max_messages={}".format(
+            trace_id,
+            len(messages),
+            len(trimmed),
+            dropped,
+            max_messages,
+        )
+    )
+    return trimmed
+
+
 class ThreadState(TypedDict):
     messages: Annotated[list, add_messages]
     notebook: Optional[Notebook]
@@ -32,16 +73,23 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
     try:
         trace_id = state.get("chat_trace") or chat_trace_id.get() or "unknown"
         system_prompt = Prompter(prompt_template="chat/system").render(data=state)  # type: ignore[arg-type]
-        payload = [SystemMessage(content=system_prompt)] + state.get("messages", [])
+        history = state.get("messages", []) or []
+        # Slice history for this LLM call only; LangGraph checkpoint keeps the
+        # full transcript so the UI can still display everything.
+        max_history = _env_positive_int("CHAT_HISTORY_MAX_MESSAGES", 12)
+        windowed_history = _select_history_window(history, max_history, trace_id)
+        payload = [SystemMessage(content=system_prompt)] + windowed_history
         model_id = config.get("configurable", {}).get("model_id") or state.get(
             "model_override"
         )
         logger.info(
-            "chat_trace={} step=model_start model_id={} enable_web_search={} payload_messages={}".format(
+            "chat_trace={} step=model_start model_id={} enable_web_search={} payload_messages={} history_total={} history_kept={}".format(
                 trace_id,
                 model_id or "default:chat",
                 bool(state.get("enable_web_search")),
                 len(payload),
+                len(history),
+                len(windowed_history),
             )
         )
 
