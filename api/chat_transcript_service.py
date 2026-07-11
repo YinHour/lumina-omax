@@ -99,14 +99,14 @@ async def _update_session_metadata(
     last_message_preview: Optional[str] = None,
 ) -> int:
     count_rows = await repo_query(
-        "SELECT count() AS count FROM chat_message WHERE session = $session GROUP ALL",
-        {"session": ensure_record_id(session_id)},
+        "SELECT count() AS count FROM chat_message WHERE session = $session_record GROUP ALL",
+        {"session_record": ensure_record_id(session_id)},
     )
     message_count = int(count_rows[0].get("count", 0)) if count_rows else 0
     await repo_query(
-        "UPDATE $session MERGE $metadata",
+        "UPDATE $session_record MERGE $metadata",
         {
-            "session": ensure_record_id(session_id),
+            "session_record": ensure_record_id(session_id),
             "metadata": {
                 "transcript_initialized": transcript_initialized,
                 "message_count": message_count,
@@ -186,12 +186,12 @@ async def get_transcript_page(
         f"""
         SELECT message_id, role, content, sequence, created
         FROM chat_message
-        WHERE session = $session {before_clause}
+        WHERE session = $session_record {before_clause}
         ORDER BY sequence DESC
         LIMIT $page_size
         """,
         {
-            "session": ensure_record_id(session_id),
+            "session_record": ensure_record_id(session_id),
             "before_sequence": before_sequence,
             "page_size": limit + 1,
         },
@@ -212,18 +212,18 @@ async def get_all_transcript_messages(session_id: str) -> list[dict[str, Any]]:
         """
         SELECT message_id, role, content, sequence, created
         FROM chat_message
-        WHERE session = $session
+        WHERE session = $session_record
         ORDER BY sequence ASC
         """,
-        {"session": ensure_record_id(session_id)},
+        {"session_record": ensure_record_id(session_id)},
     )
     return rows
 
 
 async def delete_transcript(session_id: str) -> None:
     await repo_query(
-        "DELETE chat_message WHERE session = $session",
-        {"session": ensure_record_id(session_id)},
+        "DELETE chat_message WHERE session = $session_record",
+        {"session_record": ensure_record_id(session_id)},
     )
 
 

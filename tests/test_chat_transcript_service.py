@@ -71,6 +71,8 @@ async def test_get_transcript_page_returns_oldest_to_newest_with_cursor(monkeypa
     assert [row["message_id"] for row in page.messages] == ["m4", "m5"]
     assert page.has_more is True
     assert page.next_cursor == 4
+    assert "session_record" in query.await_args.args[1]
+    assert "session" not in query.await_args.args[1]
 
 
 @pytest.mark.asyncio

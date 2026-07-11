@@ -3000,7 +3000,7 @@ cd frontend && npm run build
 exit 0
 ```
 
-运行态确认 `http://127.0.0.1:3001/login` 与 `http://127.0.0.1:5056/api/config` 均返回 200。应用内浏览器访问 `/notebooks` 时被重定向到 `/login?redirect=%2Fnotebooks`；未读取本机配置或绕过认证，因此真实长会话中的分页按钮、滚动锚点与完整 Markdown 下载仍需登录后手工验收。
+本节提交时运行态检查因缺少登录会话受阻；服务重启后的登录实测已补充在 §35.4。
 
 ---
 
@@ -3062,6 +3062,14 @@ exit 0（4 个既有 warning，无 error）
 cd frontend && npm run build
 exit 0
 ```
+
+服务重启后的登录实测：
+
+- API 启动日志确认数据库版本为 27，migration 已生效。
+- 使用 `admin` 进入现有 4 来源测试笔记本，Quick/Research Tabs 能分别恢复会话；Quick 底部仅显示联网搜索和模型，Research 显示联网搜索、跨笔记本发现和模型，浏览器无 React/Markdown 错误。
+- 首次真实发送暴露 SurrealDB 禁止绑定保留变量 `$session`；已将 transcript 查询变量统一改为 `$session_record`，并增加回归断言。
+- 热重载后重新创建 Quick 会话并发送“保存测试通过”：状态从保存中变为已保存；刷新页面后用户问题与 AI 回答仍完整存在，证明 transcript 写入和详情读取成功。
+- 两个端到端测试会话均已从会话管理器删除；删除接口正常同步清理 transcript。现有数据中没有超过 50 条的单会话，因此“加载更早消息”的真实按钮和完整 Markdown 下载仍保留为长会话手工验收项，分页与跨页导出由自动测试覆盖。
 
 ---
 
