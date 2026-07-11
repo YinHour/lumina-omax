@@ -30,6 +30,20 @@ def test_heartbeat_sse_event_shape():
     }
 
 
+def test_chat_status_sse_event_shape():
+    from api.routers import chat
+
+    event = chat.chat_status_sse_event("searching_notebook", "complete", 321)
+
+    payload = json.loads(event.removeprefix("data: ").strip())
+    assert payload == {
+        "type": "chat_status",
+        "stage": "searching_notebook",
+        "status": "complete",
+        "elapsed_ms": 321,
+    }
+
+
 def test_env_positive_float_falls_back_on_invalid(monkeypatch):
     from api.routers import chat
 
@@ -187,6 +201,159 @@ async def test_stream_chat_response_emits_heartbeats_before_first_chunk(monkeypa
     heartbeat_events = [e for e in events if e.get("type") == "heartbeat"]
     assert all(e.get("stage") == "awaiting_model" for e in heartbeat_events)
     assert all(isinstance(e.get("elapsed_ms"), int) for e in heartbeat_events)
+
+
+@pytest.mark.asyncio
+async def test_research_stream_emits_tool_activity_sequence(monkeypatch):
+    from api.routers import chat
+
+    class _FakeSqliteSaver:
+        @classmethod
+        def from_conn_string(cls, _path):
+            class _Ctx:
+                def __enter__(self_inner):
+                    return MagicMock(
+                        get_state=lambda config=None: MagicMock(values={"messages": []})
+                    )
+
+                def __exit__(self_inner, *args):
+                    return False
+
+            return _Ctx()
+
+    class _FakeAsyncSaver:
+        @classmethod
+        def from_conn_string(cls, _path):
+            class _Ctx:
+                async def __aenter__(self_inner):
+                    return MagicMock()
+
+                async def __aexit__(self_inner, *args):
+                    return False
+
+            return _Ctx()
+
+    monkeypatch.setattr("langgraph.checkpoint.sqlite.SqliteSaver", _FakeSqliteSaver)
+    monkeypatch.setattr(
+        "langgraph.checkpoint.sqlite.aio.AsyncSqliteSaver", _FakeAsyncSaver
+    )
+
+    async def _events(*, input, config=None, version=None):  # noqa: A002
+        yield {"event": "on_tool_start", "name": "search_notebook_evidence"}
+        yield {"event": "on_tool_end", "name": "search_notebook_evidence"}
+        yield {
+            "event": "on_chat_model_stream",
+            "data": {"chunk": MagicMock(content="answer")},
+        }
+
+    compiled = MagicMock(astream_events=_events)
+    state_graph = MagicMock(compile=MagicMock(return_value=compiled))
+    monkeypatch.setattr(chat, "build_suggested_questions_event", AsyncMock(return_value=None))
+
+    events = []
+    async for raw in chat.stream_chat_response(
+        session_id="chat_session:research",
+        message="question",
+        context={"sources": [], "notes": []},
+        state_graph=state_graph,
+        checkpoint_file="research.sqlite",
+        chat_mode="research",
+    ):
+        if raw.startswith("data: "):
+            events.append(json.loads(raw.removeprefix("data: ").strip()))
+
+    statuses = [
+        (event.get("stage"), event.get("status"))
+        for event in events
+        if event.get("type") == "chat_status"
+    ]
+    assert statuses[:5] == [
+        ("planning", "active"),
+        ("searching_notebook", "active"),
+        ("searching_notebook", "complete"),
+        ("synthesizing", "active"),
+        ("model_streaming", "active"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_continues_during_silence_after_first_chunk(monkeypatch):
+    from api.routers import chat
+
+    monkeypatch.setattr(chat, "CHAT_STREAM_HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(chat, "CHAT_LLM_TIMEOUT_SECONDS", 5.0)
+
+    class _FakeSqliteSaver:
+        @classmethod
+        def from_conn_string(cls, _path):
+            class _Ctx:
+                def __enter__(self_inner):
+                    return MagicMock(
+                        get_state=lambda config=None: MagicMock(values={"messages": []})
+                    )
+
+                def __exit__(self_inner, *args):
+                    return False
+
+            return _Ctx()
+
+    class _FakeAsyncSaver:
+        @classmethod
+        def from_conn_string(cls, _path):
+            class _Ctx:
+                async def __aenter__(self_inner):
+                    return MagicMock()
+
+                async def __aexit__(self_inner, *args):
+                    return False
+
+            return _Ctx()
+
+    monkeypatch.setattr("langgraph.checkpoint.sqlite.SqliteSaver", _FakeSqliteSaver)
+    monkeypatch.setattr(
+        "langgraph.checkpoint.sqlite.aio.AsyncSqliteSaver", _FakeAsyncSaver
+    )
+
+    async def _events(*, input, config=None, version=None):  # noqa: A002
+        yield {
+            "event": "on_chat_model_stream",
+            "data": {"chunk": MagicMock(content="first")},
+        }
+        await asyncio.sleep(0.2)
+        yield {
+            "event": "on_chat_model_stream",
+            "data": {"chunk": MagicMock(content="second")},
+        }
+
+    compiled = MagicMock(astream_events=_events)
+    state_graph = MagicMock(compile=MagicMock(return_value=compiled))
+    monkeypatch.setattr(chat, "build_suggested_questions_event", AsyncMock(return_value=None))
+
+    events = []
+    async for raw in chat.stream_chat_response(
+        session_id="chat_session:test",
+        message="question",
+        context={"sources": [], "notes": []},
+        state_graph=state_graph,
+        checkpoint_file="chat.sqlite",
+    ):
+        if raw.startswith("data: "):
+            events.append(json.loads(raw.removeprefix("data: ").strip()))
+
+    first_index = next(
+        index
+        for index, event in enumerate(events)
+        if event.get("type") == "ai_message" and event.get("content") == "first"
+    )
+    second_index = next(
+        index
+        for index, event in enumerate(events)
+        if event.get("type") == "ai_message" and event.get("content") == "second"
+    )
+    assert any(
+        event.get("type") == "heartbeat"
+        for event in events[first_index + 1 : second_index]
+    )
 
 
 @pytest.mark.asyncio

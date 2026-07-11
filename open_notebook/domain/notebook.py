@@ -8,7 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from surreal_commands import submit_command
 from surrealdb import RecordID
 
-from open_notebook.database.repository import ensure_record_id, repo_query, repo_transaction
+from open_notebook.database.repository import (
+    ensure_record_id,
+    repo_query,
+    repo_transaction,
+)
 from open_notebook.domain.base import ObjectModel
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 
@@ -690,6 +694,7 @@ class ChatSession(ObjectModel):
     nullable_fields: ClassVar[set[str]] = {"model_override"}
     title: Optional[str] = None
     model_override: Optional[str] = None
+    mode: Literal["quick", "research"] = "quick"
 
     async def relate_to_notebook(self, notebook_id: str) -> Any:
         if not notebook_id:
@@ -838,5 +843,110 @@ async def vector_search(
         return search_results
     except Exception as e:
         logger.error(f"Error performing vector search: {str(e)}")
+        logger.exception(e)
+        raise DatabaseOperationError(e)
+
+
+async def notebook_vector_search(
+    notebook: Notebook,
+    keyword: str,
+    results: int = 12,
+    minimum_score: float = 0.2,
+):
+    """Search only evidence visible through one notebook's current scope."""
+    if not keyword:
+        raise InvalidInputError("Search keyword cannot be empty")
+
+    try:
+        sources, notes = await asyncio.gather(
+            notebook.get_sources(), notebook.get_notes()
+        )
+        return await scoped_vector_search(
+            keyword,
+            source_ids=[str(source.id) for source in sources if source.id],
+            note_ids=[str(note.id) for note in notes if note.id],
+            results=results,
+            minimum_score=minimum_score,
+        )
+    except Exception as e:
+        logger.error(
+            f"Error performing notebook vector search for {notebook.id}: {str(e)}"
+        )
+        logger.exception(e)
+        raise DatabaseOperationError(e)
+
+
+async def scoped_vector_search(
+    keyword: str,
+    source_ids: list[str],
+    note_ids: list[str],
+    results: int = 12,
+    minimum_score: float = 0.2,
+):
+    """Vector search constrained to explicit source and note allowlists."""
+    if not keyword:
+        raise InvalidInputError("Search keyword cannot be empty")
+    try:
+        from open_notebook.utils.embedding import generate_embedding
+
+        allowed_source_ids = [ensure_record_id(item) for item in source_ids]
+        allowed_note_ids = [ensure_record_id(item) for item in note_ids]
+        if not allowed_source_ids and not allowed_note_ids:
+            return []
+
+        embed = await generate_embedding(keyword)
+        return await repo_query(
+            """
+            LET $source_chunks = (
+                SELECT source.id AS id, source.title AS title, content,
+                    source.id AS parent_id,
+                    vector::similarity::cosine(embedding, $embed) AS similarity
+                FROM source_embedding
+                WHERE source IN $source_ids
+                    AND embedding != NONE
+                    AND array::len(embedding) = array::len($embed)
+                    AND vector::similarity::cosine(embedding, $embed) >= $minimum_score
+                ORDER BY similarity DESC LIMIT $results
+            );
+            LET $source_insights = (
+                SELECT id, insight_type + ' - ' + (source.title OR '') AS title,
+                    content, source.id AS parent_id,
+                    vector::similarity::cosine(embedding, $embed) AS similarity
+                FROM source_insight
+                WHERE source IN $source_ids
+                    AND embedding != NONE
+                    AND array::len(embedding) = array::len($embed)
+                    AND vector::similarity::cosine(embedding, $embed) >= $minimum_score
+                ORDER BY similarity DESC LIMIT $results
+            );
+            LET $notes = (
+                SELECT id, title, content, id AS parent_id,
+                    vector::similarity::cosine(embedding, $embed) AS similarity
+                FROM note
+                WHERE id IN $note_ids
+                    AND embedding != NONE
+                    AND array::len(embedding) = array::len($embed)
+                    AND vector::similarity::cosine(embedding, $embed) >= $minimum_score
+                ORDER BY similarity DESC LIMIT $results
+            );
+            LET $all_results = array::union(
+                array::union($source_chunks, $source_insights), $notes
+            );
+            RETURN SELECT id, parent_id, title, math::max(similarity) AS similarity,
+                array::flatten(content) AS matches
+                FROM $all_results WHERE id IS NOT NONE
+                GROUP BY id, parent_id, title
+                ORDER BY similarity DESC LIMIT $results;
+            """,
+            {
+                "embed": embed,
+                "results": results,
+                "minimum_score": minimum_score,
+                "source_ids": allowed_source_ids,
+                "note_ids": allowed_note_ids,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Error performing scoped vector search: {str(e)}")
         logger.exception(e)
         raise DatabaseOperationError(e)

@@ -3,9 +3,9 @@ import os
 import time
 import traceback
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -14,7 +14,11 @@ from api.notebook_guide_service import (
     FollowupQuestionParseError,
     generate_followup_questions,
 )
-from open_notebook.config import LANGGRAPH_CHAT_CHECKPOINT_FILE
+from api.routers.auth import get_current_user_from_state
+from open_notebook.config import (
+    LANGGRAPH_CHAT_CHECKPOINT_FILE,
+    LANGGRAPH_RESEARCH_CHAT_CHECKPOINT_FILE,
+)
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import ChatSession, Note, Notebook, Source
 from open_notebook.exceptions import (
@@ -23,6 +27,7 @@ from open_notebook.exceptions import (
 from open_notebook.graphs.chat import agent_state
 from open_notebook.graphs.chat import graph as chat_graph
 from open_notebook.graphs.observability import chat_trace_id
+from open_notebook.graphs.research_agent import agent_state as research_agent_state
 from open_notebook.utils import token_count
 from open_notebook.utils.graph_utils import get_session_message_count
 
@@ -84,6 +89,33 @@ def answer_complete_sse_event() -> str:
 
     event = {"type": "answer_complete"}
     return f"data: {json.dumps(event)}\n\n"
+
+
+def chat_status_sse_event(
+    stage: str,
+    status: Literal["active", "complete"] = "active",
+    elapsed_ms_value: Optional[int] = None,
+) -> str:
+    import json
+
+    event: dict[str, Any] = {
+        "type": "chat_status",
+        "stage": stage,
+        "status": status,
+    }
+    if elapsed_ms_value is not None:
+        event["elapsed_ms"] = elapsed_ms_value
+    return f"data: {json.dumps(event)}\n\n"
+
+
+CHAT_TOOL_STAGE = {
+    "list_notebook_sources": "inspecting_scope",
+    "search_notebook_evidence": "searching_notebook",
+    "read_source": "reading_evidence",
+    "read_note": "reading_evidence",
+    "discover_across_notebooks": "searching_cross_notebook",
+    "tavily_search": "searching_web",
+}
 
 
 def log_chat_info(trace_id: str, step: str, **fields: Any) -> None:
@@ -148,6 +180,9 @@ class CreateSessionRequest(BaseModel):
     model_override: Optional[str] = Field(
         None, description="Optional model override for this session"
     )
+    mode: Literal["quick", "research"] = Field(
+        "quick", description="Immutable notebook chat mode"
+    )
 
 
 class UpdateSessionRequest(BaseModel):
@@ -176,6 +211,9 @@ class ChatSessionResponse(BaseModel):
     model_override: Optional[str] = Field(
         None, description="Model override for this session"
     )
+    mode: Literal["quick", "research"] = Field(
+        "quick", description="Notebook chat mode"
+    )
 
 
 class ChatSessionWithMessagesResponse(ChatSessionResponse):
@@ -198,6 +236,21 @@ class ExecuteChatRequest(BaseModel):
     )
 
 
+class ExecuteResearchChatRequest(BaseModel):
+    session_id: str = Field(..., description="Research chat session ID")
+    message: str = Field(..., description="User message content")
+    model_override: Optional[str] = Field(
+        None, description="Optional model override for this message"
+    )
+    enable_web_search: bool = Field(
+        False, description="Whether to enable web search for this message"
+    )
+    allow_cross_notebook_discovery: bool = Field(
+        False,
+        description="Explicit per-request permission for cross-notebook discovery",
+    )
+
+
 class ExecuteChatResponse(BaseModel):
     session_id: str = Field(..., description="Session ID")
     messages: List[ChatMessage] = Field(..., description="Updated message list")
@@ -217,6 +270,16 @@ class BuildContextResponse(BaseModel):
 class SuccessResponse(BaseModel):
     success: bool = Field(True, description="Operation success status")
     message: str = Field(..., description="Success message")
+
+
+def get_session_mode(session: ChatSession) -> Literal["quick", "research"]:
+    return "research" if getattr(session, "mode", "quick") == "research" else "quick"
+
+
+def get_session_graph_config(session: ChatSession):
+    if get_session_mode(session) == "research":
+        return research_agent_state, LANGGRAPH_RESEARCH_CHAT_CHECKPOINT_FILE
+    return agent_state, LANGGRAPH_CHAT_CHECKPOINT_FILE
 
 
 async def build_suggested_questions_event(
@@ -352,14 +415,15 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
         results = []
         for session in sessions_list:
             session_id = str(session.id)
+            session_graph, checkpoint_file = get_session_graph_config(session)
 
             # Get message count from LangGraph state (use checkpoint file
             # so we read the same sqlite file the streaming endpoint writes to)
             msg_count = await get_session_message_count(
                 chat_graph,
                 session_id,
-                checkpoint_file=LANGGRAPH_CHAT_CHECKPOINT_FILE,
-                state_graph=agent_state,
+                checkpoint_file=checkpoint_file,
+                state_graph=session_graph,
             )
 
             results.append(
@@ -371,6 +435,7 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
                     updated=str(session.updated),
                     message_count=msg_count,
                     model_override=getattr(session, "model_override", None),
+                    mode=get_session_mode(session),
                 )
             )
 
@@ -398,6 +463,7 @@ async def create_session(request: CreateSessionRequest):
             title=request.title
             or f"Chat Session {asyncio.get_event_loop().time():.0f}",
             model_override=request.model_override,
+            mode=request.mode,
         )
         await session.save()
 
@@ -412,6 +478,7 @@ async def create_session(request: CreateSessionRequest):
             updated=str(session.updated),
             message_count=0,
             model_override=session.model_override,
+            mode=get_session_mode(session),
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Notebook not found")
@@ -444,11 +511,10 @@ async def get_session(session_id: str):
         # streaming endpoint writes to.
         from langgraph.checkpoint.sqlite import SqliteSaver
 
-        from open_notebook.config import LANGGRAPH_CHAT_CHECKPOINT_FILE
-        from open_notebook.graphs.chat import agent_state
+        session_graph, checkpoint_file = get_session_graph_config(session)
 
-        with SqliteSaver.from_conn_string(LANGGRAPH_CHAT_CHECKPOINT_FILE) as saver:
-            temp_graph = agent_state.compile(checkpointer=saver)
+        with SqliteSaver.from_conn_string(checkpoint_file) as saver:
+            temp_graph = session_graph.compile(checkpointer=saver)
             thread_state = await asyncio.to_thread(
                 temp_graph.get_state,
                 config=RunnableConfig(configurable={"thread_id": full_session_id}),
@@ -503,6 +569,7 @@ async def get_session(session_id: str):
             message_count=len(messages),
             messages=messages,
             model_override=getattr(session, "model_override", None),
+            mode=get_session_mode(session),
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -550,11 +617,12 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
 
         # Get message count from LangGraph state (use checkpoint file
         # so we read the same sqlite file the streaming endpoint writes to)
+        session_graph, checkpoint_file = get_session_graph_config(session)
         msg_count = await get_session_message_count(
             chat_graph,
             full_session_id,
-            checkpoint_file=LANGGRAPH_CHAT_CHECKPOINT_FILE,
-            state_graph=agent_state,
+            checkpoint_file=checkpoint_file,
+            state_graph=session_graph,
         )
 
         return ChatSessionResponse(
@@ -565,6 +633,7 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
             updated=str(session.updated),
             message_count=msg_count,
             model_override=session.model_override,
+            mode=get_session_mode(session),
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -604,14 +673,18 @@ async def stream_chat_response(
     model_override: Optional[str] = None,
     enable_web_search: bool = False,
     trace_id: Optional[str] = None,
+    state_graph=None,
+    checkpoint_file: Optional[str] = None,
+    extra_state: Optional[dict[str, Any]] = None,
+    chat_mode: Literal["quick", "research"] = "quick",
 ):
     import json
 
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-    from open_notebook.config import LANGGRAPH_CHAT_CHECKPOINT_FILE
-    from open_notebook.graphs.chat import agent_state
-    
+    state_graph = state_graph or agent_state
+    checkpoint_file = checkpoint_file or LANGGRAPH_CHAT_CHECKPOINT_FILE
+
     trace_id = trace_id or uuid.uuid4().hex[:12]
     started_at = time.perf_counter()
     trace_token = chat_trace_id.set(trace_id)
@@ -628,8 +701,8 @@ async def stream_chat_response(
         # Get current state from SqliteSaver (same file the streaming writes to)
         from langgraph.checkpoint.sqlite import SqliteSaver
 
-        with SqliteSaver.from_conn_string(LANGGRAPH_CHAT_CHECKPOINT_FILE) as saver:
-            temp_graph = agent_state.compile(checkpointer=saver)
+        with SqliteSaver.from_conn_string(checkpoint_file) as saver:
+            temp_graph = state_graph.compile(checkpointer=saver)
             current_state = await asyncio.to_thread(
                 temp_graph.get_state,
                 config=RunnableConfig(configurable={"thread_id": session_id}),
@@ -641,6 +714,8 @@ async def stream_chat_response(
         state_values["model_override"] = model_override
         state_values["enable_web_search"] = enable_web_search
         state_values["chat_trace"] = trace_id
+        if extra_state:
+            state_values.update(extra_state)
 
         from langchain_core.messages import HumanMessage
         user_message = HumanMessage(content=message)
@@ -648,6 +723,8 @@ async def stream_chat_response(
 
         user_event = {"type": "user_message", "content": message, "timestamp": None}
         yield f"data: {json.dumps(user_event)}\n\n"
+        initial_stage = "planning" if chat_mode == "research" else "awaiting_model"
+        yield chat_status_sse_event(initial_stage, "active", elapsed_ms(started_at))
 
         config = RunnableConfig(
             configurable={"thread_id": session_id, "model_id": model_override}
@@ -664,12 +741,15 @@ async def stream_chat_response(
         _PRODUCER_DONE = None  # sentinel pushed when graph stream finishes
         heartbeat_count = 0
         model_first_byte_ms: Optional[int] = None
+        current_status_stage = initial_stage
+        last_output_at = time.perf_counter()
 
-        def observe_ai_chunk(content: str) -> None:
+        def observe_ai_chunk(content: str) -> bool:
             nonlocal yielded_ai_chunks, first_ai_chunk_logged, model_first_byte_ms
+            is_first_chunk = not first_ai_chunk_logged
             yielded_ai_chunks = True
             final_answer_parts.append(content)
-            if not first_ai_chunk_logged:
+            if is_first_chunk:
                 first_ai_chunk_logged = True
                 model_first_byte_ms = elapsed_ms(started_at)
                 log_chat_info(
@@ -680,12 +760,43 @@ async def stream_chat_response(
                     model_first_byte_ms=model_first_byte_ms,
                     heartbeats_sent=heartbeat_count,
                 )
+            return is_first_chunk
+
+        async def put_output(item: str) -> None:
+            nonlocal last_output_at
+            last_output_at = time.perf_counter()
+            await out_queue.put(item)
+
+        async def emit_status(
+            stage: str, status: Literal["active", "complete"] = "active"
+        ) -> None:
+            nonlocal current_status_stage
+            current_status_stage = stage
+            await put_output(
+                chat_status_sse_event(stage, status, elapsed_ms(started_at))
+            )
+
+        async def emit_ai_content(content: str) -> None:
+            if not content:
+                return
+            if content.startswith("<web_search_results>") or content.endswith(
+                "</web_search_results>"
+            ):
+                return
+            if observe_ai_chunk(content):
+                await emit_status("model_streaming", "active")
+            ai_event = {
+                "type": "ai_message",
+                "content": content,
+                "timestamp": None,
+            }
+            await put_output(f"data: {json.dumps(ai_event)}\n\n")
 
         async def run_graph_producer() -> None:
             async with AsyncSqliteSaver.from_conn_string(
-                LANGGRAPH_CHAT_CHECKPOINT_FILE
+                checkpoint_file
             ) as saver:
-                async_graph = agent_state.compile(checkpointer=saver)
+                async_graph = state_graph.compile(checkpointer=saver)
                 log_chat_info(
                     trace_id,
                     "graph_start",
@@ -706,53 +817,36 @@ async def stream_chat_response(
                             if hasattr(chunk, "content") and chunk.content:
                                 content = chunk.content
                                 if isinstance(content, str):
-                                    if not content.startswith("<web_search_results>") and not content.endswith("</web_search_results>"):
-                                        observe_ai_chunk(content)
-                                        ai_event = {
-                                            "type": "ai_message",
-                                            "content": content,
-                                            "timestamp": None,
-                                        }
-                                        await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                    await emit_ai_content(content)
                                 elif isinstance(content, list):
                                     for c in content:
                                         if isinstance(c, dict) and "text" in c:
-                                            if not c["text"].startswith("<web_search_results>") and not c["text"].endswith("</web_search_results>"):
-                                                observe_ai_chunk(c["text"])
-                                                ai_event = {
-                                                    "type": "ai_message",
-                                                    "content": c["text"],
-                                                    "timestamp": None,
-                                                }
-                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                            await emit_ai_content(c["text"])
                                         elif isinstance(c, str):
-                                            if not c.startswith("<web_search_results>") and not c.endswith("</web_search_results>"):
-                                                observe_ai_chunk(c)
-                                                ai_event = {
-                                                    "type": "ai_message",
-                                                    "content": c,
-                                                    "timestamp": None,
-                                                }
-                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                            await emit_ai_content(c)
 
                             elif isinstance(chunk, str) and chunk:
-                                if not chunk.startswith("<web_search_results>") and not chunk.endswith("</web_search_results>"):
-                                    observe_ai_chunk(chunk)
-                                    ai_event = {
-                                        "type": "ai_message",
-                                        "content": chunk,
-                                        "timestamp": None,
-                                    }
-                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                await emit_ai_content(chunk)
                             elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
-                                if not chunk["content"].startswith("<web_search_results>") and not chunk["content"].endswith("</web_search_results>"):
-                                    observe_ai_chunk(chunk["content"])
-                                    ai_event = {
-                                        "type": "ai_message",
-                                        "content": chunk["content"],
-                                        "timestamp": None,
-                                    }
-                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                await emit_ai_content(chunk["content"])
+
+                    elif kind == "on_tool_start":
+                        tool_stage = CHAT_TOOL_STAGE.get(
+                            event.get("name", ""), "using_research_tool"
+                        )
+                        await emit_status(tool_stage, "active")
+
+                    elif kind == "on_tool_end":
+                        tool_stage = CHAT_TOOL_STAGE.get(
+                            event.get("name", ""), "using_research_tool"
+                        )
+                        await emit_status(tool_stage, "complete")
+                        await emit_status(
+                            "synthesizing"
+                            if chat_mode == "research"
+                            else "awaiting_model",
+                            "active",
+                        )
 
                     elif kind == "on_chat_model_end":
                         if "output" in event["data"] and "content" in event["data"]["output"]:
@@ -761,13 +855,7 @@ async def stream_chat_response(
                                 if isinstance(content, str):
                                     chunk_size = 50
                                     for i in range(0, len(content), chunk_size):
-                                        observe_ai_chunk(content[i:i+chunk_size])
-                                        ai_event = {
-                                            "type": "ai_message",
-                                            "content": content[i:i+chunk_size],
-                                            "timestamp": None,
-                                        }
-                                        await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                        await emit_ai_content(content[i:i+chunk_size])
 
                     elif kind == "on_chain_end" and event["name"] == "LangGraph":
                         final_state = event["data"]["output"]
@@ -779,28 +867,26 @@ async def stream_chat_response(
                                     if content_text:
                                         chunk_size = 50
                                         for i in range(0, len(content_text), chunk_size):
-                                            observe_ai_chunk(content_text[i:i+chunk_size])
-                                            ai_event = {
-                                                "type": "ai_message",
-                                                "content": content_text[i:i+chunk_size],
-                                                "timestamp": None,
-                                            }
-                                            await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                            await emit_ai_content(content_text[i:i+chunk_size])
 
         async def run_heartbeat_emitter() -> None:
-            # Emit a heartbeat every CHAT_STREAM_HEARTBEAT_SECONDS until the first
-            # AI chunk arrives, so the client can show "still working" even before
-            # any token is produced. Cancellation is the normal stop condition.
+            # Emit heartbeats whenever the active phase is silent. This remains
+            # active across tool calls and synthesis, not only before first token.
             nonlocal heartbeat_count
             try:
-                while not first_ai_chunk_logged:
+                while True:
                     await asyncio.sleep(CHAT_STREAM_HEARTBEAT_SECONDS)
-                    if first_ai_chunk_logged:
+                    if producer_task.done():
                         return
+                    if (
+                        time.perf_counter() - last_output_at
+                        < CHAT_STREAM_HEARTBEAT_SECONDS
+                    ):
+                        continue
                     heartbeat_count += 1
-                    await out_queue.put(
+                    await put_output(
                         heartbeat_sse_event(
-                            "awaiting_model", elapsed_ms(started_at)
+                            current_status_stage, elapsed_ms(started_at)
                         )
                     )
             except asyncio.CancelledError:
@@ -941,6 +1027,11 @@ async def execute_chat(request: ExecuteChatRequest):
         session = await ChatSession.get(full_session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+        if get_session_mode(session) != "quick":
+            raise HTTPException(
+                status_code=409,
+                detail="Research sessions must use /chat/research/execute",
+            )
 
         # Determine model override (per-request override takes precedence over session-level)
         model_override = (
@@ -973,6 +1064,7 @@ async def execute_chat(request: ExecuteChatRequest):
                 model_override=model_override,
                 enable_web_search=request.enable_web_search or False,
                 trace_id=trace_id,
+                chat_mode="quick",
             ),
             media_type="text/event-stream",
             headers={
@@ -984,9 +1076,91 @@ async def execute_chat(request: ExecuteChatRequest):
 
     except HTTPException:
         raise
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
     except Exception as e:
         logger.error(f"Error sending message to chat: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error sending message: {str(e)}")
+
+
+@router.post("/chat/research/execute")
+async def execute_research_chat(
+    request: ExecuteResearchChatRequest,
+    current_user: dict = Depends(get_current_user_from_state),
+):
+    """Execute one notebook-scoped Research Agent turn with SSE streaming."""
+    trace_id = uuid.uuid4().hex[:12]
+    full_session_id = (
+        request.session_id
+        if request.session_id.startswith("chat_session:")
+        else f"chat_session:{request.session_id}"
+    )
+    try:
+        session = await ChatSession.get(full_session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if get_session_mode(session) != "research":
+            raise HTTPException(
+                status_code=409,
+                detail="Quick sessions must use /chat/execute",
+            )
+
+        notebook_query = await repo_query(
+            "SELECT out FROM refers_to WHERE in = $session_id",
+            {"session_id": ensure_record_id(full_session_id)},
+        )
+        notebook_id = str(notebook_query[0]["out"]) if notebook_query else None
+        if not notebook_id or not notebook_id.startswith("notebook:"):
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        model_override = request.model_override or getattr(
+            session, "model_override", None
+        )
+        await session.save()
+        log_chat_info(
+            trace_id,
+            "research_request_start",
+            session_id=full_session_id,
+            notebook_id=notebook_id,
+            message_chars=len(request.message),
+            allow_cross_notebook_discovery=request.allow_cross_notebook_discovery,
+            enable_web_search=request.enable_web_search,
+        )
+        return StreamingResponse(
+            stream_chat_response(
+                session_id=full_session_id,
+                message=request.message,
+                context={"sources": [], "notes": []},
+                model_override=model_override,
+                enable_web_search=request.enable_web_search,
+                trace_id=trace_id,
+                state_graph=research_agent_state,
+                checkpoint_file=LANGGRAPH_RESEARCH_CHAT_CHECKPOINT_FILE,
+                extra_state={
+                    "notebook_id": notebook_id,
+                    "allow_cross_notebook_discovery": request.allow_cross_notebook_discovery,
+                    "user_id": current_user.get("id"),
+                    "user_role": current_user.get("role"),
+                },
+                chat_mode="research",
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Chat-Trace": trace_id,
+            },
+        )
+    except HTTPException:
+        raise
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+    except Exception as exc:
+        logger.error(f"Error executing Research Agent: {str(exc)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error executing Research Agent: {str(exc)}"
+        ) from exc
 
 
 @router.post("/chat/context", response_model=BuildContextResponse)

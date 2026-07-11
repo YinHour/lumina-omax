@@ -7,7 +7,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine, FlaskConical, MessageCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -15,7 +16,8 @@ import {
   SourceChatMessage,
   SourceChatContextIndicator,
   BaseChatSession,
-  NotebookGuideResponse
+  NotebookGuideResponse,
+  NotebookChatMode,
 } from '@/lib/types/api'
 import { ModelSelector } from './ModelSelector'
 import { ContextIndicator } from '@/components/common/ContextIndicator'
@@ -31,6 +33,12 @@ import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { NotebookGuideCard } from './NotebookGuideCard'
 import { SuggestedQuestionList } from './SuggestedQuestionList'
+import { stripThinkingContent } from '@/lib/chat/thinking-content'
+import { ChatActivityFeed } from './ChatActivityFeed'
+import {
+  NotebookChatActivityStep,
+  NotebookChatActivityTerminal,
+} from '@/lib/chat/notebook-chat-activity'
 
 type ChatActivityStatus =
   | 'gettingContext'
@@ -76,7 +84,15 @@ interface ChatPanelProps {
   suggestedQuestionsByMessageId?: Record<string, string[]>
   activityStatus?: ChatActivityStatus | null
   activityElapsedSeconds?: number
+  activitySteps?: NotebookChatActivityStep[]
+  activityTerminal?: NotebookChatActivityTerminal
+  activityMessageId?: string | null
+  activityTotalElapsedSeconds?: number
   onRegenerateGuide?: () => void
+  chatMode?: NotebookChatMode
+  onChatModeChange?: (mode: NotebookChatMode) => void
+  allowCrossNotebookDiscovery?: boolean
+  onAllowCrossNotebookDiscoveryChange?: (enabled: boolean) => void
 }
 
 export function ChatPanel({
@@ -103,7 +119,15 @@ export function ChatPanel({
   suggestedQuestionsByMessageId = {},
   activityStatus,
   activityElapsedSeconds,
+  activitySteps = [],
+  activityTerminal = null,
+  activityMessageId,
+  activityTotalElapsedSeconds = 0,
   onRegenerateGuide,
+  chatMode = 'quick',
+  onChatModeChange,
+  allowCrossNotebookDiscovery = false,
+  onAllowCrossNotebookDiscoveryChange,
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -131,6 +155,13 @@ export function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { openModal } = useModalManager()
+
+  const handleCrossNotebookChange = (enabled: boolean) => {
+    if (enabled && chatMode !== 'research') {
+      onChatModeChange?.('research')
+    }
+    onAllowCrossNotebookDiscoveryChange?.(enabled)
+  }
 
   const handleReferenceClick = (type: string, id: string) => {
     const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
@@ -266,8 +297,12 @@ export function ChatPanel({
   const shouldShowActivityStatus = Boolean(
     isStreaming &&
     activityStatus &&
+    activitySteps.length === 0 &&
     messages[messages.length - 1]?.type === 'human'
   )
+  const resolvedActivityMessageId = messages.some(message => message.id === activityMessageId)
+    ? activityMessageId
+    : [...messages].reverse().find(message => message.type === 'human')?.id
   const activityStatusLabel = activityStatus
     ? (() => {
         const labelMap: Record<ChatActivityStatus, string> = {
@@ -375,8 +410,8 @@ export function ChatPanel({
               )
             ) : (
               messages.map((message) => (
+                <div key={message.id} className="space-y-2">
                 <div
-                  key={message.id}
                   className={`flex gap-3 ${
                     message.type === 'human' ? 'justify-end' : 'justify-start'
                   }`}
@@ -443,6 +478,16 @@ export function ChatPanel({
                     </div>
                   )}
                 </div>
+                {message.type === 'human' && message.id === resolvedActivityMessageId && activitySteps.length > 0 && (
+                  <div className="px-11">
+                    <ChatActivityFeed
+                      steps={activitySteps}
+                      elapsedSeconds={activityTotalElapsedSeconds}
+                      terminal={activityTerminal}
+                    />
+                  </div>
+                )}
+                </div>
               ))
             )}
             {shouldShowActivityStatus && activityStatusLabel && (
@@ -502,18 +547,68 @@ export function ChatPanel({
         {/* Input Area */}
         <div className="flex-shrink-0 p-4 space-y-3 border-t">
           {/* Settings row */}
-          <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              className={`gap-2 text-xs ${webSearchEnabled ? 'bg-primary/10 border-primary/20 text-primary' : 'text-muted-foreground'}`}
-              onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-              disabled={isStreaming}
-            >
-              <Globe className={`h-3 w-3 ${webSearchEnabled ? 'text-primary' : ''}`} />
-              {t.settings?.webSearch || 'Web Search'}
-            </Button>
-            
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div data-testid="chat-options-row" className="flex flex-wrap items-center gap-x-2 gap-y-2">
+              <label
+                htmlFor={`${chatInputId}-web-search`}
+                className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              >
+                <Checkbox
+                  id={`${chatInputId}-web-search`}
+                  checked={webSearchEnabled}
+                  onCheckedChange={(checked) => setWebSearchEnabled(checked === true)}
+                  disabled={isStreaming}
+                />
+                <Globe className="h-3.5 w-3.5" />
+                {t.settings.webSearch}
+              </label>
+
+              {contextType === 'notebook' && onChatModeChange && (
+                <>
+                  <label
+                    htmlFor={`${chatInputId}-quick-chat`}
+                    className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Checkbox
+                      id={`${chatInputId}-quick-chat`}
+                      checked={chatMode === 'quick'}
+                      onCheckedChange={() => onChatModeChange('quick')}
+                      disabled={isStreaming}
+                    />
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    {t.chat.quickChat}
+                  </label>
+                  <label
+                    htmlFor={`${chatInputId}-research-agent`}
+                    className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Checkbox
+                      id={`${chatInputId}-research-agent`}
+                      checked={chatMode === 'research'}
+                      onCheckedChange={() => onChatModeChange('research')}
+                      disabled={isStreaming}
+                    />
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    {t.chat.researchAgent}
+                  </label>
+                  {onAllowCrossNotebookDiscoveryChange && (
+                    <label
+                      htmlFor={`${chatInputId}-cross-notebook`}
+                      className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    >
+                      <Checkbox
+                        id={`${chatInputId}-cross-notebook`}
+                        checked={allowCrossNotebookDiscovery}
+                        onCheckedChange={(checked) => handleCrossNotebookChange(checked === true)}
+                        disabled={isStreaming}
+                      />
+                      {t.chat.crossNotebookDiscovery}
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+
             {onModelChange && (
               <ModelSelector
                 currentModel={modelOverride}
@@ -570,8 +665,9 @@ function AIMessageContent({
   onReferenceClick: (type: string, id: string) => void
 }) {
   const { t } = useTranslation()
+  const visibleContent = stripThinkingContent(content)
   // Ensure ## 参考文献 / ## Web References lists are ordered (1. 2. …) when the model omits numbers
-  const withNumberedBibliography = ensureNumberedWebBibliographySection(content)
+  const withNumberedBibliography = ensureNumberedWebBibliographySection(visibleContent)
   const markdownWithCompactRefs = convertReferencesToCompactMarkdown(
     withNumberedBibliography,
     t.common.workspaceReferences

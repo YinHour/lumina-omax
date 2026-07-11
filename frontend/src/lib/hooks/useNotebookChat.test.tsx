@@ -12,6 +12,7 @@ const chatApiMock = vi.hoisted(() => ({
   deleteSession: vi.fn(),
   buildContext: vi.fn(),
   sendMessage: vi.fn(),
+  sendResearchMessage: vi.fn(),
 }))
 
 vi.mock('@/lib/api/chat', () => ({
@@ -170,6 +171,89 @@ describe('useNotebookChat', () => {
       char_count: 0,
     })
     chatApiMock.sendMessage.mockResolvedValue(createCompletedStream())
+    chatApiMock.sendResearchMessage.mockResolvedValue(createCompletedStream())
+  })
+
+  it('sends Research Agent turns without building the selected quick-chat context', async () => {
+    chatApiMock.listSessions.mockResolvedValue([{
+      id: 'session:research',
+      title: 'Research session',
+      notebook_id: 'notebook:1',
+      mode: 'research',
+      created: '2026-07-10T00:00:00Z',
+      updated: '2026-07-10T00:00:00Z',
+    }])
+    chatApiMock.getSession.mockResolvedValue({
+      id: 'session:research',
+      title: 'Research session',
+      notebook_id: 'notebook:1',
+      mode: 'research',
+      created: '2026-07-10T00:00:00Z',
+      updated: '2026-07-10T00:00:00Z',
+      messages: [],
+    })
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(chatApiMock.listSessions).toHaveBeenCalled())
+    act(() => result.current.setChatMode('research'))
+    await waitFor(() => expect(result.current.currentSessionId).toBe('session:research'))
+    const contextCallsBeforeSend = chatApiMock.buildContext.mock.calls.length
+
+    await act(async () => {
+      await result.current.sendMessage('Compare the available evidence.')
+    })
+
+    expect(chatApiMock.buildContext).toHaveBeenCalledTimes(contextCallsBeforeSend)
+    expect(chatApiMock.sendResearchMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_id: 'session:research',
+        allow_cross_notebook_discovery: false,
+      }),
+      expect.any(AbortSignal),
+    )
+    expect(chatApiMock.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('passes cross-notebook discovery only after the user explicitly enables it', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:research-new',
+      title: 'Find analogues',
+      notebook_id: 'notebook:1',
+      mode: 'research',
+      created: '2026-07-10T00:00:00Z',
+      updated: '2026-07-10T00:00:00Z',
+    })
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    act(() => {
+      result.current.setChatMode('research')
+      result.current.setAllowCrossNotebookDiscovery(true)
+    })
+    await act(async () => {
+      await result.current.sendMessage('Find analogues in other notebooks.')
+    })
+
+    expect(chatApiMock.sendResearchMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ allow_cross_notebook_discovery: true }),
+      expect.any(AbortSignal),
+    )
   })
 
   it('guards against duplicate sends while creating the first session', async () => {
@@ -261,6 +345,12 @@ describe('useNotebookChat', () => {
       ]),
     )
     expect(result.current.activityStatus).toBe('gettingContext')
+    expect(result.current.activityMessageId).toMatch(/^temp-/)
+    expect(result.current.activityTerminal).toBeNull()
+    expect(result.current.activitySteps).toEqual([
+      { stage: 'received', status: 'complete' },
+      { stage: 'preparing_context', status: 'active' },
+    ])
 
     resolveSession!({
       id: 'session:1',
@@ -273,6 +363,52 @@ describe('useNotebookChat', () => {
     await act(async () => {
       await sendPromise!
     })
+  })
+
+  it('turns structured SSE status events into a completed activity sequence', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Trace the evidence',
+      notebook_id: 'notebook:1',
+      created: '2026-07-10T00:00:00Z',
+      updated: '2026-07-10T00:00:00Z',
+    })
+    const payload = [
+      'data: {"type":"chat_status","stage":"searching_notebook","status":"active"}\n\n',
+      'data: {"type":"chat_status","stage":"searching_notebook","status":"complete"}\n\n',
+      'data: {"type":"chat_status","stage":"reading_evidence","status":"active"}\n\n',
+      'data: {"type":"ai_message","content":"Evidence summary"}\n\n',
+      'data: {"type":"answer_complete"}\n\n',
+    ].join('')
+    chatApiMock.sendMessage.mockResolvedValue(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload))
+        controller.close()
+      },
+    }))
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('Trace the evidence')
+    })
+
+    expect(result.current.activityTerminal).toBe('complete')
+    expect(result.current.activitySteps).toEqual(expect.arrayContaining([
+      { stage: 'received', status: 'complete' },
+      { stage: 'context_ready', status: 'complete' },
+      { stage: 'searching_notebook', status: 'complete' },
+      { stage: 'reading_evidence', status: 'complete' },
+      { stage: 'model_streaming', status: 'complete' },
+    ]))
   })
 
   it('keeps the optimistic user message when the new empty session refetches while sending', async () => {
@@ -659,7 +795,7 @@ describe('useNotebookChat', () => {
               return {
                 done: false,
                 value: new TextEncoder().encode(
-                  'data: {"type":"heartbeat","stage":"awaiting_model","elapsed_ms":5000}\n\n',
+                  'data: {"type":"heartbeat","stage":"searching_notebook","elapsed_ms":5000}\n\n',
                 ),
               }
             }
@@ -702,6 +838,7 @@ describe('useNotebookChat', () => {
     await waitFor(() => {
       expect(result.current.activityStatus).toBe('awaitingModel')
       expect(result.current.activityElapsedSeconds).toBeGreaterThan(0)
+      expect(result.current.activityTotalElapsedSeconds).toBeGreaterThanOrEqual(5)
     })
 
     await act(async () => {
@@ -711,6 +848,7 @@ describe('useNotebookChat', () => {
 
     expect(result.current.activityStatus).toBeNull()
     expect(result.current.activityElapsedSeconds).toBe(0)
+    expect(result.current.activityTotalElapsedSeconds).toBeGreaterThanOrEqual(5)
   })
 
   it('renders llm_timeout as an inline AI bubble instead of a toast (scenario A: no prior AI chunks)', async () => {
@@ -780,6 +918,8 @@ describe('useNotebookChat', () => {
     expect(result.current.activityStatus).toBeNull()
     expect(result.current.activityElapsedSeconds).toBe(0)
     expect(result.current.isSending).toBe(false)
+    expect(result.current.activityTerminal).toBe('error')
+    expect(result.current.activitySteps.some(step => step.status === 'error')).toBe(true)
   })
 
   it('appends llm_timeout notice to the existing AI bubble when chunks already streamed (scenario B)', async () => {

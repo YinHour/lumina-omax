@@ -2722,4 +2722,228 @@ rc=0
 
 ---
 
-> 最后更新：2026-06-28 | 新增 §32（心跳/超时/错误气泡统一到三条 SSE 流）+ §32.7（按 surface 拆分 `errorLlmTimeout` 文案，源聊天和 Ask 不再误用笔记本对话的"左侧来源栏"指引）。本轮：抽 `api/sse_helpers.py` + `frontend/src/lib/chat/error-bubble.ts` 两个共享 helper；源聊天和 Ask 接入 heartbeat / llm_timeout / error_code；前端 `useSourceChat` / `use-ask` / `StreamingResponse` 同步；后端 ruff + pytest 57 passed，前端 vitest 144 passed。
+## 33. 笔记本 Research Agent MVP（2026-07-10）
+
+### 33.1 产品与范围决策
+
+- **默认范围固定为当前笔记本**：Research Agent 只读取 `Notebook.get_sources()` / `get_notes()` 返回的可见来源和笔记，继续继承聚合笔记本与隐藏项规则。
+- **跨笔记本发现必须显式开启**：前端开关默认关闭，授权只作为单次请求参数 `allow_cross_notebook_discovery` 发送，不持久化为长期授权。
+- **不提供隐式全部来源模式**：全局 Research Agent 后续作为全局 Ask 页面的独立入口，不与笔记本 Agent 混用会话或权限。
+- **Mira/玻尔采用 Markdown 导入**：现阶段不做网页自动化、内部接口转发或 `sub2api` 网关。用户从外部平台导出 Markdown 后按普通来源导入笔记本，Agent 将其作为二手证据处理。
+- 设计记录：`docs/superpowers/specs/2026-07-10-research-agent-external-capability-integration-feasibility.md`。
+
+### 33.2 后端实现
+
+- `chat_session.mode` 支持 `quick | research`；旧会话缺少字段时按 `quick` 处理，更新会话接口不允许修改模式。
+- Research Agent 使用独立 `research_chat_checkpoints.sqlite`，会话详情与消息数按模式选择 graph/checkpoint，避免与快速对话状态互相污染。
+- 新增 `notebook_vector_search()`：向 SurrealDB 查询时直接传入当前笔记本来源/笔记 RecordID allowlist，不采用“先全库 top-k、再前端过滤”的低召回方案。
+- 跨笔记本 allowlist 由认证用户生成：普通用户只包含 `created_by == 当前用户` 的其他笔记本，管理员可覆盖全部其他笔记本。`read_source` / `read_note` 也校验同一授权集合，不能通过猜测 ID 越界读取。
+- 新增 `open_notebook/graphs/research_agent.py`，首批只读工具：
+  - `list_notebook_sources`
+  - `search_notebook_evidence`
+  - `read_source`
+  - `read_note`
+  - `discover_across_notebooks`
+  - 可选 `tavily_search`
+- `read_source` / `read_note` 在读取前再次校验范围；§33.8 起改为默认每块最多 12000 字符，并返回 `next_start_char` 供 Agent 按需读取后续块，可通过 `RESEARCH_AGENT_READ_MAX_CHARS` 调整。
+- 新增 `/api/chat/research/execute` SSE 入口；快速会话与 Research 会话误用对方端点时返回 409。流继续复用现有心跳、整体超时、结构化 `error_code`、`answer_complete` 与建议问题机制。
+
+### 33.3 前端实现
+
+- 笔记本聊天输入区新增“快速对话 / 科研 Agent”分段控件；源聊天不显示。
+- Research 模式只展示 Research 会话，不预构造 `/chat/context` 全量上下文，直接由 Agent 工具按需检索和阅读。
+- “跨笔记本发现”仅在 Research 模式出现，默认关闭；切换模式会恢复关闭并清理旧模式的临时消息状态。
+- 笔记本导览卡和上下文 token/字符统计只在快速对话显示。
+- 新增可见文案已同步到 9 个语言包；浏览器请求仍使用相对 `/api/chat/research/execute`。
+- 手工实测后把“联网搜索、快速对话、科研 Agent、跨笔记本发现”合并到输入区同一设置行，四项前均显示 Checkbox，Checkbox 与整段文字标签都可点击。快速/科研仍互斥；在快速模式开启跨笔记本发现会自动切到科研模式。模型选择器继续位于该行右侧，窄宽度时整行允许自然换行。
+- 手工实测发现推理模型的流式 `<think>` 标签会被 `rehypeRaw` 当作未知 HTML 元素。共享 Markdown 渲染入口现先调用 `stripThinkingContent()`，完整推理块、流式未闭合块、缺失开标签三种情况都不会进入 React DOM；普通 Markdown 与原始表格 HTML 保持不变。
+
+### 33.4 验证
+
+```text
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/test_research_agent_scope.py tests/test_chat_heartbeat_sse.py -q
+20 passed, 1 warning
+
+cd frontend && npm test -- --run src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.test.tsx src/app/'(dashboard)'/notebooks/components/ChatColumn.test.tsx
+36 passed
+
+cd frontend && npm test
+154 passed | 9 skipped
+
+cd frontend && npm test -- --run src/lib/chat/thinking-content.test.ts src/components/source/ChatPanel.test.tsx src/lib/hooks/useNotebookChat.test.tsx src/lib/hooks/useSourceChat.test.tsx
+42 passed
+
+cd frontend && npm test -- --run src/components/source/ChatPanel.test.tsx src/lib/hooks/useNotebookChat.test.tsx src/lib/hooks/useSourceChat.test.tsx
+39 passed
+
+cd frontend && npx eslint src/lib/hooks/useNotebookChat.ts src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.tsx src/components/source/ChatPanel.test.tsx src/app/'(dashboard)'/notebooks/components/ChatColumn.tsx src/lib/api/chat.ts src/lib/types/api.ts
+exit 0
+
+UV_CACHE_DIR=/tmp/uv-cache uv run ruff check api/routers/chat.py open_notebook/config.py open_notebook/domain/notebook.py open_notebook/graphs/research_agent.py tests/test_research_agent_scope.py
+All checks passed
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+补充执行 `UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/ -q`：`305 passed, 3 skipped, 23 failed`。失败项包括沙箱禁止访问 `127.0.0.1:8001` 的数据库用例、依赖外部 API 服务的 `test_integration_e2e.py`、`test_kg.py`，以及现存 `test_makefile_logging.py` 字符串断言。未在沙箱外重跑会创建笔记本/来源的完整 E2E，以免污染真实业务数据。全仓 Ruff 另有 `commands/__init__.py` 与 `tests/test_integration_e2e.py` 共 5 个既有格式错误；本次变更文件的 Ruff 检查全绿。
+
+局域网运行时只读探测（`http://192.168.10.198:5056`）：
+
+- `/openapi.json` 已包含 `/api/chat/research/execute`；
+- `ExecuteResearchChatRequest.allow_cross_notebook_discovery.default == false`；
+- `ChatSessionResponse.mode` 枚举为 `quick | research`，默认 `quick`；
+- Research 入口已显式接入当前用户依赖；无认证请求返回 `401 {"detail":"Not authenticated"}`。
+- 单元测试确认不存在的会话 ID 映射为 404。初版运行时探测曾发现错误映射为 500，已同时修复快速对话和 Research 入口的 `NotFoundError -> 404`，并增加两个回归用例。
+
+浏览器实机烟测未执行：应用内浏览器策略拒绝访问 `http://127.0.0.1:3001`，未改用其它地址绕过。合并前仍需在真实笔记本中验证模式切换、跨笔记本复选框、至少一轮工具调用与移动端布局。
+
+### 33.5 已知后续
+
+1. MVP 依赖所选模型支持 LangChain tool calling；需要在项目实际配置的主要模型上建立兼容矩阵与降级文案。
+2. 当前已增加工具状态事件，但 SSE 仍会转发 Agent 各轮模型流。后续如供应商在 tool call 前输出中间说明，应增加“仅最终回答流式”的过滤，避免把中间规划混入回答。
+3. 历史笔记本若缺少 `created_by`，普通用户的跨笔记本发现不会纳入；管理员不受影响。需要在后续数据治理中补齐历史所有权，而不是放宽 Agent 查询。
+4. 外部 Markdown 的 provider、导出时间、原任务链接目前由文档正文保留；后续可增加结构化 provenance，但不应阻塞首版。
+
+### 33.6 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/research_agent.py` | **新增** — Research Agent 状态图、工具、提示词调用与范围校验 |
+| `prompts/research_agent/system.jinja` | **新增** — 科研方法、权限与引用约束 |
+| `open_notebook/domain/notebook.py` | `ChatSession.mode` + notebook-scoped vector search |
+| `open_notebook/config.py` | 独立 Research checkpoint 路径 |
+| `api/routers/chat.py` | 会话模式响应/分流、Research SSE 入口、按模式读取 checkpoint |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | 模式会话隔离、Research 请求、单次跨笔记本授权 |
+| `frontend/src/components/source/ChatPanel.tsx` | 笔记本专用模式控件、跨笔记本复选框与执行反馈锚点 |
+| `frontend/src/components/source/ChatActivityFeed.tsx` | **新增** — 笔记本对话执行步骤、读秒、终态摘要与展开/收起 |
+| `frontend/src/lib/chat/notebook-chat-activity.ts` | **新增** — Quick/Research 共用的阶段、步骤与终态类型 |
+| `frontend/src/lib/chat/thinking-content.ts` | **新增** — 流式安全移除完整/未闭合/缺开标签的模型推理块 |
+| `frontend/src/lib/chat/thinking-content.test.ts` | **新增** — 4 个推理标签清理回归用例 |
+| `frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx` | 模式属性接线、Research 模式隐藏快速对话导览/统计 |
+| `frontend/src/lib/api/chat.ts` / `frontend/src/lib/types/api.ts` | Research API 与类型 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包新增模式文案 |
+| `tests/test_research_agent_scope.py` | **新增** — 默认模式、allowlist、越界读取、显式授权、checkpoint 隔离测试 |
+
+### 33.7 笔记本对话实时执行反馈（2026-07-10）
+
+#### 行为与协议
+
+- 用户提交问题后，不等待会话创建、上下文构建或首个模型 token：前端立即插入用户消息，并显示“已接收问题”与当前活动步骤；独立 1 秒计时器持续显示本轮总耗时。
+- Quick Chat 先显示“准备已选资料 / 已准备对话资料”，再进入联网检索或等待模型；Research Agent 从“分析问题并选择工具”开始，根据 LangGraph 的真实 `on_tool_start` / `on_tool_end` 事件切换研究范围确认、当前笔记本检索、证据阅读、跨笔记本发现、联网检索和综合结论等阶段。
+- 后端新增 `chat_status` SSE：仅发送 `stage`、`status`、`elapsed_ms`。不发送模型思维链、工具参数、工具返回正文或来源原文，避免把内部推理和私域数据暴露到执行面板。
+- 心跳不再在首个 AI chunk 后停止；工具调用、长时间检索或综合阶段静默时，仍按当前阶段发送 heartbeat。前端接受任意阶段心跳并以服务端耗时校正本地读秒。
+- 执行反馈紧邻触发本轮的用户问题。执行中默认展开并连续追加步骤；成功、失败或用户停止后自动折叠为“步骤数 + 总耗时”摘要，可手动展开复查。
+- 已知工具映射为固定本地化阶段；新增或未识别工具统一显示“正在调用研究工具”，不暴露内部工具名。
+
+#### 验证
+
+```text
+uv run pytest tests/test_chat_heartbeat_sse.py tests/test_research_agent_scope.py -q
+23 passed, 1 warning
+
+cd frontend && npm test -- --run src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.test.tsx
+39 passed
+
+cd frontend && npm test
+157 passed | 9 skipped
+
+cd frontend && npx eslint src/lib/hooks/useNotebookChat.ts src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatActivityFeed.tsx src/components/source/ChatPanel.tsx src/components/source/ChatPanel.test.tsx src/app/'(dashboard)'/notebooks/components/ChatColumn.tsx src/lib/chat/notebook-chat-activity.ts src/lib/locales/*/index.ts
+exit 0
+
+uv run ruff check api/routers/chat.py tests/test_chat_heartbeat_sse.py
+All checks passed
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+前端用例覆盖提交后即时步骤、结构化状态序列、非 `awaiting_model` 阶段心跳、完成终态、消息下方锚定、自动折叠和手动展开；后端用例覆盖事件结构、Research 工具阶段顺序，以及首个回答 chunk 后静默期间继续心跳。
+
+运行态页面检查尝试了应用内浏览器与现有 Chrome 会话，均被重定向到 `/login?redirect=%2Fnotebooks`，没有可复用的已登录会话。未读取本机配置或绕过认证，因此真实笔记本中的长回答视觉联调仍需登录后手工完成。
+
+### 33.8 Quick/Research 协议安全上下文压缩（2026-07-10）
+
+#### 问题与范围
+
+- Research Agent 原实现直接执行 `messages[-20:]`；Quick Chat 使用相同性质的 `messages[-12:]`。启用工具后，固定位置切片可能保留 `ToolMessage` 却丢掉前置 `AIMessage(tool_calls)`，模型供应商会返回 `400: Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`。
+- Quick 默认不联网时通常没有工具消息，但开启联网搜索后同样经过 `ToolNode`，因此具有相同风险。本轮不只修 Research，而是让两个图共用 `open_notebook/graphs/message_history.py`。
+
+#### 压缩与修复策略
+
+- 完整 LangGraph checkpoint 保持不变，UI 仍可读取完整历史；只压缩单次交给模型的 payload。
+- `AIMessage(tool_calls)` 与其后全部 `ToolMessage` 组成不可拆分原子组。窗口按最近优先选择完整原子组，绝不从工具返回处开始。
+- 调用前校验旧 checkpoint：孤立 `ToolMessage`、缺少部分返回的不完整工具组，只从本轮模型 payload 中剔除并记录 `repaired_messages`，不删除用户历史数据。
+- 同时使用消息数和 token 双预算：Quick 默认 `12 / 16000 tokens`，Research 默认 `20 / 32000 tokens`。最新用户问题始终保留；预算不足时丢弃完整旧工具组，而不是拆组。
+- 被窗口丢弃的较早 `HumanMessage` 与无工具调用的最终 `AIMessage` 被压成确定性摘要并附加到 system prompt；摘要明确排除原始工具结果，不增加额外 LLM 调用。默认摘要字符上限分别为 Quick 6000、Research 8000。
+- Research 的 `read_source` / `read_note` 默认单块从 30000 降为 12000 字符，新增 `start_char`、`end_char`、`next_start_char`、`total_chars`，Agent 仅在必要时继续读取下一块。
+- 新增 `history_compressed` / `research_history_compressed` INFO 日志，记录总消息数、有效消息数、保留/丢弃/修复数量、估算 token、预算和摘要长度，不记录消息正文或工具结果。
+
+可调整配置：
+
+```text
+CHAT_HISTORY_MAX_MESSAGES=12
+CHAT_HISTORY_MAX_TOKENS=16000
+CHAT_HISTORY_SUMMARY_MAX_CHARS=6000
+RESEARCH_AGENT_HISTORY_MAX_MESSAGES=20
+RESEARCH_AGENT_HISTORY_MAX_TOKENS=32000
+RESEARCH_AGENT_HISTORY_SUMMARY_MAX_CHARS=8000
+RESEARCH_AGENT_READ_MAX_CHARS=12000
+```
+
+#### 失败进度语义
+
+- 执行失败时不再把所有活动步骤改为绿色完成。此前已收到后端完成事件的步骤保持绿色；失败发生时仍为 active 的步骤改为红色错误。用户停止时则显示 cancelled 状态。
+
+#### 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/message_history.py` | **新增** — 工具协议修复、原子消息组、token/消息双预算、确定性早期摘要 |
+| `open_notebook/graphs/chat.py` | Quick Chat 接入共享历史压缩与可观测日志 |
+| `open_notebook/graphs/research_agent.py` | Research 接入共享压缩；来源/笔记改为 12000 字符分页读取 |
+| `prompts/research_agent/system.jinja` | 指示 Agent 仅在必要时使用 `next_start_char` 继续读取 |
+| `frontend/src/lib/chat/notebook-chat-activity.ts` | 步骤状态增加 error / cancelled |
+| `frontend/src/components/source/ChatActivityFeed.tsx` | 当前失败/停止步骤使用对应终态图标，不再显示绿色完成 |
+| `.env.production.example` | 增加 Quick/Research 历史 token、摘要与读取块配置示例 |
+| `tests/test_message_history.py` | **新增** — 协议修复、原子裁剪、摘要隐私、token 预算及两个模型节点回归 |
+
+#### 验证
+
+```text
+uv run pytest tests/test_message_history.py tests/test_chat_context_budget.py tests/test_research_agent_scope.py tests/test_chat_heartbeat_sse.py -q
+38 passed, 1 warning
+
+uv run pytest tests/test_message_history.py tests/test_chat_context_budget.py tests/test_research_agent_scope.py tests/test_chat_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_tavily_search_timeout.py tests/test_graphs.py -q
+63 passed, 6 warnings
+
+cd frontend && npm test -- --run src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.test.tsx
+40 passed
+
+cd frontend && npm test
+158 passed | 9 skipped
+
+uv run ruff check open_notebook/graphs/message_history.py open_notebook/graphs/chat.py open_notebook/graphs/research_agent.py tests/test_message_history.py tests/test_chat_context_budget.py tests/test_research_agent_scope.py
+All checks passed
+
+cd frontend && npx eslint src/lib/hooks/useNotebookChat.ts src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatActivityFeed.tsx src/components/source/ChatPanel.test.tsx src/lib/chat/notebook-chat-activity.ts
+exit 0
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+补充尝试 `uv run pytest tests/ -q --tb=no`：运行到依赖真实模型的 `tests/test_kg.py` 长时间等待后手动停止；停止时已完成部分为 `156 passed, 3 skipped, 19 failed`。19 个失败主要是测试 API 未启动导致的 `test_integration_e2e.py` 连接失败；其中一次 `ContentSettings` 默认值用例失败，单独重跑后 `1 passed`。本次影响范围的 63 个后端测试全部通过。
+
+---
+
+> 最后更新：2026-07-10 | 新增 §33（笔记本 Research Agent MVP）、§33.7（实时执行反馈）与 §33.8（Quick/Research 协议安全上下文压缩）。默认当前笔记本、跨笔记本发现单次显式授权、Quick/Research 会话与 checkpoint 隔离；工具消息按原子组裁剪，旧 checkpoint 孤立工具消息在 payload 层修复。

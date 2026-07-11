@@ -5,6 +5,7 @@ import {
   CreateNotebookChatSessionRequest,
   UpdateNotebookChatSessionRequest,
   SendNotebookChatMessageRequest,
+  SendNotebookResearchMessageRequest,
   BuildContextRequest,
   BuildContextResponse,
 } from '@/lib/types/api'
@@ -68,6 +69,38 @@ export const chatApi = {
     const url = `${baseUrl}/api/chat/execute`
 
     return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+      },
+      body: JSON.stringify(data),
+      signal,
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      return response.body
+    })
+  },
+
+  sendResearchMessage: async (data: SendNotebookResearchMessageRequest, signal?: AbortSignal) => {
+    let token = null
+    if (typeof window !== 'undefined') {
+      const authStorage = localStorage.getItem('auth-storage')
+      if (authStorage) {
+        try {
+          const { state } = JSON.parse(authStorage)
+          if (state?.token) token = state.token
+        } catch (error) {
+          console.error('Error parsing auth storage:', error)
+        }
+      }
+    }
+
+    const { getApiUrl } = await import('@/lib/config')
+    const baseUrl = await getApiUrl()
+    return fetch(`${baseUrl}/api/chat/research/execute`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

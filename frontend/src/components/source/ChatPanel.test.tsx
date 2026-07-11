@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 
 vi.mock('@/components/source/MessageActions', () => ({
@@ -25,6 +25,71 @@ describe('ChatPanel stop button', () => {
     // The send button has the sendPlaceholder as aria-label
     const sendBtn = screen.getByRole('button', { name: /ask anything about your sources/i })
     expect(sendBtn).toBeInTheDocument()
+  })
+
+  it('renders all notebook options as same-row checkboxes with clickable labels', () => {
+    const onModeChange = vi.fn()
+    const onCrossChange = vi.fn()
+    render(
+      <ChatPanel
+        {...baseProps}
+        contextType="notebook"
+        chatMode="quick"
+        onChatModeChange={onModeChange}
+        onAllowCrossNotebookDiscoveryChange={onCrossChange}
+      />
+    )
+
+    const optionsRow = screen.getByTestId('chat-options-row')
+    expect(within(optionsRow).getAllByRole('checkbox')).toHaveLength(4)
+    expect(within(optionsRow).getByRole('checkbox', { name: 'Quick Chat' })).toBeChecked()
+    expect(within(optionsRow).getByRole('checkbox', { name: 'Research Agent' })).not.toBeChecked()
+    expect(within(optionsRow).getByRole('checkbox', { name: 'Cross-notebook discovery' })).not.toBeChecked()
+
+    fireEvent.click(within(optionsRow).getByText('Research Agent'))
+    expect(onModeChange).toHaveBeenCalledWith('research')
+
+    onModeChange.mockClear()
+    fireEvent.click(within(optionsRow).getByText('Cross-notebook discovery'))
+    expect(onModeChange).toHaveBeenCalledWith('research')
+    expect(onCrossChange).toHaveBeenCalledWith(true)
+  })
+
+  it('toggles web search by clicking its text label', () => {
+    render(<ChatPanel {...baseProps} />)
+
+    const webSearch = screen.getByRole('checkbox', { name: 'Web Search' })
+    expect(webSearch).not.toBeChecked()
+    fireEvent.click(screen.getByText('Web Search'))
+    expect(webSearch).toBeChecked()
+    fireEvent.click(screen.getByText('Web Search'))
+    expect(webSearch).not.toBeChecked()
+  })
+
+  it('does not show Research Agent controls in source chat', () => {
+    render(<ChatPanel {...baseProps} contextType="source" />)
+    expect(screen.queryByRole('checkbox', { name: /research agent/i })).not.toBeInTheDocument()
+  })
+
+  it('does not render model thinking tags or reasoning content', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(
+      <ChatPanel
+        {...baseProps}
+        messages={[{
+          id: 'ai-thinking',
+          type: 'ai',
+          content: '<think>private chain of thought</think>Public answer',
+        }]}
+      />
+    )
+
+    expect(screen.getByText('Public answer')).toBeInTheDocument()
+    expect(screen.queryByText('private chain of thought')).not.toBeInTheDocument()
+    expect(
+      consoleError.mock.calls.some(call => String(call[0]).includes('unrecognized')),
+    ).toBe(false)
+    consoleError.mockRestore()
   })
 
   it('renders Stop button when streaming with onCancelStreaming', () => {
@@ -211,6 +276,85 @@ describe('ChatPanel stop button', () => {
     )
 
     expect(screen.getByText('Getting the context...')).toBeInTheDocument()
+  })
+
+  it('shows live notebook activity directly below the triggering question', () => {
+    render(
+      <ChatPanel
+        {...baseProps}
+        contextType="notebook"
+        isStreaming={true}
+        messages={[{
+          id: 'human-activity',
+          type: 'human',
+          content: 'Compare the catalyst evidence.',
+        }]}
+        activityMessageId="human-activity"
+        activityTotalElapsedSeconds={4}
+        activitySteps={[
+          { stage: 'received', status: 'complete' },
+          { stage: 'searching_notebook', status: 'active' },
+        ]}
+      />
+    )
+
+    const feed = screen.getByTestId('chat-activity-feed')
+    expect(screen.getByText('Compare the catalyst evidence.').parentElement?.parentElement?.parentElement?.nextElementSibling).toContainElement(feed)
+    expect(within(feed).getByText('Question received')).toBeInTheDocument()
+    expect(within(feed).getByText('Searching this notebook')).toBeInTheDocument()
+    expect(within(feed).getByText('Working (4s)')).toBeInTheDocument()
+  })
+
+  it('collapses completed notebook activity and lets the user expand it', () => {
+    render(
+      <ChatPanel
+        {...baseProps}
+        contextType="notebook"
+        messages={[{
+          id: 'human-complete',
+          type: 'human',
+          content: 'Summarize the evidence.',
+        }]}
+        activityMessageId="human-complete"
+        activityTotalElapsedSeconds={12}
+        activityTerminal="complete"
+        activitySteps={[
+          { stage: 'received', status: 'complete' },
+          { stage: 'model_streaming', status: 'complete' },
+        ]}
+      />
+    )
+
+    expect(screen.getByText('Completed 2 steps in 12s')).toBeInTheDocument()
+    expect(screen.queryByText('Question received')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand activity' }))
+    expect(screen.getByText('Question received')).toBeInTheDocument()
+    expect(screen.getByText('Writing the answer')).toBeInTheDocument()
+  })
+
+  it('marks only the active step as failed in an error activity feed', () => {
+    render(
+      <ChatPanel
+        {...baseProps}
+        contextType="notebook"
+        messages={[{
+          id: 'human-error',
+          type: 'human',
+          content: 'Inspect the evidence.',
+        }]}
+        activityMessageId="human-error"
+        activityTerminal="error"
+        activitySteps={[
+          { stage: 'received', status: 'complete' },
+          { stage: 'reading_evidence', status: 'error' },
+        ]}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand activity' }))
+    expect(screen.getByText('Question received').closest('li')).toHaveAttribute('data-status', 'complete')
+    expect(screen.getByText('Reading relevant evidence').closest('li')).toHaveAttribute('data-status', 'error')
   })
 
   it('copies a sent human question back into the input for editing', () => {

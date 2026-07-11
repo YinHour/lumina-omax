@@ -239,8 +239,11 @@ export interface SourceChatStreamEvent {
 }
 
 // Notebook Chat Types
+export type NotebookChatMode = 'quick' | 'research'
+
 export interface NotebookChatSession extends BaseChatSession {
   notebook_id: string
+  mode: NotebookChatMode
 }
 
 export interface NotebookChatMessage {
@@ -258,6 +261,7 @@ export interface CreateNotebookChatSessionRequest {
   notebook_id: string
   title?: string
   model_override?: string
+  mode?: NotebookChatMode
 }
 
 export interface UpdateNotebookChatSessionRequest {
@@ -274,6 +278,14 @@ export interface SendNotebookChatMessageRequest {
   }
   model_override?: string
   enable_web_search?: boolean
+}
+
+export interface SendNotebookResearchMessageRequest {
+  session_id: string
+  message: string
+  model_override?: string
+  enable_web_search?: boolean
+  allow_cross_notebook_discovery?: boolean
 }
 
 export interface BuildContextRequest {

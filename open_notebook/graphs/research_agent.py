@@ -1,0 +1,306 @@
+import asyncio
+import json
+import os
+from typing import Annotated, Optional
+
+from ai_prompter import Prompter
+from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.graph import START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import InjectedState, ToolNode, tools_condition
+from loguru import logger
+from typing_extensions import TypedDict
+
+from open_notebook.ai.provision import provision_langchain_model
+from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.domain.notebook import (
+    Note,
+    Notebook,
+    Source,
+    notebook_vector_search,
+    scoped_vector_search,
+)
+from open_notebook.exceptions import OpenNotebookError
+from open_notebook.graphs.message_history import select_history_window
+from open_notebook.graphs.tools import tavily_search
+from open_notebook.utils import clean_thinking_content
+from open_notebook.utils.error_classifier import classify_error
+from open_notebook.utils.text_utils import extract_text_content
+
+
+def _env_positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+class ResearchState(TypedDict):
+    messages: Annotated[list, add_messages]
+    notebook_id: str
+    model_override: Optional[str]
+    enable_web_search: bool
+    allow_cross_notebook_discovery: bool
+    user_id: Optional[str]
+    user_role: Optional[str]
+    chat_trace: Optional[str]
+
+
+async def _scope(state: ResearchState) -> tuple[Notebook, set[str], set[str]]:
+    notebook = await Notebook.get(state["notebook_id"])
+    sources, notes = await asyncio.gather(
+        notebook.get_sources(), notebook.get_notes()
+    )
+    return (
+        notebook,
+        {str(source.id) for source in sources if source.id},
+        {str(note.id) for note in notes if note.id},
+    )
+
+
+async def _cross_notebook_scope(state: ResearchState) -> tuple[set[str], set[str]]:
+    if not state.get("allow_cross_notebook_discovery", False):
+        return set(), set()
+
+    current_notebook_id = state["notebook_id"]
+    if state.get("user_role") == "admin":
+        rows = await repo_query(
+            "SELECT id FROM notebook WHERE id != $current_notebook_id",
+            {"current_notebook_id": ensure_record_id(current_notebook_id)},
+        )
+    else:
+        user_id = state.get("user_id")
+        if not user_id:
+            return set(), set()
+        rows = await repo_query(
+            """
+            SELECT id FROM notebook
+            WHERE id != $current_notebook_id AND created_by = $user_id
+            """,
+            {
+                "current_notebook_id": ensure_record_id(current_notebook_id),
+                "user_id": user_id,
+            },
+        )
+
+    notebooks = await asyncio.gather(
+        *(Notebook.get(str(row["id"])) for row in rows if row.get("id"))
+    )
+    scope_results = await asyncio.gather(
+        *(
+            asyncio.gather(notebook.get_sources(), notebook.get_notes())
+            for notebook in notebooks
+        )
+    )
+    source_ids: set[str] = set()
+    note_ids: set[str] = set()
+    for sources, notes in scope_results:
+        source_ids.update(str(item.id) for item in sources if item.id)
+        note_ids.update(str(item.id) for item in notes if item.id)
+    return source_ids, note_ids
+
+
+async def _authorized_scope(state: ResearchState) -> tuple[set[str], set[str]]:
+    _, source_ids, note_ids = await _scope(state)
+    cross_source_ids, cross_note_ids = await _cross_notebook_scope(state)
+    return source_ids | cross_source_ids, note_ids | cross_note_ids
+
+
+def _json_result(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+@tool
+async def list_notebook_sources(
+    state: Annotated[ResearchState, InjectedState],
+) -> str:
+    """List source and note titles currently visible in this notebook."""
+    notebook, _, _ = await _scope(state)
+    sources, notes = await asyncio.gather(
+        notebook.get_sources(), notebook.get_notes()
+    )
+    return _json_result(
+        {
+            "notebook_id": str(notebook.id),
+            "sources": [
+                {"id": str(item.id), "title": item.title} for item in sources
+            ],
+            "notes": [{"id": str(item.id), "title": item.title} for item in notes],
+        }
+    )
+
+
+@tool
+async def search_notebook_evidence(
+    query: str,
+    state: Annotated[ResearchState, InjectedState],
+) -> str:
+    """Semantically search evidence visible in the current notebook."""
+    notebook, _, _ = await _scope(state)
+    results = await notebook_vector_search(notebook, query, results=12)
+    return _json_result(results)
+
+
+@tool
+async def read_source(
+    source_id: str,
+    state: Annotated[ResearchState, InjectedState],
+    start_char: int = 0,
+) -> str:
+    """Read one source chunk by exact ID after checking the request scope."""
+    source_ids, _ = await _authorized_scope(state)
+    full_id = source_id if source_id.startswith("source:") else f"source:{source_id}"
+    if full_id not in source_ids:
+        return _json_result({"error": "source_outside_notebook_scope", "id": full_id})
+    source = await Source.get(full_id)
+    max_chars = _env_positive_int("RESEARCH_AGENT_READ_MAX_CHARS", 12000)
+    content = source.full_text or ""
+    safe_start = max(0, start_char)
+    end_char = min(len(content), safe_start + max_chars)
+    return _json_result(
+        {
+            "id": str(source.id),
+            "title": source.title,
+            "content": content[safe_start:end_char],
+            "start_char": safe_start,
+            "end_char": end_char,
+            "next_start_char": end_char if end_char < len(content) else None,
+            "total_chars": len(content),
+            "truncated": end_char < len(content),
+        }
+    )
+
+
+@tool
+async def read_note(
+    note_id: str,
+    state: Annotated[ResearchState, InjectedState],
+    start_char: int = 0,
+) -> str:
+    """Read one note chunk by exact ID after checking the request scope."""
+    _, note_ids = await _authorized_scope(state)
+    full_id = note_id if note_id.startswith("note:") else f"note:{note_id}"
+    if full_id not in note_ids:
+        return _json_result({"error": "note_outside_notebook_scope", "id": full_id})
+    note = await Note.get(full_id)
+    max_chars = _env_positive_int("RESEARCH_AGENT_READ_MAX_CHARS", 12000)
+    content = note.content or ""
+    safe_start = max(0, start_char)
+    end_char = min(len(content), safe_start + max_chars)
+    return _json_result(
+        {
+            "id": str(note.id),
+            "title": note.title,
+            "content": content[safe_start:end_char],
+            "start_char": safe_start,
+            "end_char": end_char,
+            "next_start_char": end_char if end_char < len(content) else None,
+            "total_chars": len(content),
+            "truncated": end_char < len(content),
+        }
+    )
+
+
+@tool
+async def discover_across_notebooks(
+    query: str,
+    state: Annotated[ResearchState, InjectedState],
+) -> str:
+    """Discover candidate evidence outside the notebook when explicitly enabled."""
+    if not state.get("allow_cross_notebook_discovery", False):
+        return _json_result({"error": "cross_notebook_discovery_disabled"})
+    source_ids, note_ids = await _cross_notebook_scope(state)
+    results = await scoped_vector_search(
+        query,
+        source_ids=sorted(source_ids),
+        note_ids=sorted(note_ids),
+        results=12,
+    )
+    return _json_result(results)
+
+
+PRIVATE_TOOLS = [
+    list_notebook_sources,
+    search_notebook_evidence,
+    read_source,
+    read_note,
+    discover_across_notebooks,
+]
+
+
+async def call_research_model(
+    state: ResearchState, config: RunnableConfig
+) -> dict:
+    try:
+        system_prompt = Prompter(prompt_template="research_agent/system").render(
+            data=state
+        )
+        max_history = _env_positive_int("RESEARCH_AGENT_HISTORY_MAX_MESSAGES", 20)
+        max_history_tokens = _env_positive_int(
+            "RESEARCH_AGENT_HISTORY_MAX_TOKENS", 32000
+        )
+        summary_max_chars = _env_positive_int(
+            "RESEARCH_AGENT_HISTORY_SUMMARY_MAX_CHARS", 8000
+        )
+        history = list(state.get("messages", []))
+        history_window = select_history_window(
+            history,
+            max_messages=max_history,
+            max_tokens=max_history_tokens,
+            summary_max_chars=summary_max_chars,
+        )
+        if history_window.summary:
+            system_prompt = (
+                f"{system_prompt}\n\n# COMPRESSED EARLIER CONVERSATION\n"
+                f"{history_window.summary}"
+            )
+        payload = [SystemMessage(content=system_prompt), *history_window.messages]
+        if history_window.dropped_messages or history_window.repaired_messages:
+            logger.info(
+                "chat_trace={} step=research_history_compressed total_messages={} valid_messages={} kept_messages={} dropped_messages={} repaired_messages={} estimated_tokens={} max_messages={} max_tokens={} summary_chars={}".format(
+                    state.get("chat_trace") or "unknown",
+                    history_window.total_messages,
+                    history_window.valid_messages,
+                    len(history_window.messages),
+                    history_window.dropped_messages,
+                    history_window.repaired_messages,
+                    history_window.estimated_tokens,
+                    max_history,
+                    max_history_tokens,
+                    len(history_window.summary or ""),
+                )
+            )
+        model_id = config.get("configurable", {}).get("model_id") or state.get(
+            "model_override"
+        )
+        model = await provision_langchain_model(
+            str(payload), model_id, "chat", max_tokens=8192, streaming=True
+        )
+        tools = list(PRIVATE_TOOLS)
+        if state.get("enable_web_search"):
+            tools.append(tavily_search)
+        ai_message = await model.bind_tools(tools).ainvoke(payload, config=config)
+        content = extract_text_content(ai_message.content)
+        cleaned = clean_thinking_content(content)
+        return {"messages": ai_message.model_copy(update={"content": cleaned})}
+    except OpenNotebookError:
+        raise
+    except Exception as exc:
+        logger.exception("Research Agent model call failed")
+        error_class, user_message = classify_error(exc)
+        raise error_class(user_message) from exc
+
+
+tool_node = ToolNode([*PRIVATE_TOOLS, tavily_search])
+agent_state = StateGraph(ResearchState)
+agent_state.add_node("agent", call_research_model)
+agent_state.add_node("tools", tool_node)
+agent_state.add_edge(START, "agent")
+agent_state.add_conditional_edges("agent", tools_condition)
+agent_state.add_edge("tools", "agent")

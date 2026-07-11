@@ -96,14 +96,18 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
 
   return (
     <ChatPanel
-      title={t.chat.chatWithNotebook}
+      title={chat.chatMode === 'research' ? t.chat.researchAgent : t.chat.chatWithNotebook}
       contextType="notebook"
       messages={chat.messages}
       isStreaming={chat.isSending}
       activityStatus={chat.activityStatus}
       activityElapsedSeconds={chat.activityElapsedSeconds}
-      notebookGuide={notebookGuide}
-      isGuideLoading={sources.length > 0 && (guideLoading || guideFetching)}
+      activitySteps={chat.activitySteps}
+      activityTerminal={chat.activityTerminal}
+      activityMessageId={chat.activityMessageId}
+      activityTotalElapsedSeconds={chat.activityTotalElapsedSeconds}
+      notebookGuide={chat.chatMode === 'quick' ? notebookGuide : null}
+      isGuideLoading={chat.chatMode === 'quick' && sources.length > 0 && (guideLoading || guideFetching)}
       suggestedQuestionsByMessageId={chat.suggestedQuestionsByMessageId}
       contextIndicators={null}
       onSendMessage={(message, modelOverride, enableWebSearch) => chat.sendMessage(message, modelOverride, enableWebSearch)}
@@ -116,10 +120,14 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       onUpdateSession={(sessionId, title) => chat.updateSession(sessionId, { title })}
       onDeleteSession={chat.deleteSession}
       loadingSessions={chat.loadingSessions}
-      notebookContextStats={contextStats}
+      notebookContextStats={chat.chatMode === 'quick' ? contextStats : undefined}
       notebookId={notebookId}
       onCancelStreaming={chat.cancelStreaming}
       onRegenerateGuide={() => regenerateGuide.mutate(notebookId)}
+      chatMode={chat.chatMode}
+      onChatModeChange={chat.setChatMode}
+      allowCrossNotebookDiscovery={chat.allowCrossNotebookDiscovery}
+      onAllowCrossNotebookDiscoveryChange={chat.setAllowCrossNotebookDiscovery}
     />
   )
 }
