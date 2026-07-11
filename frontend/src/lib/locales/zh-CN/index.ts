@@ -565,6 +565,8 @@ export const zhCN = {
     selectSession: "选择会话",
     manageSessions: "管理会话",
     exportConversation: "导出 Markdown",
+    loadEarlierMessages: "加载更早消息",
+    loadingEarlierMessages: "正在加载更早消息",
     autoSaving: "保存中",
     saved: "已保存",
     saveFailed: "保存失败",

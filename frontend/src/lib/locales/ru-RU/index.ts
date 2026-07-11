@@ -432,6 +432,8 @@ export const ruRU = {
     selectSession: "Выбрать разговор",
     manageSessions: "Управление разговорами",
     exportConversation: "Экспорт Markdown",
+    loadEarlierMessages: "Загрузить предыдущие сообщения",
+    loadingEarlierMessages: "Загрузка предыдущих сообщений",
     autoSaving: "Сохранение",
     saved: "Сохранено",
     saveFailed: "Ошибка сохранения",

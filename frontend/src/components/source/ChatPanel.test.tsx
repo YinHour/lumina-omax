@@ -125,6 +125,24 @@ describe('ChatPanel stop button', () => {
     expect(onStartNewSession).toHaveBeenCalledTimes(1)
   })
 
+  it('offers loading earlier messages for paginated notebook transcripts', () => {
+    const onLoadEarlierMessages = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ChatPanel
+        {...baseProps}
+        contextType="notebook"
+        onChatModeChange={vi.fn()}
+        onStartNewSession={vi.fn()}
+        onSelectSession={vi.fn()}
+        hasMoreMessages
+        onLoadEarlierMessages={onLoadEarlierMessages}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load earlier messages' }))
+    expect(onLoadEarlierMessages).toHaveBeenCalledOnce()
+  })
+
   it('does not render model thinking tags or reasoning content', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     render(

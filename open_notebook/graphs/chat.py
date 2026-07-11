@@ -41,6 +41,7 @@ class ThreadState(TypedDict):
     model_override: Optional[str]
     enable_web_search: Optional[bool]
     chat_trace: Optional[str]
+    conversation_summary: Optional[str]
 
 
 async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict:
@@ -59,10 +60,19 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
             max_tokens=max_history_tokens,
             summary_max_chars=summary_max_chars,
         )
-        if history_window.summary:
+        summary_parts = [
+            part
+            for part in (
+                state.get("conversation_summary"),
+                history_window.summary,
+            )
+            if part
+        ]
+        if summary_parts:
+            combined_summary = "\n".join(summary_parts)
             system_prompt = (
                 f"{system_prompt}\n\n# COMPRESSED EARLIER CONVERSATION\n"
-                f"{history_window.summary}"
+                f"{combined_summary}"
             )
         payload = [SystemMessage(content=system_prompt), *history_window.messages]
         if history_window.dropped_messages or history_window.repaired_messages:

@@ -695,6 +695,9 @@ class ChatSession(ObjectModel):
     title: Optional[str] = None
     model_override: Optional[str] = None
     mode: Literal["quick", "research"] = "quick"
+    transcript_initialized: bool = False
+    message_count: int = 0
+    last_message_preview: Optional[str] = None
 
     async def relate_to_notebook(self, notebook_id: str) -> Any:
         if not notebook_id:

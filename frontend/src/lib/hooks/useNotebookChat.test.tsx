@@ -8,6 +8,7 @@ const chatApiMock = vi.hoisted(() => ({
   listSessions: vi.fn(),
   createSession: vi.fn(),
   getSession: vi.fn(),
+  getAllSessionMessages: vi.fn(),
   updateSession: vi.fn(),
   deleteSession: vi.fn(),
   buildContext: vi.fn(),
@@ -164,7 +165,10 @@ describe('useNotebookChat', () => {
       created: '2026-06-12T00:00:00Z',
       updated: '2026-06-12T00:00:00Z',
       messages: [],
+      has_more: false,
+      next_cursor: null,
     })
+    chatApiMock.getAllSessionMessages.mockResolvedValue([])
     chatApiMock.buildContext.mockResolvedValue({
       context: { sources: [], notes: [] },
       token_count: 0,
@@ -542,6 +546,99 @@ describe('useNotebookChat', () => {
     await act(async () => {
       await sendPromise!
     })
+  })
+
+  it('prepends earlier transcript pages without duplicating loaded messages', async () => {
+    chatApiMock.listSessions.mockResolvedValue([{
+      id: 'session:1',
+      title: 'Long session',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-11T00:00:00Z',
+      updated: '2026-07-11T00:00:00Z',
+    }])
+    chatApiMock.getSession
+      .mockResolvedValueOnce({
+        id: 'session:1',
+        title: 'Long session',
+        notebook_id: 'notebook:1',
+        mode: 'quick',
+        created: '2026-07-11T00:00:00Z',
+        updated: '2026-07-11T00:00:00Z',
+        messages: [
+          { id: 'm3', type: 'human', content: 'third', sequence: 3 },
+          { id: 'm4', type: 'ai', content: 'fourth', sequence: 4 },
+        ],
+        has_more: true,
+        next_cursor: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'session:1',
+        title: 'Long session',
+        notebook_id: 'notebook:1',
+        mode: 'quick',
+        created: '2026-07-11T00:00:00Z',
+        updated: '2026-07-11T00:00:00Z',
+        messages: [
+          { id: 'm1', type: 'human', content: 'first', sequence: 1 },
+          { id: 'm2', type: 'ai', content: 'second', sequence: 2 },
+          { id: 'm3', type: 'human', content: 'third', sequence: 3 },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(result.current.messages.map(message => message.id)).toEqual(['m3', 'm4']))
+    await act(async () => result.current.loadEarlierMessages())
+
+    expect(result.current.messages.map(message => message.id)).toEqual(['m1', 'm2', 'm3', 'm4'])
+    expect(result.current.hasMoreMessages).toBe(false)
+  })
+
+  it('uses transcript_status to report a persistence failure after a successful answer', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Persistence check',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-11T00:00:00Z',
+      updated: '2026-07-11T00:00:00Z',
+    })
+    const payload = [
+      'data: {"type":"ai_message","content":"Answer"}\n\n',
+      'data: {"type":"transcript_status","status":"error"}\n\n',
+      'data: {"type":"answer_complete"}\n\n',
+    ].join('')
+    chatApiMock.sendMessage.mockResolvedValue(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload))
+        controller.close()
+      },
+    }))
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => result.current.sendMessage('Check persistence'))
+    expect(result.current.saveStatus).toBe('error')
+    expect(result.current.activityTerminal).toBe('complete')
   })
 
   it('keeps suggested questions after persisted session messages replace streamed message ids', async () => {

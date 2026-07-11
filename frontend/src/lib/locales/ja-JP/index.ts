@@ -432,6 +432,8 @@ export const jaJP = {
     selectSession: "会話を選択",
     manageSessions: "会話を管理",
     exportConversation: "Markdown をエクスポート",
+    loadEarlierMessages: "以前のメッセージを読み込む",
+    loadingEarlierMessages: "以前のメッセージを読み込み中",
     autoSaving: "保存中",
     saved: "保存済み",
     saveFailed: "保存に失敗しました",

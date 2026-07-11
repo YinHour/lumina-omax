@@ -50,6 +50,7 @@ class ResearchState(TypedDict):
     user_id: Optional[str]
     user_role: Optional[str]
     chat_trace: Optional[str]
+    conversation_summary: Optional[str]
 
 
 async def _scope(state: ResearchState) -> tuple[Notebook, set[str], set[str]]:
@@ -255,10 +256,19 @@ async def call_research_model(
             max_tokens=max_history_tokens,
             summary_max_chars=summary_max_chars,
         )
-        if history_window.summary:
+        summary_parts = [
+            part
+            for part in (
+                state.get("conversation_summary"),
+                history_window.summary,
+            )
+            if part
+        ]
+        if summary_parts:
+            combined_summary = "\n".join(summary_parts)
             system_prompt = (
                 f"{system_prompt}\n\n# COMPRESSED EARLIER CONVERSATION\n"
-                f"{history_window.summary}"
+                f"{combined_summary}"
             )
         payload = [SystemMessage(content=system_prompt), *history_window.messages]
         if history_window.dropped_messages or history_window.repaired_messages:

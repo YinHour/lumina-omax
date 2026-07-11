@@ -61,6 +61,11 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   })
   const currentSessionId = currentSessionIds[chatMode]
   const [messages, setMessages] = useState<NotebookChatMessage[]>([])
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [nextMessageCursor, setNextMessageCursor] = useState<number | null>(null)
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false)
+  const messageSessionIdRef = useRef<string | null>(null)
+  const loadedEarlierRef = useRef(false)
   const [suggestedQuestionsByMessageId, setSuggestedQuestionsByMessageId] = useState<Record<string, string[]>>({})
   const [isSending, setIsSending] = useState(false)
   const [activityStatus, setActivityStatus] = useState<NotebookChatActivityStatus | null>(null)
@@ -203,16 +208,40 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         .filter(msg => msg.type === 'ai')
         .at(-1)
 
+      const sessionChanged = messageSessionIdRef.current !== currentSession.id
+      messageSessionIdRef.current = currentSession.id
       setMessages(prev => {
         const optimisticMessages = prev.filter(msg => msg.id.startsWith('temp-'))
-        if (!isSendingRef.current || optimisticMessages.length === 0) {
-          return currentSession.messages
+        if (sessionChanged) {
+          return isSendingRef.current
+            ? [...currentSession.messages, ...optimisticMessages]
+            : currentSession.messages
         }
 
-        const persistedIds = new Set(currentSession.messages.map(msg => msg.id))
+        const existingMessages = prev.filter(msg => !msg.id.startsWith('temp-'))
+        const mergedById = new Map(
+          [...existingMessages, ...currentSession.messages].map(message => [message.id, message])
+        )
+        const persistedMessages = Array.from(mergedById.values()).sort((left, right) => {
+          if (left.sequence !== undefined && right.sequence !== undefined) {
+            return left.sequence - right.sequence
+          }
+          return 0
+        })
+        if (!isSendingRef.current || optimisticMessages.length === 0) {
+          return persistedMessages
+        }
+
+        const persistedIds = new Set(persistedMessages.map(msg => msg.id))
         const pendingMessages = optimisticMessages.filter(msg => !persistedIds.has(msg.id))
-        return [...currentSession.messages, ...pendingMessages]
+        return [...persistedMessages, ...pendingMessages]
       })
+
+      if (sessionChanged || !loadedEarlierRef.current) {
+        setHasMoreMessages(currentSession.has_more)
+        setNextMessageCursor(currentSession.next_cursor ?? null)
+        loadedEarlierRef.current = false
+      }
 
       if (pendingSuggestedQuestions && persistedAiMessage) {
         const questions = pendingSuggestedQuestions
@@ -224,6 +253,33 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       }
     }
   }, [currentSession, chatMode])
+
+  const loadEarlierMessages = useCallback(async () => {
+    if (!currentSessionId || !hasMoreMessages || nextMessageCursor === null) return
+
+    setIsLoadingEarlier(true)
+    try {
+      const page = await chatApi.getSession(currentSessionId, {
+        limit: 50,
+        before_sequence: nextMessageCursor,
+      })
+      setMessages(previous => {
+        const knownIds = new Set(previous.map(message => message.id))
+        const older = page.messages.filter(message => !knownIds.has(message.id))
+        return [...older, ...previous]
+      })
+      loadedEarlierRef.current = true
+      setHasMoreMessages(page.has_more)
+      setNextMessageCursor(page.next_cursor ?? null)
+    } finally {
+      setIsLoadingEarlier(false)
+    }
+  }, [currentSessionId, hasMoreMessages, nextMessageCursor])
+
+  const loadExportMessages = useCallback(async () => {
+    if (!currentSessionId) return messages
+    return chatApi.getAllSessionMessages(currentSessionId)
+  }, [currentSessionId, messages])
 
   // Auto-select most recent session when sessions are loaded
   useEffect(() => {
@@ -499,6 +555,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       let pendingSuggestedQuestions: string[] | null = null
       let inlineStreamError = false
       let activityTerminalReached = false
+      let transcriptSaveStatus: Extract<NotebookChatSaveStatus, 'saved' | 'error'> | null = null
       let buffer = ''
       const markAnswerComplete = (terminal: Exclude<NotebookChatActivityTerminal, null> = 'complete') => {
         activityTerminalReached = true
@@ -507,7 +564,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         setActivityStatus(null)
         setActivityElapsedSeconds(0)
         setIsSending(false)
-        setSaveStatusForMode(chatMode, terminal === 'complete' ? 'saved' : 'error')
+        setSaveStatusForMode(
+          chatMode,
+          terminal === 'complete' ? (transcriptSaveStatus ?? 'saved') : 'error'
+        )
       }
 
       const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown; stage?: string; status?: string; elapsed_ms?: number; error_code?: string; timeout_seconds?: number }) => {
@@ -580,6 +640,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
           }
         } else if (data.type === 'answer_complete') {
           markAnswerComplete()
+        } else if (
+          data.type === 'transcript_status' &&
+          (data.status === 'saved' || data.status === 'error')
+        ) {
+          transcriptSaveStatus = data.status
+          setSaveStatusForMode(chatMode, data.status)
         } else if (data.type === 'error') {
           // All chat SSE errors render as an inline AI-role bubble (see §29.7
           // and §31). Bubble layout is shared with source chat / ask via
@@ -756,6 +822,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   // Switch session
   const switchSession = useCallback((sessionId: string) => {
     resetActivity()
+    messageSessionIdRef.current = null
+    loadedEarlierRef.current = false
+    setHasMoreMessages(false)
+    setNextMessageCursor(null)
     setNewSessionDrafts(previous => ({ ...previous, [chatMode]: false }))
     setSaveStatusForMode(chatMode, 'saved')
     setSuggestedQuestionsByMessageId({})
@@ -770,6 +840,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setSuggestedQuestionsByMessageId({})
     setSessionIdForMode(chatMode, null)
     setMessages([])
+    messageSessionIdRef.current = null
+    loadedEarlierRef.current = false
+    setHasMoreMessages(false)
+    setNextMessageCursor(null)
     if (chatMode === 'research') {
       setAllowCrossNotebookDiscovery(false)
     }
@@ -793,6 +867,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     }
     setSuggestedQuestionsByMessageId({})
     setMessages([])
+    messageSessionIdRef.current = null
+    loadedEarlierRef.current = false
+    setHasMoreMessages(false)
+    setNextMessageCursor(null)
   }, [chatMode, resetActivity])
 
   // Update session
@@ -848,6 +926,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     currentSessionId,
     currentSessionIds,
     messages,
+    hasMoreMessages,
+    isLoadingEarlier,
     suggestedQuestionsByMessageId,
     isSending,
     activityStatus,
@@ -876,6 +956,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setModelOverride,
     setChatMode,
     setAllowCrossNotebookDiscovery,
+    loadEarlierMessages,
+    loadExportMessages,
     refetchSessions
   }
 }

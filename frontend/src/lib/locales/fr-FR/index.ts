@@ -432,6 +432,8 @@ export const frFR = {
     selectSession: "Sélectionner une conversation",
     manageSessions: "Gérer les conversations",
     exportConversation: "Exporter en Markdown",
+    loadEarlierMessages: "Charger les messages précédents",
+    loadingEarlierMessages: "Chargement des messages précédents",
     autoSaving: "Enregistrement",
     saved: "Enregistré",
     saveFailed: "Échec de l'enregistrement",

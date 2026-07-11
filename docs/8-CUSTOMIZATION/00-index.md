@@ -2969,7 +2969,7 @@ exit 0
 
 - 顶部常驻当前模式 Tabs、当前会话下拉菜单和 Plus 新会话按钮；Plus 使用 Tooltip。
 - 会话下拉菜单可以直接切换本模式会话，并提供管理会话和导出 Markdown。
-- Markdown 导出只包含当前 UI 可见的人类/AI 消息，移除 `<think>` 推理块，不包含 ToolMessage、凭据或内部工具参数。
+- Markdown 导出包含当前会话的全部人类/AI transcript（分页实现见 §35），移除 `<think>` 推理块，不包含 ToolMessage、凭据或内部工具参数。
 - 现有 SessionManager 继续负责重命名和删除；笔记本聊天的 Plus 直接进入本地草稿，源聊天继续使用原来的标题创建流程。
 - 新会话创建后，在刷新后的会话列表尚未包含新 ID 前保持“待确认”状态，避免旧列表竞态把用户自动切回旧会话。
 
@@ -3000,6 +3000,69 @@ cd frontend && npm run build
 exit 0
 ```
 
+运行态确认 `http://127.0.0.1:3001/login` 与 `http://127.0.0.1:5056/api/config` 均返回 200。应用内浏览器访问 `/notebooks` 时被重定向到 `/login?redirect=%2Fnotebooks`；未读取本机配置或绕过认证，因此真实长会话中的分页按钮、滚动锚点与完整 Markdown 下载仍需登录后手工验收。
+
 ---
 
 > 最后更新：2026-07-11 | 新增 §34。Quick/Research 改为独立 Tabs，并增加显式新会话、模式独立状态、自动保存反馈和安全 Markdown 导出。
+
+---
+
+## 35. 长会话 Transcript 持久化与分页（2026-07-11）
+
+### 35.1 数据职责与兼容策略
+
+- 新增 SurrealDB `chat_message` 作为用户可见 human / final AI transcript 的长期事实来源；LangGraph SQLite checkpoint 改为仅保存近期执行记忆、工具调用协议和滚动摘要。
+- `chat_session` 增加 `transcript_initialized`、`message_count` 与 `last_message_preview`。已初始化会话的列表和详情不再逐会话扫描 checkpoint 计算消息数。
+- 新会话创建时直接标记 transcript 已初始化。旧会话首次打开或继续对话时，从对应 Quick/Research checkpoint 懒迁移可见消息；ToolMessage、纯工具调用 AIMessage 和 `<think>` 内容不写入 transcript。
+- 每轮模型完成后先持久化 transcript，再压缩 checkpoint。写入失败时 SSE 返回 `transcript_status=error`，前端显示保存失败，并保留完整 checkpoint，不执行破坏性裁剪。
+- 删除会话时同步删除其 transcript。SQLite 中对应线程的物理清理仍作为后续维护项，不阻塞会话删除。
+
+设计与实施记录：
+
+- `docs/superpowers/specs/2026-07-11-chat-transcript-pagination-design.md`
+- `docs/superpowers/plans/2026-07-11-chat-transcript-pagination-implementation.md`
+
+### 35.2 分页、导出与执行记忆
+
+- `GET /chat/sessions/{id}` 默认仅返回最新 50 条，支持 `limit` 与 `before_sequence`，响应增加 `has_more`、`next_cursor`；每页仍按从旧到新的阅读顺序返回。
+- 消息区顶部按需显示“加载更早消息”。前插旧页时保持滚动位置，并按消息 ID 去重，不覆盖当前乐观消息或流式回答。
+- Markdown 导出自动以每页 200 条遍历完整 transcript，不受当前页面已加载数量限制。
+- transcript 保存成功后，Quick/Research 复用既有消息数与 token 预算选择近期协议安全窗口，通过 LangGraph `RemoveMessage` 裁剪已归档消息；较早 human/final AI 内容合并进 `conversation_summary`，原始工具输出不进入摘要。
+- Quick/Research system prompt 同时接收滚动 `conversation_summary` 与本轮窗口摘要，长会话无需每轮携带完整原文，也不会拆断 AI tool call 与 ToolMessage 协议组。
+
+### 35.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/database/migrations/27.surrealql` | **新增** — `chat_message` 表及 session/sequence、session/message_id 唯一索引 |
+| `api/chat_transcript_service.py` | **新增** — 幂等写入、懒迁移、游标分页、元数据、删除和 checkpoint 安全压缩 |
+| `api/routers/chat.py` | 会话分页协议；Quick/Research SSE 接入先保存后压缩与 `transcript_status` |
+| `open_notebook/domain/notebook.py` | ChatSession transcript 元数据 |
+| `open_notebook/graphs/chat.py` / `research_agent.py` | 状态增加滚动摘要，并注入 system prompt |
+| `frontend/src/lib/api/chat.ts` / `types/api.ts` | 分页参数、响应类型和完整导出遍历 |
+| `frontend/src/lib/api/chat.test.ts` | **新增** — 完整导出跨页顺序与 cursor 请求回归 |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | 分页前插、去重、分页游标、完整导出及真实保存状态 |
+| `frontend/src/components/source/ChatPanel.tsx` | 顶部加载旧消息并保持滚动锚点 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包增加分页加载文案 |
+| `tests/test_chat_transcript_service.py` / `test_chat_transcript_router.py` | **新增** — transcript、迁移失败、分页、列表快路径与安全压缩回归 |
+
+### 35.4 验证
+
+```text
+UV_CACHE_DIR=/tmp/lumina-uv-cache uv run pytest -q tests/test_chat_transcript_service.py tests/test_chat_transcript_router.py tests/test_notebook_schema_migrations.py tests/test_message_history.py tests/test_chat_context_budget.py tests/test_research_agent_scope.py tests/test_chat_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_tavily_search_timeout.py tests/test_graphs.py
+71 passed, 6 warnings
+
+cd frontend && npm test
+167 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+```
+
+---
+
+> 最后更新：2026-07-11 | 新增 §35。笔记本长会话改为 SurrealDB transcript 分页归档与近期 checkpoint 执行记忆；先持久化后压缩，失败不裁剪；完整导出不受首屏 50 条限制。

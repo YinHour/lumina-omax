@@ -97,6 +97,10 @@ interface ChatPanelProps {
   allowCrossNotebookDiscovery?: boolean
   onAllowCrossNotebookDiscoveryChange?: (enabled: boolean) => void
   saveStatus?: NotebookChatSaveStatus
+  hasMoreMessages?: boolean
+  isLoadingEarlier?: boolean
+  onLoadEarlierMessages?: () => Promise<void>
+  onLoadExportMessages?: () => Promise<SourceChatMessage[]>
 }
 
 export function ChatPanel({
@@ -134,6 +138,10 @@ export function ChatPanel({
   allowCrossNotebookDiscovery = false,
   onAllowCrossNotebookDiscoveryChange,
   saveStatus = 'idle',
+  hasMoreMessages = false,
+  isLoadingEarlier = false,
+  onLoadEarlierMessages,
+  onLoadExportMessages,
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -307,6 +315,21 @@ export function ChatPanel({
     sendMessageNow(question)
   }
 
+  const handleLoadEarlier = async () => {
+    if (!onLoadEarlierMessages || isLoadingEarlier) return
+    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]'
+    )
+    const previousHeight = viewport?.scrollHeight ?? 0
+    const previousTop = viewport?.scrollTop ?? 0
+    await onLoadEarlierMessages()
+    requestAnimationFrame(() => {
+      if (viewport) {
+        viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight
+      }
+    })
+  }
+
   const handleEditHumanMessage = (message: string) => {
     setInput(message)
     requestAnimationFrame(() => {
@@ -374,6 +397,7 @@ export function ChatPanel({
             onSelectSession={onSelectSession}
             onStartNewSession={onStartNewSession}
             onManageSessions={() => setSessionManagerOpen(true)}
+            onLoadExportMessages={onLoadExportMessages}
           />
         ) : (
           <div className="flex items-center justify-between">
@@ -428,6 +452,21 @@ export function ChatPanel({
           onScrollCapture={handleScroll}
         >
           <div className="space-y-4 py-4">
+            {contextType === 'notebook' && hasMoreMessages && onLoadEarlierMessages && (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLoadEarlier}
+                  disabled={isLoadingEarlier}
+                  className="gap-2 text-xs text-muted-foreground"
+                >
+                  {isLoadingEarlier && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {isLoadingEarlier ? t.chat.loadingEarlierMessages : t.chat.loadEarlierMessages}
+                </Button>
+              </div>
+            )}
             {notebookGuide?.status === 'ready' && notebookGuide.summary && (
               <NotebookGuideCard
                 title={title}

@@ -432,6 +432,8 @@ export const itIT = {
     selectSession: "Seleziona conversazione",
     manageSessions: "Gestisci conversazioni",
     exportConversation: "Esporta Markdown",
+    loadEarlierMessages: "Carica messaggi precedenti",
+    loadingEarlierMessages: "Caricamento messaggi precedenti",
     autoSaving: "Salvataggio",
     saved: "Salvato",
     saveFailed: "Salvataggio non riuscito",

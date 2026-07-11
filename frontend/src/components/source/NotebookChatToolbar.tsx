@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   Check,
   ChevronDown,
@@ -40,6 +41,7 @@ interface NotebookChatToolbarProps {
   onSelectSession: (sessionId: string) => void
   onStartNewSession: () => void
   onManageSessions: () => void
+  onLoadExportMessages?: () => Promise<SourceChatMessage[]>
 }
 
 export function NotebookChatToolbar({
@@ -53,20 +55,31 @@ export function NotebookChatToolbar({
   onSelectSession,
   onStartNewSession,
   onManageSessions,
+  onLoadExportMessages,
 }: NotebookChatToolbarProps) {
   const { t } = useTranslation()
   const currentSession = sessions.find(session => session.id === currentSessionId)
   const currentTitle = currentSession?.title || t.chat.newSession
 
-  const handleExport = () => {
-    const markdown = buildChatMarkdown({
-      title: currentTitle,
-      messages,
-      exportedAt: new Date(),
-      userLabel: t.chat.exportUserLabel,
-      assistantLabel: t.chat.exportAssistantLabel,
-    })
-    downloadChatMarkdown(currentTitle, markdown)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExport = async () => {
+    try {
+      setIsExporting(true)
+      const exportMessages = onLoadExportMessages
+        ? await onLoadExportMessages()
+        : messages
+      const markdown = buildChatMarkdown({
+        title: currentTitle,
+        messages: exportMessages,
+        exportedAt: new Date(),
+        userLabel: t.chat.exportUserLabel,
+        assistantLabel: t.chat.exportAssistantLabel,
+      })
+      downloadChatMarkdown(currentTitle, markdown)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -145,8 +158,8 @@ export function NotebookChatToolbar({
               <History />
               {t.chat.manageSessions}
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleExport} disabled={messages.length === 0}>
-              <Download />
+            <DropdownMenuItem onSelect={handleExport} disabled={messages.length === 0 || isExporting}>
+              {isExporting ? <Loader2 className="animate-spin" /> : <Download />}
               {t.chat.exportConversation}
             </DropdownMenuItem>
           </DropdownMenuContent>
