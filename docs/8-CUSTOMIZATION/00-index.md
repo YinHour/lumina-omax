@@ -2947,3 +2947,59 @@ exit 0
 ---
 
 > 最后更新：2026-07-10 | 新增 §33（笔记本 Research Agent MVP）、§33.7（实时执行反馈）与 §33.8（Quick/Research 协议安全上下文压缩）。默认当前笔记本、跨笔记本发现单次显式授权、Quick/Research 会话与 checkpoint 隔离；工具消息按原子组裁剪，旧 checkpoint 孤立工具消息在 payload 层修复。
+
+---
+
+## 34. 笔记本双对话 Tab 与会话生命周期（2026-07-11）
+
+### 34.1 产品决策
+
+- Quick Chat 与 Research Agent 改为 ChatPanel 顶部两个 Tabs，不再用输入区互斥 Checkbox 表示模式。
+- Tab 本身已经表达模式，因此 Research 底部不重复“科研 Agent”开关；Quick 显示联网搜索和模型，Research 显示联网搜索、跨笔记本发现和模型。
+- 两个 Tab 分别记住当前会话、输入草稿、待选模型和联网搜索状态；切换 Tab 不再把用户拉回另一模式的第一条会话。
+- “保存”采用自动保存状态：发送中显示保存中，checkpoint 完成本轮后显示已保存，错误或取消显示保存失败；不增加会让用户误以为默认不持久化的手动保存按钮。
+- “新会话”先进入本地空白草稿，第一条消息发送时才创建服务端会话并按问题生成标题，避免空会话记录。
+
+设计与实施记录：
+
+- `docs/superpowers/specs/2026-07-11-chat-tabs-session-lifecycle-design.md`
+- `docs/superpowers/plans/2026-07-11-chat-tabs-session-lifecycle-implementation.md`
+
+### 34.2 UI 与会话动作
+
+- 顶部常驻当前模式 Tabs、当前会话下拉菜单和 Plus 新会话按钮；Plus 使用 Tooltip。
+- 会话下拉菜单可以直接切换本模式会话，并提供管理会话和导出 Markdown。
+- Markdown 导出只包含当前 UI 可见的人类/AI 消息，移除 `<think>` 推理块，不包含 ToolMessage、凭据或内部工具参数。
+- 现有 SessionManager 继续负责重命名和删除；笔记本聊天的 Plus 直接进入本地草稿，源聊天继续使用原来的标题创建流程。
+- 新会话创建后，在刷新后的会话列表尚未包含新 ID 前保持“待确认”状态，避免旧列表竞态把用户自动切回旧会话。
+
+### 34.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/components/source/NotebookChatToolbar.tsx` | **新增** — 双 Tabs、会话下拉、新会话、保存状态与导出入口 |
+| `frontend/src/lib/chat/export-chat-markdown.ts` | **新增** — 安全构造并下载会话 Markdown |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | current session / pending model / save status 按模式隔离；新增本地新会话草稿 |
+| `frontend/src/components/source/ChatPanel.tsx` | 接入顶部工具栏；Quick/Research 独立草稿和联网搜索状态；底部控件按模式渲染 |
+| `frontend/src/components/source/SessionManager.tsx` | 支持笔记本直接进入本地新会话，同时保留源聊天标题创建 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包增加会话、保存和导出文案 |
+
+### 34.4 验证
+
+```text
+cd frontend && npm test -- --run src/lib/hooks/useNotebookChat.test.tsx src/components/source/ChatPanel.test.tsx src/lib/chat/export-chat-markdown.test.ts
+45 passed
+
+cd frontend && npm test
+163 passed | 9 skipped
+
+cd frontend && npx eslint src/lib/hooks/useNotebookChat.ts src/lib/hooks/useNotebookChat.test.tsx src/components/source/NotebookChatToolbar.tsx src/components/source/ChatPanel.tsx src/components/source/ChatPanel.test.tsx src/components/source/SessionManager.tsx src/lib/chat/export-chat-markdown.ts src/lib/chat/export-chat-markdown.test.ts src/app/'(dashboard)'/notebooks/components/ChatColumn.tsx
+exit 0
+
+cd frontend && npm run build
+exit 0
+```
+
+---
+
+> 最后更新：2026-07-11 | 新增 §34。Quick/Research 改为独立 Tabs，并增加显式新会话、模式独立状态、自动保存反馈和安全 Markdown 导出。

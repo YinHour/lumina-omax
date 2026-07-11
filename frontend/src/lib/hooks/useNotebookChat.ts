@@ -38,13 +38,28 @@ export type NotebookChatActivityStatus =
   | 'awaitingModel'
   | 'modelStreaming'
 
+export type NotebookChatSaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+type ModeState<T> = Record<NotebookChatMode, T>
 
 export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [chatMode, setChatModeState] = useState<NotebookChatMode>('quick')
   const [allowCrossNotebookDiscovery, setAllowCrossNotebookDiscovery] = useState(false)
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [currentSessionIds, setCurrentSessionIds] = useState<ModeState<string | null>>({
+    quick: null,
+    research: null,
+  })
+  const [newSessionDrafts, setNewSessionDrafts] = useState<ModeState<boolean>>({
+    quick: false,
+    research: false,
+  })
+  const [saveStatuses, setSaveStatuses] = useState<ModeState<NotebookChatSaveStatus>>({
+    quick: 'idle',
+    research: 'idle',
+  })
+  const currentSessionId = currentSessionIds[chatMode]
   const [messages, setMessages] = useState<NotebookChatMessage[]>([])
   const [suggestedQuestionsByMessageId, setSuggestedQuestionsByMessageId] = useState<Record<string, string[]>>({})
   const [isSending, setIsSending] = useState(false)
@@ -63,23 +78,36 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const contextCacheRef = useRef<{ signature: string; response: BuildContextResponse } | null>(null)
   const contextRequestRef = useRef<{ signature: string; promise: Promise<BuildContextResponse> } | null>(null)
   // Pending model override for when user changes model before a session exists
-  const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(() => {
+  const [pendingModelOverrides, setPendingModelOverrides] = useState<ModeState<string | null>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('chat-model-override')
-        return saved ? JSON.parse(saved) : null
+        const savedByMode = localStorage.getItem('chat-model-overrides-by-mode')
+        if (savedByMode) {
+          return { quick: null, research: null, ...JSON.parse(savedByMode) }
+        }
+        const legacy = localStorage.getItem('chat-model-override')
+        return { quick: legacy ? JSON.parse(legacy) : null, research: null }
       } catch {
-        return null
+        return { quick: null, research: null }
       }
     }
-    return null
+    return { quick: null, research: null }
   })
+  const pendingModelOverride = pendingModelOverrides[chatMode]
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('chat-model-override', JSON.stringify(pendingModelOverride))
+      localStorage.setItem('chat-model-overrides-by-mode', JSON.stringify(pendingModelOverrides))
     }
-  }, [pendingModelOverride])
+  }, [pendingModelOverrides])
+
+  const setSessionIdForMode = useCallback((mode: NotebookChatMode, sessionId: string | null) => {
+    setCurrentSessionIds(previous => ({ ...previous, [mode]: sessionId }))
+  }, [])
+
+  const setSaveStatusForMode = useCallback((mode: NotebookChatMode, status: NotebookChatSaveStatus) => {
+    setSaveStatuses(previous => ({ ...previous, [mode]: status }))
+  }, [])
 
   useEffect(() => {
     if (!isSending || activityStartedAtRef.current === null) return
@@ -200,12 +228,16 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   // Auto-select most recent session when sessions are loaded
   useEffect(() => {
     const currentBelongsToMode = sessions.some(session => session.id === currentSessionId)
-    if (sessions.length > 0 && !currentBelongsToMode) {
+    if (currentBelongsToMode && currentSessionId && newSessionDrafts[chatMode]) {
+      setNewSessionDrafts(previous => ({ ...previous, [chatMode]: false }))
+      return
+    }
+    if (sessions.length > 0 && !currentBelongsToMode && !newSessionDrafts[chatMode]) {
       // Sessions are sorted by created date desc from API
       const mostRecentSession = sessions[0]
-      setCurrentSessionId(mostRecentSession.id)
+      setSessionIdForMode(chatMode, mostRecentSession.id)
     }
-  }, [sessions, currentSessionId])
+  }, [sessions, currentSessionId, newSessionDrafts, chatMode, setSessionIdForMode])
 
   // Create session mutation
   const createSessionMutation = useMutation({
@@ -215,7 +247,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.notebookChatSessions(notebookId)
       })
-      setCurrentSessionId(newSession.id)
+      const sessionMode = newSession.mode ?? 'quick'
+      setSessionIdForMode(sessionMode, newSession.id)
+      setNewSessionDrafts(previous => ({ ...previous, [sessionMode]: true }))
+      setSaveStatusForMode(sessionMode, 'saved')
       toast.success(t.chat.sessionCreated)
     },
     onError: (err: unknown) => {
@@ -253,8 +288,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.notebookChatSessions(notebookId)
       })
+      const deletedMode = allSessions.find(session => session.id === deletedId)?.mode ?? chatMode
+      if (currentSessionIds[deletedMode] === deletedId) {
+        setSessionIdForMode(deletedMode, null)
+        setSaveStatusForMode(deletedMode, 'idle')
+      }
       if (currentSessionId === deletedId) {
-        setCurrentSessionId(null)
         setMessages([])
       }
       toast.success(t.chat.sessionDeleted)
@@ -360,6 +399,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
     isSendingRef.current = true
     setIsSending(true)
+    setSaveStatusForMode(chatMode, 'saving')
     setActivityStatus(chatMode === 'research' ? 'thinking' : 'gettingContext')
     setActivityElapsedSeconds(0)
 
@@ -401,9 +441,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             model_override: pendingModelOverride ?? undefined
           })
           sessionId = newSession.id
-          setCurrentSessionId(sessionId)
+          setSessionIdForMode(chatMode, sessionId)
           // Clear pending model override now that it's applied to the session
-          setPendingModelOverride(null)
+          setPendingModelOverrides(previous => ({ ...previous, [chatMode]: null }))
           queryClient.invalidateQueries({
             queryKey: QUERY_KEYS.notebookChatSessions(notebookId)
           })
@@ -411,6 +451,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
           const error = err as { response?: { data?: { detail?: string } }, message?: string };
           toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToCreateSession'))
           finishActivity('error')
+          setSaveStatusForMode(chatMode, 'error')
           setMessages(prev => prev.filter(msg => msg.id !== userMessageId))
           return
         }
@@ -466,6 +507,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         setActivityStatus(null)
         setActivityElapsedSeconds(0)
         setIsSending(false)
+        setSaveStatusForMode(chatMode, terminal === 'complete' ? 'saved' : 'error')
       }
 
       const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown; stage?: string; status?: string; elapsed_ms?: number; error_code?: string; timeout_seconds?: number }) => {
@@ -654,6 +696,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       // AbortError is user-initiated cancellation, not a real error
       if (err instanceof DOMException && err.name === 'AbortError') {
         finishActivity('cancelled')
+        setSaveStatusForMode(chatMode, 'error')
         return
       }
       // Genuine transport-layer failures (e.g. Next.js proxy reset, network
@@ -663,6 +706,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
       console.error('Error sending message:', error)
       finishActivity('error')
+      setSaveStatusForMode(chatMode, 'error')
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
@@ -688,6 +732,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     t,
     finishActivity,
     recordActivityStep,
+    setSaveStatusForMode,
+    setSessionIdForMode,
   ])
 
   const cancelStreaming = useCallback(() => {
@@ -696,11 +742,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       abortControllerRef.current = null
       isSendingRef.current = false
       finishActivity('cancelled')
+      setSaveStatusForMode(chatMode, 'error')
       setActivityStatus(null)
       setActivityElapsedSeconds(0)
       setIsSending(false)
     }
-  }, [finishActivity])
+  }, [finishActivity, chatMode, setSaveStatusForMode])
 
   const sendSuggestedQuestion = useCallback((question: string, modelOverride?: string, enableWebSearch?: boolean) => {
     return sendMessage(question, modelOverride, enableWebSearch)
@@ -709,9 +756,24 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   // Switch session
   const switchSession = useCallback((sessionId: string) => {
     resetActivity()
+    setNewSessionDrafts(previous => ({ ...previous, [chatMode]: false }))
+    setSaveStatusForMode(chatMode, 'saved')
     setSuggestedQuestionsByMessageId({})
-    setCurrentSessionId(sessionId)
-  }, [resetActivity])
+    setSessionIdForMode(chatMode, sessionId)
+  }, [resetActivity, chatMode, setSaveStatusForMode, setSessionIdForMode])
+
+  const startNewSession = useCallback(() => {
+    if (isSendingRef.current) return
+    resetActivity()
+    setNewSessionDrafts(previous => ({ ...previous, [chatMode]: true }))
+    setSaveStatusForMode(chatMode, 'idle')
+    setSuggestedQuestionsByMessageId({})
+    setSessionIdForMode(chatMode, null)
+    setMessages([])
+    if (chatMode === 'research') {
+      setAllowCrossNotebookDiscovery(false)
+    }
+  }, [resetActivity, chatMode, setSaveStatusForMode, setSessionIdForMode])
 
   // Create session
   const createSession = useCallback((title?: string) => {
@@ -726,14 +788,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     if (isSendingRef.current || mode === chatMode) return
     resetActivity()
     setChatModeState(mode)
-    setAllowCrossNotebookDiscovery(false)
+    if (mode === 'research') {
+      setAllowCrossNotebookDiscovery(false)
+    }
     setSuggestedQuestionsByMessageId({})
     setMessages([])
-    const nextSession = allSessions.find(
-      session => (session.mode ?? 'quick') === mode
-    )
-    setCurrentSessionId(nextSession?.id ?? null)
-  }, [allSessions, chatMode, resetActivity])
+  }, [chatMode, resetActivity])
 
   // Update session
   const updateSession = useCallback((sessionId: string, data: UpdateNotebookChatSessionRequest) => {
@@ -758,9 +818,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       })
     } else {
       // No session yet - store as pending
-      setPendingModelOverride(model)
+      setPendingModelOverrides(previous => ({ ...previous, [chatMode]: model }))
     }
-  }, [currentSessionId, updateSessionMutation])
+  }, [currentSessionId, updateSessionMutation, chatMode])
 
   // Update token/char counts when context selections change
   useEffect(() => {
@@ -786,6 +846,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       ? currentSession
       : sessions.find(s => s.id === currentSessionId),
     currentSessionId,
+    currentSessionIds,
     messages,
     suggestedQuestionsByMessageId,
     isSending,
@@ -799,6 +860,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     tokenCount,
     charCount,
     pendingModelOverride,
+    saveStatus: saveStatuses[chatMode],
     chatMode,
     allowCrossNotebookDiscovery,
 
@@ -807,6 +869,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     updateSession,
     deleteSession,
     switchSession,
+    startNewSession,
     sendMessage,
     sendSuggestedQuestion,
     cancelStreaming,

@@ -115,7 +115,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       onModelChange={(model) => chat.setModelOverride(model ?? null)}
       sessions={chat.sessions}
       currentSessionId={chat.currentSessionId}
-      onCreateSession={(title) => chat.createSession(title)}
+      onStartNewSession={chat.startNewSession}
       onSelectSession={chat.switchSession}
       onUpdateSession={(sessionId, title) => chat.updateSession(sessionId, { title })}
       onDeleteSession={chat.deleteSession}
@@ -128,6 +128,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       onChatModeChange={chat.setChatMode}
       allowCrossNotebookDiscovery={chat.allowCrossNotebookDiscovery}
       onAllowCrossNotebookDiscoveryChange={chat.setAllowCrossNotebookDiscovery}
+      saveStatus={chat.saveStatus}
     />
   )
 }

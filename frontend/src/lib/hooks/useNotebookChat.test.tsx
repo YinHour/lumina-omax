@@ -174,6 +174,94 @@ describe('useNotebookChat', () => {
     chatApiMock.sendResearchMessage.mockResolvedValue(createCompletedStream())
   })
 
+  it('remembers the selected session independently for each chat tab', async () => {
+    chatApiMock.listSessions.mockResolvedValue([
+      {
+        id: 'session:quick',
+        title: 'Quick session',
+        notebook_id: 'notebook:1',
+        mode: 'quick',
+        created: '2026-07-11T01:00:00Z',
+        updated: '2026-07-11T01:00:00Z',
+      },
+      {
+        id: 'session:research',
+        title: 'Research session',
+        notebook_id: 'notebook:1',
+        mode: 'research',
+        created: '2026-07-11T00:00:00Z',
+        updated: '2026-07-11T00:00:00Z',
+      },
+    ])
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(result.current.currentSessionId).toBe('session:quick'))
+    act(() => result.current.setChatMode('research'))
+    await waitFor(() => expect(result.current.currentSessionId).toBe('session:research'))
+    act(() => result.current.setChatMode('quick'))
+
+    expect(result.current.currentSessionId).toBe('session:quick')
+    expect(result.current.currentSessionIds).toEqual({
+      quick: 'session:quick',
+      research: 'session:research',
+    })
+  })
+
+  it('starts a local blank conversation and creates it only on first send', async () => {
+    chatApiMock.listSessions.mockResolvedValue([{
+      id: 'session:existing',
+      title: 'Existing',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-11T00:00:00Z',
+      updated: '2026-07-11T00:00:00Z',
+    }])
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:new',
+      title: 'First question',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-11T01:00:00Z',
+      updated: '2026-07-11T01:00:00Z',
+    })
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(result.current.currentSessionId).toBe('session:existing'))
+    act(() => result.current.startNewSession())
+    expect(result.current.currentSessionId).toBeNull()
+    expect(result.current.messages).toEqual([])
+    expect(chatApiMock.createSession).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await result.current.sendMessage('First question')
+    })
+
+    expect(chatApiMock.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'First question',
+      mode: 'quick',
+    }))
+    expect(result.current.currentSessionId).toBe('session:new')
+    expect(result.current.saveStatus).toBe('saved')
+  })
+
   it('sends Research Agent turns without building the selected quick-chat context', async () => {
     chatApiMock.listSessions.mockResolvedValue([{
       id: 'session:research',

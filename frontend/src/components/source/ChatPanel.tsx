@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine, FlaskConical, MessageCircle } from 'lucide-react'
+import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -39,6 +39,8 @@ import {
   NotebookChatActivityStep,
   NotebookChatActivityTerminal,
 } from '@/lib/chat/notebook-chat-activity'
+import { NotebookChatToolbar } from './NotebookChatToolbar'
+import type { NotebookChatSaveStatus } from '@/lib/hooks/useNotebookChat'
 
 type ChatActivityStatus =
   | 'gettingContext'
@@ -66,6 +68,7 @@ interface ChatPanelProps {
   sessions?: BaseChatSession[]
   currentSessionId?: string | null
   onCreateSession?: (title: string) => void
+  onStartNewSession?: () => void
   onSelectSession?: (sessionId: string) => void
   onDeleteSession?: (sessionId: string) => void
   onUpdateSession?: (sessionId: string, title: string) => void
@@ -93,6 +96,7 @@ interface ChatPanelProps {
   onChatModeChange?: (mode: NotebookChatMode) => void
   allowCrossNotebookDiscovery?: boolean
   onAllowCrossNotebookDiscoveryChange?: (enabled: boolean) => void
+  saveStatus?: NotebookChatSaveStatus
 }
 
 export function ChatPanel({
@@ -105,6 +109,7 @@ export function ChatPanel({
   sessions = [],
   currentSessionId,
   onCreateSession,
+  onStartNewSession,
   onSelectSession,
   onDeleteSession,
   onUpdateSession,
@@ -128,27 +133,59 @@ export function ChatPanel({
   onChatModeChange,
   allowCrossNotebookDiscovery = false,
   onAllowCrossNotebookDiscoveryChange,
+  saveStatus = 'idle',
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
-  const [input, setInput] = useState('')
-  const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
+  const [sourceInput, setSourceInput] = useState('')
+  const [notebookDrafts, setNotebookDrafts] = useState<Record<NotebookChatMode, string>>({
+    quick: '',
+    research: '',
+  })
+  const input = contextType === 'notebook' ? notebookDrafts[chatMode] : sourceInput
+  const setInput = (value: string) => {
+    if (contextType === 'notebook') {
+      setNotebookDrafts(previous => ({ ...previous, [chatMode]: value }))
+    } else {
+      setSourceInput(value)
+    }
+  }
+
+  const [webSearchByScope, setWebSearchByScope] = useState<Record<'source' | NotebookChatMode, boolean>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('chat-web-search-enabled')
-        return saved ? JSON.parse(saved) : false
+        const legacy = localStorage.getItem('chat-web-search-enabled')
+        const legacyValue = legacy ? JSON.parse(legacy) : false
+        const read = (key: string, fallback: boolean) => {
+          const saved = localStorage.getItem(key)
+          return saved ? JSON.parse(saved) : fallback
+        }
+        return {
+          source: read('chat-web-search-enabled-source', legacyValue),
+          quick: read('chat-web-search-enabled-quick', legacyValue),
+          research: read('chat-web-search-enabled-research', false),
+        }
       } catch {
-        return false
+        return { source: false, quick: false, research: false }
       }
     }
-    return false
+    return { source: false, quick: false, research: false }
   })
-  
+  const webSearchScope: 'source' | NotebookChatMode = contextType === 'notebook'
+    ? chatMode
+    : 'source'
+  const webSearchEnabled = webSearchByScope[webSearchScope]
+  const setWebSearchEnabled = (enabled: boolean) => {
+    setWebSearchByScope(previous => ({ ...previous, [webSearchScope]: enabled }))
+  }
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('chat-web-search-enabled', JSON.stringify(webSearchEnabled))
+      localStorage.setItem('chat-web-search-enabled-source', JSON.stringify(webSearchByScope.source))
+      localStorage.setItem('chat-web-search-enabled-quick', JSON.stringify(webSearchByScope.quick))
+      localStorage.setItem('chat-web-search-enabled-research', JSON.stringify(webSearchByScope.research))
     }
-  }, [webSearchEnabled])
+  }, [webSearchByScope])
   
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -157,9 +194,6 @@ export function ChatPanel({
   const { openModal } = useModalManager()
 
   const handleCrossNotebookChange = (enabled: boolean) => {
-    if (enabled && chatMode !== 'research') {
-      onChatModeChange?.('research')
-    }
     onAllowCrossNotebookDiscoveryChange?.(enabled)
   }
 
@@ -328,13 +362,26 @@ export function ChatPanel({
     <>
     <Card className="flex flex-col h-full flex-1 overflow-hidden">
       <CardHeader className="pb-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            {title || (contextType === 'source' ? t.chat.chatWith.replace('{name}', t.navigation.sources) : t.chat.chatWith.replace('{name}', t.common.notebook))}
-          </CardTitle>
-          {onSelectSession && onCreateSession && onDeleteSession && (
-            <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
+        {contextType === 'notebook' && onChatModeChange && onSelectSession && onStartNewSession ? (
+          <NotebookChatToolbar
+            mode={chatMode}
+            onModeChange={onChatModeChange}
+            sessions={sessions}
+            currentSessionId={currentSessionId}
+            messages={messages}
+            saveStatus={saveStatus}
+            disabled={isStreaming || loadingSessions}
+            onSelectSession={onSelectSession}
+            onStartNewSession={onStartNewSession}
+            onManageSessions={() => setSessionManagerOpen(true)}
+          />
+        ) : (
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              {title || t.chat.chatWith.replace('{name}', t.navigation.sources)}
+            </CardTitle>
+            {onSelectSession && onCreateSession && onDeleteSession && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -345,12 +392,22 @@ export function ChatPanel({
                 <Clock className="h-4 w-4" />
                 <span className="text-xs">{t.chat.sessions}</span>
               </Button>
+            )}
+          </div>
+        )}
+
+        {onSelectSession && (onCreateSession || onStartNewSession) && onDeleteSession && (
+            <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
               <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
                 <DialogTitle className="sr-only">{t.chat.sessionsTitle}</DialogTitle>
                 <SessionManager
                   sessions={sessions}
                   currentSessionId={currentSessionId ?? null}
-                  onCreateSession={(title) => onCreateSession?.(title)}
+                  onCreateSession={onCreateSession}
+                  onStartNewSession={onStartNewSession ? () => {
+                    onStartNewSession()
+                    setSessionManagerOpen(false)
+                  } : undefined}
                   onSelectSession={(sessionId) => {
                     onSelectSession(sessionId)
                     setSessionManagerOpen(false)
@@ -361,8 +418,7 @@ export function ChatPanel({
                 />
               </DialogContent>
             </Dialog>
-          )}
-        </div>
+        )}
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0 p-0">
         <ScrollArea 
@@ -563,35 +619,7 @@ export function ChatPanel({
                 {t.settings.webSearch}
               </label>
 
-              {contextType === 'notebook' && onChatModeChange && (
-                <>
-                  <label
-                    htmlFor={`${chatInputId}-quick-chat`}
-                    className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                  >
-                    <Checkbox
-                      id={`${chatInputId}-quick-chat`}
-                      checked={chatMode === 'quick'}
-                      onCheckedChange={() => onChatModeChange('quick')}
-                      disabled={isStreaming}
-                    />
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    {t.chat.quickChat}
-                  </label>
-                  <label
-                    htmlFor={`${chatInputId}-research-agent`}
-                    className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                  >
-                    <Checkbox
-                      id={`${chatInputId}-research-agent`}
-                      checked={chatMode === 'research'}
-                      onCheckedChange={() => onChatModeChange('research')}
-                      disabled={isStreaming}
-                    />
-                    <FlaskConical className="h-3.5 w-3.5" />
-                    {t.chat.researchAgent}
-                  </label>
-                  {onAllowCrossNotebookDiscoveryChange && (
+              {contextType === 'notebook' && chatMode === 'research' && onAllowCrossNotebookDiscoveryChange && (
                     <label
                       htmlFor={`${chatInputId}-cross-notebook`}
                       className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
@@ -604,8 +632,6 @@ export function ChatPanel({
                       />
                       {t.chat.crossNotebookDiscovery}
                     </label>
-                  )}
-                </>
               )}
             </div>
 

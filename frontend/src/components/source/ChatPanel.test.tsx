@@ -27,31 +27,48 @@ describe('ChatPanel stop button', () => {
     expect(sendBtn).toBeInTheDocument()
   })
 
-  it('renders all notebook options as same-row checkboxes with clickable labels', () => {
+  it('renders notebook modes as tabs with mode-specific bottom controls', () => {
     const onModeChange = vi.fn()
     const onCrossChange = vi.fn()
-    render(
+    const onStartNewSession = vi.fn()
+    const onSelectSession = vi.fn()
+    const { rerender } = render(
       <ChatPanel
         {...baseProps}
         contextType="notebook"
         chatMode="quick"
         onChatModeChange={onModeChange}
         onAllowCrossNotebookDiscoveryChange={onCrossChange}
+        onStartNewSession={onStartNewSession}
+        onSelectSession={onSelectSession}
       />
     )
 
+    expect(screen.getByRole('tab', { name: 'Quick Chat' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Research Agent' })).toHaveAttribute('data-state', 'inactive')
     const optionsRow = screen.getByTestId('chat-options-row')
-    expect(within(optionsRow).getAllByRole('checkbox')).toHaveLength(4)
-    expect(within(optionsRow).getByRole('checkbox', { name: 'Quick Chat' })).toBeChecked()
-    expect(within(optionsRow).getByRole('checkbox', { name: 'Research Agent' })).not.toBeChecked()
+    expect(within(optionsRow).getAllByRole('checkbox')).toHaveLength(1)
+    expect(within(optionsRow).getByRole('checkbox', { name: 'Web Search' })).not.toBeChecked()
+
+    const researchTab = screen.getByRole('tab', { name: 'Research Agent' })
+    fireEvent.mouseDown(researchTab, { button: 0 })
+    fireEvent.click(researchTab)
+    expect(onModeChange).toHaveBeenCalledWith('research')
+
+    rerender(
+      <ChatPanel
+        {...baseProps}
+        contextType="notebook"
+        chatMode="research"
+        onChatModeChange={onModeChange}
+        onAllowCrossNotebookDiscoveryChange={onCrossChange}
+        onStartNewSession={onStartNewSession}
+        onSelectSession={onSelectSession}
+      />
+    )
+    expect(within(optionsRow).getAllByRole('checkbox')).toHaveLength(2)
     expect(within(optionsRow).getByRole('checkbox', { name: 'Cross-notebook discovery' })).not.toBeChecked()
-
-    fireEvent.click(within(optionsRow).getByText('Research Agent'))
-    expect(onModeChange).toHaveBeenCalledWith('research')
-
-    onModeChange.mockClear()
     fireEvent.click(within(optionsRow).getByText('Cross-notebook discovery'))
-    expect(onModeChange).toHaveBeenCalledWith('research')
     expect(onCrossChange).toHaveBeenCalledWith(true)
   })
 
@@ -68,7 +85,44 @@ describe('ChatPanel stop button', () => {
 
   it('does not show Research Agent controls in source chat', () => {
     render(<ChatPanel {...baseProps} contextType="source" />)
-    expect(screen.queryByRole('checkbox', { name: /research agent/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Research Agent' })).not.toBeInTheDocument()
+  })
+
+  it('keeps independent input drafts for Quick and Research tabs', () => {
+    const sharedProps = {
+      ...baseProps,
+      contextType: 'notebook' as const,
+      onChatModeChange: vi.fn(),
+      onStartNewSession: vi.fn(),
+      onSelectSession: vi.fn(),
+    }
+    const { rerender } = render(<ChatPanel {...sharedProps} chatMode="quick" />)
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'quick draft' } })
+    rerender(<ChatPanel {...sharedProps} chatMode="research" />)
+    expect(screen.getByRole('textbox')).toHaveValue('')
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'research draft' } })
+
+    rerender(<ChatPanel {...sharedProps} chatMode="quick" />)
+    expect(screen.getByRole('textbox')).toHaveValue('quick draft')
+  })
+
+  it('shows save state and exposes an explicit new-conversation action', () => {
+    const onStartNewSession = vi.fn()
+    render(
+      <ChatPanel
+        {...baseProps}
+        contextType="notebook"
+        onChatModeChange={vi.fn()}
+        onStartNewSession={onStartNewSession}
+        onSelectSession={vi.fn()}
+        saveStatus="saved"
+      />
+    )
+
+    expect(screen.getByTestId('chat-save-status')).toHaveTextContent('Saved')
+    fireEvent.click(screen.getByRole('button', { name: 'New conversation' }))
+    expect(onStartNewSession).toHaveBeenCalledTimes(1)
   })
 
   it('does not render model thinking tags or reasoning content', () => {
