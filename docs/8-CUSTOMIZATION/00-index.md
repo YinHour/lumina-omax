@@ -3304,3 +3304,36 @@ exit 0
 ```
 
 未验证项：未使用真实供应商密钥重新触发模型请求；自动测试通过故意泄密的模型 `repr` 覆盖日志和异常路径。
+
+---
+
+## 40. Knowledge Graph 空关系搜索稳定性（2026-07-12）
+
+### 40.1 问题与决策
+
+- 全局 Ask 启用 Knowledge Graph 后，SurrealDB 对没有出边或入边的实体会把 traversal projection 返回为 `null`，而不是空数组。
+- `graph_search()` 原来使用 `sg.get("outbound_edges", [])` 等默认值；字段存在但值为 `None` 时默认值不生效，随后 `zip(None, None)` 抛出 `TypeError`。异常虽被函数捕获并降级为空图结果，但会输出完整错误堆栈，并丢弃本次已命中的 KG 实体上下文。
+- 子图结果、出入边和对应节点统一使用 `value or []` 规范化。没有关系的实体仍返回名称、类型和描述，关系段为空；真正的数据库异常继续沿用现有捕获与降级逻辑。
+- 该问题来自 2026-04 的既有图搜索实现，与近期 Ask 进度反馈和来源对话 UI 改动无关。
+
+### 40.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/domain/notebook.py` | 规范化空子图及 `null` 出入边/节点集合，保留无关系实体上下文 |
+| `tests/test_graph_search.py` | **新增** — 覆盖关系字段为 `None` 和整个子图结果为 `None` 的回归 |
+
+### 40.3 验证
+
+```text
+.venv/bin/python -m pytest -q --noconftest tests/test_graph_search.py
+2 passed
+
+uv run ruff check open_notebook/domain/notebook.py tests/test_graph_search.py
+All checks passed
+
+git diff --check
+exit 0
+```
+
+未验证项：未直接读取本机 SurrealDB 中触发日志的 KG 实体和关系记录；回归测试使用与日志堆栈一致的 `null` traversal projection 复现并验证修复。
