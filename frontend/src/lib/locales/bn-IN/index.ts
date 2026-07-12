@@ -322,6 +322,9 @@ export const bnIN = {
     details: "বিবরণ",
     detailsTitle: "উৎসের বিবরণ",
     content: "কন্টেন্ট",
+    sourceContent: "সোর্স কন্টেন্ট",
+    collapseSourceContent: "সোর্স কন্টেন্ট সংকুচিত করুন",
+    expandSourceContent: "সোর্স কন্টেন্ট প্রসারিত করুন",
     metadata: "মেটাডেটা",
     type: {
       link: "লিংক",

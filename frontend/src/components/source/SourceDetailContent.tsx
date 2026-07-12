@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +62,7 @@ import {
   Database,
   AlertCircle,
   MessageSquare,
+  PanelLeftClose,
   X,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -78,13 +80,17 @@ interface SourceDetailContentProps {
   showChatButton?: boolean
   onChatClick?: () => void
   onClose?: () => void
+  showCloseButton?: boolean
+  onCollapse?: () => void
 }
 
 export function SourceDetailContent({
   sourceId,
   showChatButton = false,
   onChatClick,
-  onClose
+  onClose,
+  showCloseButton = true,
+  onCollapse,
 }: SourceDetailContentProps) {
   const { t, language } = useTranslation()
   const loadFailedText = t.sources.loadFailed
@@ -498,6 +504,27 @@ export function SourceDetailContent({
                 </Button>
               )}
 
+              {onCollapse && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="hidden lg:inline-flex"
+                        aria-label={t.sources.collapseSourceContent}
+                        onClick={onCollapse}
+                      >
+                        <PanelLeftClose className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{t.sources.collapseSourceContent}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" aria-label={t.sources.moreActions}>
@@ -557,7 +584,7 @@ export function SourceDetailContent({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              {onClose && (
+              {onClose && showCloseButton && (
                 <Button
                   variant="ghost"
                   size="icon"

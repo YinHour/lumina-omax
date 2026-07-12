@@ -387,6 +387,9 @@ export const enUS = {
     details: "Details",
     detailsTitle: "Source Details",
     content: "Content",
+    sourceContent: "Source content",
+    collapseSourceContent: "Collapse source content",
+    expandSourceContent: "Expand source content",
     metadata: "Metadata",
     type: {
       link: "Link",

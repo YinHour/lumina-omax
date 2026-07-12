@@ -3218,3 +3218,56 @@ exit 0
 未验证项：
 
 - 登录后的真实全局 Ask 页面手工检查：提交后响应区 0 秒内显示进度面板；长等待期间阶段和秒数持续可见；最终答案、覆盖率和历史记录仍正常。
+
+---
+
+## 38. “与来源对话”来源栏可折叠（2026-07-12）
+
+### 38.1 问题与决策
+
+- 来源详情页原来固定使用 `2fr / 1fr` 双栏，来源正文占据大部分宽度；长回答场景下右侧“与来源对话”区域偏窄。
+- 原有关闭 `X` 由左侧 `SourceDetailContent` 渲染。若直接隐藏左栏，关闭入口也会同时消失。
+- 桌面端新增来源栏折叠入口。折叠后保留 48px 竖向恢复栏，右侧聊天面板占据剩余宽度；来源详情组件保持挂载，只通过响应式样式隐藏，因此当前 Tab、已加载数据和组件状态不会因折叠被重置。
+- 关闭 `X` 提升到页面级头部，并在右侧预留全局头像安全区；来源详情页不再显示内部重复 `X`。`SourceDialog` 弹窗仍保留原有内部关闭按钮。
+- 折叠状态只在当前来源页面生命周期内有效，不写入全局或持久化 store。小于 `lg` 的视口始终显示来源正文，并隐藏展开/收起控件。
+
+### 38.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/app/(dashboard)/sources/[id]/page.tsx` | 来源详情/聊天改为桌面可折叠布局；新增 48px 恢复栏和常驻页面级关闭按钮 |
+| `frontend/src/app/(dashboard)/sources/[id]/page.test.tsx` | **新增** — 折叠、恢复、来源/聊天保持挂载和关闭返回回归 |
+| `frontend/src/components/source/SourceDetailContent.tsx` | 新增桌面折叠动作，并支持保留 `onClose` 回调但隐藏内部关闭按钮 |
+| `frontend/src/components/source/SourceDetailContent.test.tsx` | 覆盖折叠回调、页面场景不重复显示内部 `X`，并保留弹窗关闭回归 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包新增来源内容、展开和收起文案 |
+
+### 38.3 验证
+
+```text
+cd frontend && npm test -- --run src/components/source/SourceDetailContent.test.tsx 'src/app/(dashboard)/sources/[id]/page.test.tsx'
+8 passed
+
+cd frontend && npm test -- --run
+174 passed | 9 skipped
+
+cd frontend && npx eslint 'src/app/(dashboard)/sources/[id]/page.tsx' 'src/app/(dashboard)/sources/[id]/page.test.tsx' src/components/source/SourceDetailContent.tsx src/components/source/SourceDetailContent.test.tsx
+exit 0（2 个 SourceDetailContent 既有 img warning，无 error）
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+登录浏览器实测使用来源 `source:4qzydafkvwagspw0g9j7`：
+
+- 1280px 展开状态下来源栏约 795px、聊天栏约 381px；折叠后恢复栏为 48px，聊天栏扩展到约 1128px，无水平溢出。
+- 折叠时来源详情 DOM 仍保持挂载，聊天面板和页面级 `X` 保持可见；恢复后返回原双栏布局。
+- 页面级 `X` 与全局头像预留约 24px 安全间距，避免原始实现中的重叠。
+- 760px 视口下来源正文强制显示，展开/收起控件隐藏，无水平溢出。
+
+未验证项：本轮浏览器实测使用暗色主题；浅色主题未单独重新截图，组件使用现有语义颜色与表面 token。

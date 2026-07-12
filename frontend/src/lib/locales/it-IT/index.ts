@@ -322,6 +322,9 @@ export const itIT = {
     details: "Dettagli",
     detailsTitle: "Dettagli fonte",
     content: "Contenuto",
+    sourceContent: "Contenuto della fonte",
+    collapseSourceContent: "Comprimi il contenuto della fonte",
+    expandSourceContent: "Espandi il contenuto della fonte",
     metadata: "Metadati",
     type: {
       link: "Link",

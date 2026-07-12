@@ -120,6 +120,39 @@ describe('SourceDetailContent header', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('renders a desktop collapse action without duplicating the page-level close action', async () => {
+    const onCollapse = vi.fn()
+    vi.mocked(sourcesApi.get).mockResolvedValue({
+      id: 'source:abc',
+      title: 'Example source',
+      full_text: '# Parsed content',
+      asset: { file_path: 'uploads/example.pdf' },
+      embedded: true,
+      topics: [],
+      created: '2026-06-08T00:00:00.000Z',
+      updated: '2026-06-08T00:00:00.000Z',
+      notebooks: [],
+      file_available: true,
+    } as never)
+
+    renderWithQueryClient(
+      <SourceDetailContent
+        sourceId="source:abc"
+        onClose={vi.fn()}
+        showCloseButton={false}
+        onCollapse={onCollapse}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Example source')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse source content' }))
+    expect(onCollapse).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps the source actions and tabs in a sticky toolbar', async () => {
     vi.mocked(sourcesApi.get).mockResolvedValue({
       id: 'source:abc',

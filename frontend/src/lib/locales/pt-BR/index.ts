@@ -322,6 +322,9 @@ export const ptBR = {
     details: "Detalhes",
     detailsTitle: "Detalhes da Fonte",
     content: "Conteúdo",
+    sourceContent: "Conteúdo da fonte",
+    collapseSourceContent: "Recolher conteúdo da fonte",
+    expandSourceContent: "Expandir conteúdo da fonte",
     metadata: "Metadados",
     type: {
       link: "Link",
