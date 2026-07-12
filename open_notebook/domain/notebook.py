@@ -772,7 +772,7 @@ async def graph_search(keyword: str, results: int = 5):
             FROM $entry_ids
             """,
             {"entry_ids": entry_ids}
-        )
+        ) or []
 
         # Format the result into a clean text/structure for the LLM
         formatted_results = []
@@ -783,8 +783,8 @@ async def graph_search(keyword: str, results: int = 5):
             context += "\nRelationships:\n"
             
             # Outbound
-            out_edges = sg.get("outbound_edges", [])
-            out_nodes = sg.get("outbound_nodes", [])
+            out_edges = sg.get("outbound_edges") or []
+            out_nodes = sg.get("outbound_nodes") or []
             for edge, node in zip(out_edges, out_nodes):
                 edge_desc = f" ({edge.get('description')})" if edge and edge.get('description') else ""
                 edge_type = edge.get('type', 'RELATES_TO') if edge else 'RELATES_TO'
@@ -793,8 +793,8 @@ async def graph_search(keyword: str, results: int = 5):
                 context += f"  - [{edge_type}]{edge_desc} -> [{node_type}] {node_name}\n"
                 
             # Inbound
-            in_edges = sg.get("inbound_edges", [])
-            in_nodes = sg.get("inbound_nodes", [])
+            in_edges = sg.get("inbound_edges") or []
+            in_nodes = sg.get("inbound_nodes") or []
             for edge, node in zip(in_edges, in_nodes):
                 edge_desc = f" ({edge.get('description')})" if edge and edge.get('description') else ""
                 edge_type = edge.get('type', 'RELATES_TO') if edge else 'RELATES_TO'
