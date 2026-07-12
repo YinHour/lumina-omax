@@ -28,11 +28,35 @@ export const chatApi = {
     return response.data
   },
 
-  getSession: async (sessionId: string) => {
+  getSession: async (
+    sessionId: string,
+    options: { limit?: number; before_sequence?: number } = {}
+  ) => {
     const response = await apiClient.get<NotebookChatSessionWithMessages>(
-      `/chat/sessions/${sessionId}`
+      `/chat/sessions/${sessionId}`,
+      { params: options }
     )
     return response.data
+  },
+
+  getAllSessionMessages: async (sessionId: string) => {
+    let cursor: number | undefined
+    let messages: NotebookChatSessionWithMessages['messages'] = []
+
+    do {
+      const page = await chatApi.getSession(sessionId, {
+        limit: 200,
+        ...(cursor === undefined ? {} : { before_sequence: cursor }),
+      })
+      messages = [...page.messages, ...messages]
+      const nextCursor = page.next_cursor ?? undefined
+      if (!page.has_more || nextCursor === undefined || nextCursor === cursor) {
+        break
+      }
+      cursor = nextCursor
+    } while (true)
+
+    return messages
   },
 
   updateSession: async (sessionId: string, data: UpdateNotebookChatSessionRequest) => {

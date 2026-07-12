@@ -10,6 +10,14 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from api.chat_transcript_service import (
+    compact_chat_checkpoint,
+    delete_transcript,
+    ensure_transcript_initialized,
+    get_transcript_page,
+    persist_chat_turn,
+    visible_checkpoint_messages,
+)
 from api.notebook_guide_service import (
     FollowupQuestionParseError,
     generate_followup_questions,
@@ -88,6 +96,13 @@ def answer_complete_sse_event() -> str:
     import json
 
     event = {"type": "answer_complete"}
+    return f"data: {json.dumps(event)}\n\n"
+
+
+def transcript_status_sse_event(status: Literal["saved", "error"]) -> str:
+    import json
+
+    event = {"type": "transcript_status", "status": status}
     return f"data: {json.dumps(event)}\n\n"
 
 
@@ -197,6 +212,7 @@ class ChatMessage(BaseModel):
     type: str = Field(..., description="Message type (human|ai)")
     content: str = Field(..., description="Message content")
     timestamp: Optional[str] = Field(None, description="Message timestamp")
+    sequence: Optional[int] = Field(None, description="Stable transcript sequence")
 
 
 class ChatSessionResponse(BaseModel):
@@ -219,6 +235,10 @@ class ChatSessionResponse(BaseModel):
 class ChatSessionWithMessagesResponse(ChatSessionResponse):
     messages: List[ChatMessage] = Field(
         default_factory=list, description="Session messages"
+    )
+    has_more: bool = Field(False, description="Whether older messages are available")
+    next_cursor: Optional[int] = Field(
+        None, description="Sequence cursor for the next older page"
     )
 
 
@@ -415,16 +435,16 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
         results = []
         for session in sessions_list:
             session_id = str(session.id)
-            session_graph, checkpoint_file = get_session_graph_config(session)
-
-            # Get message count from LangGraph state (use checkpoint file
-            # so we read the same sqlite file the streaming endpoint writes to)
-            msg_count = await get_session_message_count(
-                chat_graph,
-                session_id,
-                checkpoint_file=checkpoint_file,
-                state_graph=session_graph,
-            )
+            if getattr(session, "transcript_initialized", False):
+                msg_count = getattr(session, "message_count", 0)
+            else:
+                session_graph, checkpoint_file = get_session_graph_config(session)
+                msg_count = await get_session_message_count(
+                    chat_graph,
+                    session_id,
+                    checkpoint_file=checkpoint_file,
+                    state_graph=session_graph,
+                )
 
             results.append(
                 ChatSessionResponse(
@@ -464,6 +484,8 @@ async def create_session(request: CreateSessionRequest):
             or f"Chat Session {asyncio.get_event_loop().time():.0f}",
             model_override=request.model_override,
             mode=request.mode,
+            transcript_initialized=True,
+            message_count=0,
         )
         await session.save()
 
@@ -492,11 +514,13 @@ async def create_session(request: CreateSessionRequest):
 @router.get(
     "/chat/sessions/{session_id}", response_model=ChatSessionWithMessagesResponse
 )
-async def get_session(session_id: str):
+async def get_session(
+    session_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    before_sequence: Optional[int] = Query(None),
+):
     """Get a specific session with its messages."""
     try:
-        # Get session
-        # Ensure session_id has proper table prefix
         full_session_id = (
             session_id
             if session_id.startswith("chat_session:")
@@ -506,38 +530,70 @@ async def get_session(session_id: str):
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
 
-        # Get session state from LangGraph using SqliteSaver (NOT the module-level
-        # MemorySaver graph) so we read from the same checkpoint file that the
-        # streaming endpoint writes to.
-        from langgraph.checkpoint.sqlite import SqliteSaver
-
         session_graph, checkpoint_file = get_session_graph_config(session)
+        transcript_initialized = getattr(session, "transcript_initialized", False)
+        fallback_rows: list[dict[str, Any]] = []
+        if not transcript_initialized:
+            from langgraph.checkpoint.sqlite import SqliteSaver
 
-        with SqliteSaver.from_conn_string(checkpoint_file) as saver:
-            temp_graph = session_graph.compile(checkpointer=saver)
-            thread_state = await asyncio.to_thread(
-                temp_graph.get_state,
-                config=RunnableConfig(configurable={"thread_id": full_session_id}),
+            with SqliteSaver.from_conn_string(checkpoint_file) as saver:
+                temp_graph = session_graph.compile(checkpointer=saver)
+                thread_state = await asyncio.to_thread(
+                    temp_graph.get_state,
+                    config=RunnableConfig(
+                        configurable={"thread_id": full_session_id}
+                    ),
+                )
+            checkpoint_messages = (
+                list(thread_state.values.get("messages", []))
+                if thread_state and thread_state.values
+                else []
+            )
+            fallback_rows = visible_checkpoint_messages(checkpoint_messages)
+            transcript_initialized = await ensure_transcript_initialized(
+                full_session_id,
+                checkpoint_messages,
             )
 
-        # Extract messages from state
-        messages: list[ChatMessage] = []
-        if thread_state and thread_state.values and "messages" in thread_state.values:
-            for msg in thread_state.values["messages"]:
-                msg_type = msg.type if hasattr(msg, "type") else "unknown"
-                if msg_type not in ["human", "ai"]:
-                    continue
-                content = msg.content if hasattr(msg, "content") else str(msg)
-                if not content and hasattr(msg, "tool_calls") and msg.tool_calls:
-                    continue  # Skip AI messages that only contain tool calls
-                messages.append(
-                    ChatMessage(
-                        id=getattr(msg, "id", f"msg_{len(messages)}"),
-                        type=msg_type,
-                        content=content,
-                        timestamp=None,  # LangChain messages don't have timestamps by default
-                    )
-                )
+        has_more = False
+        next_cursor: Optional[int] = None
+        if transcript_initialized:
+            page = await get_transcript_page(
+                full_session_id,
+                limit=limit,
+                before_sequence=before_sequence,
+            )
+            page_rows = page.messages
+            has_more = page.has_more
+            next_cursor = page.next_cursor
+            message_count = (
+                len(fallback_rows)
+                if fallback_rows
+                else getattr(session, "message_count", len(page_rows))
+            )
+        else:
+            eligible_rows = [
+                row
+                for row in fallback_rows
+                if before_sequence is None or int(row["sequence"]) < before_sequence
+            ]
+            has_more = len(eligible_rows) > limit
+            page_rows = eligible_rows[-limit:]
+            next_cursor = (
+                int(page_rows[0]["sequence"]) if has_more and page_rows else None
+            )
+            message_count = len(fallback_rows)
+
+        messages = [
+            ChatMessage(
+                id=str(row["message_id"]),
+                type=str(row["role"]),
+                content=str(row["content"]),
+                timestamp=str(row.get("created")) if row.get("created") else None,
+                sequence=int(row["sequence"]),
+            )
+            for row in page_rows
+        ]
 
         # Find notebook_id (we need to query the relationship)
         # Ensure session_id has proper table prefix
@@ -566,11 +622,15 @@ async def get_session(session_id: str):
             notebook_id=notebook_id,
             created=str(session.created),
             updated=str(session.updated),
-            message_count=len(messages),
+            message_count=message_count,
             messages=messages,
             model_override=getattr(session, "model_override", None),
             mode=get_session_mode(session),
+            has_more=has_more,
+            next_cursor=next_cursor,
         )
+    except HTTPException:
+        raise
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Session not found")
     except Exception as e:
@@ -615,15 +675,16 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
         )
         notebook_id = notebook_query[0]["out"] if notebook_query else None
 
-        # Get message count from LangGraph state (use checkpoint file
-        # so we read the same sqlite file the streaming endpoint writes to)
-        session_graph, checkpoint_file = get_session_graph_config(session)
-        msg_count = await get_session_message_count(
-            chat_graph,
-            full_session_id,
-            checkpoint_file=checkpoint_file,
-            state_graph=session_graph,
-        )
+        if getattr(session, "transcript_initialized", False):
+            msg_count = getattr(session, "message_count", 0)
+        else:
+            session_graph, checkpoint_file = get_session_graph_config(session)
+            msg_count = await get_session_message_count(
+                chat_graph,
+                full_session_id,
+                checkpoint_file=checkpoint_file,
+                state_graph=session_graph,
+            )
 
         return ChatSessionResponse(
             id=session.id or "",
@@ -656,6 +717,7 @@ async def delete_session(session_id: str):
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
 
+        await delete_transcript(full_session_id)
         await session.delete()
 
         return SuccessResponse(success=True, message="Session deleted successfully")
@@ -677,6 +739,8 @@ async def stream_chat_response(
     checkpoint_file: Optional[str] = None,
     extra_state: Optional[dict[str, Any]] = None,
     chat_mode: Literal["quick", "research"] = "quick",
+    persist_transcript_enabled: bool = False,
+    transcript_initialized: bool = True,
 ):
     import json
 
@@ -708,8 +772,9 @@ async def stream_chat_response(
                 config=RunnableConfig(configurable={"thread_id": session_id}),
             )
 
-        state_values = current_state.values if current_state else {}
-        state_values["messages"] = state_values.get("messages", [])
+        state_values = dict(current_state.values) if current_state else {}
+        checkpoint_messages = list(state_values.get("messages", []))
+        state_values["messages"] = list(checkpoint_messages)
         state_values["context"] = context
         state_values["model_override"] = model_override
         state_values["enable_web_search"] = enable_web_search
@@ -718,7 +783,7 @@ async def stream_chat_response(
             state_values.update(extra_state)
 
         from langchain_core.messages import HumanMessage
-        user_message = HumanMessage(content=message)
+        user_message = HumanMessage(content=message, id=f"{trace_id}-human")
         state_values["messages"].append(user_message)
 
         user_event = {"type": "user_message", "content": message, "timestamp": None}
@@ -729,7 +794,7 @@ async def stream_chat_response(
         config = RunnableConfig(
             configurable={"thread_id": session_id, "model_id": model_override}
         )
-        
+
         yielded_ai_chunks = False
         first_ai_chunk_logged = False
         final_answer_parts: list[str] = []
@@ -942,6 +1007,30 @@ async def stream_chat_response(
             model_first_byte_ms=model_first_byte_ms if model_first_byte_ms is not None else -1,
             heartbeats_sent=heartbeat_count,
         )
+        if persist_transcript_enabled:
+            initialized = transcript_initialized
+            if not initialized:
+                initialized = await ensure_transcript_initialized(
+                    session_id,
+                    checkpoint_messages,
+                )
+            transcript_saved = initialized and await persist_chat_turn(
+                session_id,
+                trace_id=trace_id,
+                user_content=message,
+                ai_content=answer,
+            )
+            yield transcript_status_sse_event(
+                "saved" if transcript_saved else "error"
+            )
+            if transcript_saved:
+                await compact_chat_checkpoint(
+                    session_id,
+                    state_graph=state_graph,
+                    checkpoint_file=checkpoint_file,
+                    chat_mode=chat_mode,
+                )
+
         yield answer_complete_sse_event()
 
         suggestions_event = await build_suggested_questions_event(
@@ -1065,6 +1154,10 @@ async def execute_chat(request: ExecuteChatRequest):
                 enable_web_search=request.enable_web_search or False,
                 trace_id=trace_id,
                 chat_mode="quick",
+                persist_transcript_enabled=True,
+                transcript_initialized=getattr(
+                    session, "transcript_initialized", False
+                ),
             ),
             media_type="text/event-stream",
             headers={
@@ -1143,6 +1236,10 @@ async def execute_research_chat(
                     "user_role": current_user.get("role"),
                 },
                 chat_mode="research",
+                persist_transcript_enabled=True,
+                transcript_initialized=getattr(
+                    session, "transcript_initialized", False
+                ),
             ),
             media_type="text/event-stream",
             headers={

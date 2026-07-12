@@ -8,6 +8,7 @@ const chatApiMock = vi.hoisted(() => ({
   listSessions: vi.fn(),
   createSession: vi.fn(),
   getSession: vi.fn(),
+  getAllSessionMessages: vi.fn(),
   updateSession: vi.fn(),
   deleteSession: vi.fn(),
   buildContext: vi.fn(),
@@ -164,7 +165,10 @@ describe('useNotebookChat', () => {
       created: '2026-06-12T00:00:00Z',
       updated: '2026-06-12T00:00:00Z',
       messages: [],
+      has_more: false,
+      next_cursor: null,
     })
+    chatApiMock.getAllSessionMessages.mockResolvedValue([])
     chatApiMock.buildContext.mockResolvedValue({
       context: { sources: [], notes: [] },
       token_count: 0,
@@ -544,6 +548,103 @@ describe('useNotebookChat', () => {
     })
   })
 
+  it('prepends earlier transcript pages without duplicating loaded messages', async () => {
+    chatApiMock.listSessions.mockResolvedValue([{
+      id: 'session:1',
+      title: 'Long session',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-11T00:00:00Z',
+      updated: '2026-07-11T00:00:00Z',
+    }])
+    chatApiMock.getSession
+      .mockResolvedValueOnce({
+        id: 'session:1',
+        title: 'Long session',
+        notebook_id: 'notebook:1',
+        mode: 'quick',
+        created: '2026-07-11T00:00:00Z',
+        updated: '2026-07-11T00:00:00Z',
+        messages: [
+          { id: 'm3', type: 'human', content: 'third', sequence: 3 },
+          { id: 'm4', type: 'ai', content: 'fourth', sequence: 4 },
+        ],
+        has_more: true,
+        next_cursor: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'session:1',
+        title: 'Long session',
+        notebook_id: 'notebook:1',
+        mode: 'quick',
+        created: '2026-07-11T00:00:00Z',
+        updated: '2026-07-11T00:00:00Z',
+        messages: [
+          { id: 'm1', type: 'human', content: 'first', sequence: 1 },
+          { id: 'm2', type: 'ai', content: 'second', sequence: 2 },
+          { id: 'm3', type: 'human', content: 'third', sequence: 3 },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(result.current.messages.map(message => message.id)).toEqual(['m3', 'm4']))
+    await act(async () => result.current.loadEarlierMessages())
+
+    expect(result.current.messages.map(message => message.id)).toEqual(['m1', 'm2', 'm3', 'm4'])
+    expect(result.current.hasMoreMessages).toBe(false)
+  })
+
+  it('uses transcript_status to report a persistence failure after a successful answer', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Persistence check',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-11T00:00:00Z',
+      updated: '2026-07-11T00:00:00Z',
+    })
+    const payload = [
+      'data: {"type":"ai_message","content":"Answer"}\n\n',
+      'data: {"type":"transcript_status","status":"error"}\n\n',
+      'data: {"type":"answer_complete"}\n\n',
+    ].join('')
+    chatApiMock.sendMessage.mockResolvedValue(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload))
+        controller.close()
+      },
+    }))
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => result.current.sendMessage('Check persistence'))
+    expect(result.current.saveStatus).toBe('error')
+    expect(result.current.activityTerminal).toBe('complete')
+    expect(result.current.messages.filter(message => message.type === 'ai')).toEqual([
+      expect.objectContaining({ content: 'Answer' }),
+    ])
+    expect(chatApiMock.getSession).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps suggested questions after persisted session messages replace streamed message ids', async () => {
     chatApiMock.createSession.mockResolvedValue({
       id: 'session:1',
@@ -591,6 +692,18 @@ describe('useNotebookChat', () => {
 
     await waitFor(() => {
       expect(result.current.suggestedQuestionsByMessageId['persisted-ai-1']).toEqual(['Q1?', 'Q2?', 'Q3?'])
+      expect(result.current.messages).toEqual([
+        expect.objectContaining({
+          id: 'persisted-human-1',
+          type: 'human',
+          content: 'What should I inspect next?',
+        }),
+        expect.objectContaining({
+          id: 'persisted-ai-1',
+          type: 'ai',
+          content: 'The answer.',
+        }),
+      ])
     })
   })
 
@@ -995,6 +1108,7 @@ describe('useNotebookChat', () => {
     // New AI bubble carries the warning prefix + localized body + diagnostic line.
     const aiMessages = result.current.messages.filter(m => m.type === 'ai')
     expect(aiMessages.length).toBe(1)
+    expect(aiMessages[0].id).toMatch(/^ai-error-/)
     const aiContent = aiMessages[0].content
     expect(aiContent).toContain('⚠️')
     expect(aiContent.toLowerCase()).toContain('timed out')
@@ -1006,6 +1120,72 @@ describe('useNotebookChat', () => {
     expect(result.current.activityStatus).toBeNull()
     expect(result.current.activityElapsedSeconds).toBe(0)
     expect(result.current.isSending).toBe(false)
+    expect(result.current.activityTerminal).toBe('error')
+    expect(result.current.activitySteps.some(step => step.status === 'error')).toBe(true)
+  })
+
+  it('keeps a failed local turn and its activity after changing the session model', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:failed-turn',
+      title: 'Failed turn',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-12T00:00:00Z',
+      updated: '2026-07-12T00:00:00Z',
+    })
+    chatApiMock.getSession.mockResolvedValue({
+      id: 'session:failed-turn',
+      title: 'Failed turn',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-12T00:00:00Z',
+      updated: '2026-07-12T00:00:00Z',
+      messages: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    chatApiMock.sendMessage.mockResolvedValue(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(
+          'data: {"type":"error","error_code":"external_service","message":"Content Exists Risk"}\n\n',
+        ))
+        controller.close()
+      },
+    }))
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('Question rejected by provider')
+    })
+    const failedHuman = result.current.messages.find(message => message.type === 'human')
+    expect(failedHuman).toBeDefined()
+    const getSessionCallsBeforeModelChange = chatApiMock.getSession.mock.calls.length
+
+    act(() => result.current.setModelOverride('model:replacement'))
+    await waitFor(() => expect(chatApiMock.updateSession).toHaveBeenCalledWith(
+      'session:failed-turn',
+      { model_override: 'model:replacement' },
+    ))
+    await waitFor(() => {
+      expect(chatApiMock.getSession.mock.calls.length).toBeGreaterThan(getSessionCallsBeforeModelChange)
+    })
+
+    expect(result.current.messages.some(message => (
+      message.type === 'human' && message.content === 'Question rejected by provider'
+    ))).toBe(true)
+    expect(result.current.messages.some(message => (
+      message.type === 'ai' && message.content.includes('Content Exists Risk')
+    ))).toBe(true)
+    expect(result.current.activityMessageId).toBe(failedHuman?.id)
     expect(result.current.activityTerminal).toBe('error')
     expect(result.current.activitySteps.some(step => step.status === 'error')).toBe(true)
   })
@@ -1062,6 +1242,7 @@ describe('useNotebookChat', () => {
     // Exactly one AI bubble — the timeout notice was appended, not a new bubble.
     const aiMessages = result.current.messages.filter(m => m.type === 'ai')
     expect(aiMessages.length).toBe(1)
+    expect(aiMessages[0].id).toMatch(/^ai-error-/)
     const aiContent = aiMessages[0].content
     expect(aiContent).toContain('partial answer')
     expect(aiContent).toContain('⚠️')

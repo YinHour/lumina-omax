@@ -129,6 +129,10 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       allowCrossNotebookDiscovery={chat.allowCrossNotebookDiscovery}
       onAllowCrossNotebookDiscoveryChange={chat.setAllowCrossNotebookDiscovery}
       saveStatus={chat.saveStatus}
+      hasMoreMessages={chat.hasMoreMessages}
+      isLoadingEarlier={chat.isLoadingEarlier}
+      onLoadEarlierMessages={chat.loadEarlierMessages}
+      onLoadExportMessages={chat.loadExportMessages}
     />
   )
 }

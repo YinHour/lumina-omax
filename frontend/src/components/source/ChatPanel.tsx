@@ -25,6 +25,7 @@ import { SessionManager } from '@/components/source/SessionManager'
 import { MessageActions } from '@/components/source/MessageActions'
 import {
   convertReferencesToCompactMarkdown,
+  createCompactReferenceCodeComponent,
   createCompactReferenceLinkComponent,
   ensureNumberedWebBibliographySection
 } from '@/lib/utils/source-references'
@@ -97,6 +98,10 @@ interface ChatPanelProps {
   allowCrossNotebookDiscovery?: boolean
   onAllowCrossNotebookDiscoveryChange?: (enabled: boolean) => void
   saveStatus?: NotebookChatSaveStatus
+  hasMoreMessages?: boolean
+  isLoadingEarlier?: boolean
+  onLoadEarlierMessages?: () => Promise<void>
+  onLoadExportMessages?: () => Promise<SourceChatMessage[]>
 }
 
 export function ChatPanel({
@@ -134,6 +139,10 @@ export function ChatPanel({
   allowCrossNotebookDiscovery = false,
   onAllowCrossNotebookDiscoveryChange,
   saveStatus = 'idle',
+  hasMoreMessages = false,
+  isLoadingEarlier = false,
+  onLoadEarlierMessages,
+  onLoadExportMessages,
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -307,6 +316,21 @@ export function ChatPanel({
     sendMessageNow(question)
   }
 
+  const handleLoadEarlier = async () => {
+    if (!onLoadEarlierMessages || isLoadingEarlier) return
+    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]'
+    )
+    const previousHeight = viewport?.scrollHeight ?? 0
+    const previousTop = viewport?.scrollTop ?? 0
+    await onLoadEarlierMessages()
+    requestAnimationFrame(() => {
+      if (viewport) {
+        viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight
+      }
+    })
+  }
+
   const handleEditHumanMessage = (message: string) => {
     setInput(message)
     requestAnimationFrame(() => {
@@ -374,6 +398,7 @@ export function ChatPanel({
             onSelectSession={onSelectSession}
             onStartNewSession={onStartNewSession}
             onManageSessions={() => setSessionManagerOpen(true)}
+            onLoadExportMessages={onLoadExportMessages}
           />
         ) : (
           <div className="flex items-center justify-between">
@@ -428,6 +453,21 @@ export function ChatPanel({
           onScrollCapture={handleScroll}
         >
           <div className="space-y-4 py-4">
+            {contextType === 'notebook' && hasMoreMessages && onLoadEarlierMessages && (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLoadEarlier}
+                  disabled={isLoadingEarlier}
+                  className="gap-2 text-xs text-muted-foreground"
+                >
+                  {isLoadingEarlier && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {isLoadingEarlier ? t.chat.loadingEarlierMessages : t.chat.loadEarlierMessages}
+                </Button>
+              </div>
+            )}
             {notebookGuide?.status === 'ready' && notebookGuide.summary && (
               <NotebookGuideCard
                 title={title}
@@ -701,6 +741,7 @@ function AIMessageContent({
 
   // Create custom link component for compact references
   const LinkComponent = createCompactReferenceLinkComponent(onReferenceClick)
+  const CodeComponent = createCompactReferenceCodeComponent(onReferenceClick)
 
   return (
     <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
@@ -709,6 +750,7 @@ function AIMessageContent({
         rehypePlugins={[rehypeRaw]}
         components={{
           a: LinkComponent,
+          code: CodeComponent,
           p: ({ children }) => <p className="mb-4">{children}</p>,
           h1: ({ children }) => <h1 className="mb-4 mt-6">{children}</h1>,
           h2: ({ children }) => <h2 className="mb-3 mt-5">{children}</h2>,

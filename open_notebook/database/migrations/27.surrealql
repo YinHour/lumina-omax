@@ -1,0 +1,9 @@
+DEFINE TABLE IF NOT EXISTS chat_message SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS session ON TABLE chat_message TYPE record<chat_session>;
+DEFINE FIELD IF NOT EXISTS message_id ON TABLE chat_message TYPE string;
+DEFINE FIELD IF NOT EXISTS role ON TABLE chat_message TYPE string;
+DEFINE FIELD IF NOT EXISTS content ON TABLE chat_message TYPE string;
+DEFINE FIELD IF NOT EXISTS sequence ON TABLE chat_message TYPE int;
+DEFINE FIELD IF NOT EXISTS created ON TABLE chat_message TYPE datetime DEFAULT time::now();
+DEFINE INDEX IF NOT EXISTS chat_message_session_sequence_idx ON TABLE chat_message COLUMNS session, sequence UNIQUE;
+DEFINE INDEX IF NOT EXISTS chat_message_session_message_idx ON TABLE chat_message COLUMNS session, message_id UNIQUE;

@@ -251,10 +251,13 @@ export interface NotebookChatMessage {
   type: 'human' | 'ai'
   content: string
   timestamp?: string
+  sequence?: number
 }
 
 export interface NotebookChatSessionWithMessages extends NotebookChatSession {
   messages: NotebookChatMessage[]
+  has_more: boolean
+  next_cursor?: number | null
 }
 
 export interface CreateNotebookChatSessionRequest {

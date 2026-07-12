@@ -432,6 +432,8 @@ export const ptBR = {
     selectSession: "Selecionar conversa",
     manageSessions: "Gerenciar conversas",
     exportConversation: "Exportar Markdown",
+    loadEarlierMessages: "Carregar mensagens anteriores",
+    loadingEarlierMessages: "Carregando mensagens anteriores",
     autoSaving: "Salvando",
     saved: "Salvo",
     saveFailed: "Falha ao salvar",

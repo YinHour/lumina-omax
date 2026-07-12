@@ -432,6 +432,8 @@ export const bnIN = {
     selectSession: "কথোপকথন নির্বাচন করুন",
     manageSessions: "কথোপকথন পরিচালনা করুন",
     exportConversation: "Markdown রপ্তানি করুন",
+    loadEarlierMessages: "আগের বার্তাগুলি লোড করুন",
+    loadingEarlierMessages: "আগের বার্তাগুলি লোড হচ্ছে",
     autoSaving: "সংরক্ষণ করা হচ্ছে",
     saved: "সংরক্ষিত",
     saveFailed: "সংরক্ষণ ব্যর্থ হয়েছে",

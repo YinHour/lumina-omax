@@ -433,6 +433,8 @@ export const zhTW = {
     selectSession: "選擇會話",
     manageSessions: "管理會話",
     exportConversation: "匯出 Markdown",
+    loadEarlierMessages: "載入較早訊息",
+    loadingEarlierMessages: "正在載入較早訊息",
     autoSaving: "儲存中",
     saved: "已儲存",
     saveFailed: "儲存失敗",

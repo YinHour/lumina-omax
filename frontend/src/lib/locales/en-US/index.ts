@@ -564,6 +564,8 @@ export const enUS = {
     selectSession: "Select conversation",
     manageSessions: "Manage conversations",
     exportConversation: "Export Markdown",
+    loadEarlierMessages: "Load earlier messages",
+    loadingEarlierMessages: "Loading earlier messages",
     autoSaving: "Saving",
     saved: "Saved",
     saveFailed: "Save failed",

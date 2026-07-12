@@ -12,3 +12,13 @@ def test_notebook_schema_defines_created_by_field():
     )
 
     assert "DEFINE FIELD IF NOT EXISTS created_by ON TABLE notebook TYPE option<string>;" in migration_sql
+
+
+def test_chat_transcript_schema_has_stable_session_sequence_index():
+    migration_sql = Path(
+        "open_notebook/database/migrations/27.surrealql"
+    ).read_text(encoding="utf-8")
+
+    assert "DEFINE TABLE IF NOT EXISTS chat_message SCHEMAFULL;" in migration_sql
+    assert "chat_message_session_sequence_idx" in migration_sql
+    assert "COLUMNS session, sequence UNIQUE" in migration_sql

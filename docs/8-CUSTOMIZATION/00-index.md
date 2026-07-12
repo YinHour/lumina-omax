@@ -2969,7 +2969,7 @@ exit 0
 
 - 顶部常驻当前模式 Tabs、当前会话下拉菜单和 Plus 新会话按钮；Plus 使用 Tooltip。
 - 会话下拉菜单可以直接切换本模式会话，并提供管理会话和导出 Markdown。
-- Markdown 导出只包含当前 UI 可见的人类/AI 消息，移除 `<think>` 推理块，不包含 ToolMessage、凭据或内部工具参数。
+- Markdown 导出包含当前会话的全部人类/AI transcript（分页实现见 §35），移除 `<think>` 推理块，不包含 ToolMessage、凭据或内部工具参数。
 - 现有 SessionManager 继续负责重命名和删除；笔记本聊天的 Plus 直接进入本地草稿，源聊天继续使用原来的标题创建流程。
 - 新会话创建后，在刷新后的会话列表尚未包含新 ID 前保持“待确认”状态，避免旧列表竞态把用户自动切回旧会话。
 
@@ -3000,6 +3000,170 @@ cd frontend && npm run build
 exit 0
 ```
 
+本节提交时运行态检查因缺少登录会话受阻；服务重启后的登录实测已补充在 §35.4。
+
 ---
 
 > 最后更新：2026-07-11 | 新增 §34。Quick/Research 改为独立 Tabs，并增加显式新会话、模式独立状态、自动保存反馈和安全 Markdown 导出。
+
+---
+
+## 35. 长会话 Transcript 持久化与分页（2026-07-11）
+
+### 35.1 数据职责与兼容策略
+
+- 新增 SurrealDB `chat_message` 作为用户可见 human / final AI transcript 的长期事实来源；LangGraph SQLite checkpoint 改为仅保存近期执行记忆、工具调用协议和滚动摘要。
+- `chat_session` 增加 `transcript_initialized`、`message_count` 与 `last_message_preview`。已初始化会话的列表和详情不再逐会话扫描 checkpoint 计算消息数。
+- 新会话创建时直接标记 transcript 已初始化。旧会话首次打开或继续对话时，从对应 Quick/Research checkpoint 懒迁移可见消息；ToolMessage、纯工具调用 AIMessage 和 `<think>` 内容不写入 transcript。
+- 每轮模型完成后先持久化 transcript，再压缩 checkpoint。写入失败时 SSE 返回 `transcript_status=error`，前端显示保存失败，并保留完整 checkpoint，不执行破坏性裁剪。
+- 删除会话时同步删除其 transcript。SQLite 中对应线程的物理清理仍作为后续维护项，不阻塞会话删除。
+
+设计与实施记录：
+
+- `docs/superpowers/specs/2026-07-11-chat-transcript-pagination-design.md`
+- `docs/superpowers/plans/2026-07-11-chat-transcript-pagination-implementation.md`
+
+### 35.2 分页、导出与执行记忆
+
+- `GET /chat/sessions/{id}` 默认仅返回最新 50 条，支持 `limit` 与 `before_sequence`，响应增加 `has_more`、`next_cursor`；每页仍按从旧到新的阅读顺序返回。
+- 消息区顶部按需显示“加载更早消息”。前插旧页时保持滚动位置，并按消息 ID 去重，不覆盖当前乐观消息或流式回答。
+- Markdown 导出自动以每页 200 条遍历完整 transcript，不受当前页面已加载数量限制。
+- transcript 保存成功后，Quick/Research 复用既有消息数与 token 预算选择近期协议安全窗口，通过 LangGraph `RemoveMessage` 裁剪已归档消息；较早 human/final AI 内容合并进 `conversation_summary`，原始工具输出不进入摘要。
+- Quick/Research system prompt 同时接收滚动 `conversation_summary` 与本轮窗口摘要，长会话无需每轮携带完整原文，也不会拆断 AI tool call 与 ToolMessage 协议组。
+
+### 35.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/database/migrations/27.surrealql` | **新增** — `chat_message` 表及 session/sequence、session/message_id 唯一索引 |
+| `api/chat_transcript_service.py` | **新增** — 幂等写入、懒迁移、游标分页、元数据、删除和 checkpoint 安全压缩 |
+| `api/routers/chat.py` | 会话分页协议；Quick/Research SSE 接入先保存后压缩与 `transcript_status` |
+| `open_notebook/domain/notebook.py` | ChatSession transcript 元数据 |
+| `open_notebook/graphs/chat.py` / `research_agent.py` | 状态增加滚动摘要，并注入 system prompt |
+| `frontend/src/lib/api/chat.ts` / `types/api.ts` | 分页参数、响应类型和完整导出遍历 |
+| `frontend/src/lib/api/chat.test.ts` | **新增** — 完整导出跨页顺序与 cursor 请求回归 |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | 分页前插、去重、分页游标、完整导出及真实保存状态 |
+| `frontend/src/components/source/ChatPanel.tsx` | 顶部加载旧消息并保持滚动锚点 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包增加分页加载文案 |
+| `tests/test_chat_transcript_service.py` / `test_chat_transcript_router.py` | **新增** — transcript、迁移失败、分页、列表快路径与安全压缩回归 |
+
+### 35.4 验证
+
+```text
+UV_CACHE_DIR=/tmp/lumina-uv-cache uv run pytest -q tests/test_chat_transcript_service.py tests/test_chat_transcript_router.py tests/test_notebook_schema_migrations.py tests/test_message_history.py tests/test_chat_context_budget.py tests/test_research_agent_scope.py tests/test_chat_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_tavily_search_timeout.py tests/test_graphs.py
+71 passed, 6 warnings
+
+cd frontend && npm test
+167 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+```
+
+服务重启后的登录实测：
+
+- API 启动日志确认数据库版本为 27，migration 已生效。
+- 使用 `admin` 进入现有 4 来源测试笔记本，Quick/Research Tabs 能分别恢复会话；Quick 底部仅显示联网搜索和模型，Research 显示联网搜索、跨笔记本发现和模型，浏览器无 React/Markdown 错误。
+- 首次真实发送暴露 SurrealDB 禁止绑定保留变量 `$session`；已将 transcript 查询变量统一改为 `$session_record`，并增加回归断言。
+- 热重载后重新创建 Quick 会话并发送“保存测试通过”：状态从保存中变为已保存；刷新页面后用户问题与 AI 回答仍完整存在，证明 transcript 写入和详情读取成功。
+- 两个端到端测试会话均已从会话管理器删除；删除接口正常同步清理 transcript。现有数据中没有超过 50 条的单会话，因此“加载更早消息”的真实按钮和完整 Markdown 下载仍保留为长会话手工验收项，分页与跨页导出由自动测试覆盖。
+
+---
+
+> 最后更新：2026-07-11 | 新增 §35。笔记本长会话改为 SurrealDB transcript 分页归档与近期 checkpoint 执行记忆；先持久化后压缩，失败不裁剪；完整导出不受首屏 50 条限制。
+
+---
+
+## 36. Research Agent 工具执行与消息归并稳定性（2026-07-12）
+
+### 36.1 问题与根因
+
+- Research 状态新增 `conversation_summary` 后使用了 `Optional[str]`。在 `TypedDict` 中这只表示值可以为 `None`，键本身仍必填；旧会话和首轮请求没有该键时，LangGraph `InjectedState` 在工具调用前校验失败，模型因此误判 `list_notebook_sources`、`search_notebook_evidence` 等工具不可用。
+- 流式 AI 消息使用本地 `ai-*` ID，持久化 transcript 使用 `${trace_id}-ai` ID。保存完成后的查询结果按 ID 合并时，两份相同回答被当成不同消息，形成“流式回答 / 用户问题 / 持久化回答”的错误顺序。
+- 修复工具注入后，真实模型可能在证据已经足够时继续重复搜索，最终触发 LangGraph 默认递归上限；部分供应商即使声明不允许工具仍会把 DSML 工具标记输出为正文。
+
+### 36.2 实现决策
+
+- `ResearchState.conversation_summary` 改为 `NotRequired[Optional[str]]`，保持旧 checkpoint 和首轮状态兼容。
+- 前端把发送期 `temp-*` 与普通 `ai-*` 视为瞬态消息；持久化 transcript 到达后用服务端 human/AI 消息整体替换瞬态副本。`ai-error-*` 错误气泡不参与替换，保存失败时也不再用空的服务端结果覆盖本地成功回答。该逻辑由 Quick/Research 共用，因此两种对话都覆盖。
+- Research Agent 每轮默认最多执行 6 轮工具调用，可通过 `RESEARCH_AGENT_MAX_TOOL_ROUNDS` 调整；预算在每条新用户消息后重置。达到预算后执行一次终局综合，不再继续工具循环。
+- 终局综合不复用 AI tool-call / ToolMessage 协议历史，而是把最新用户问题与当前轮成功工具证据整理为普通文本 payload；证据默认最多 60000 字符，可通过 `RESEARCH_AGENT_FINAL_EVIDENCE_MAX_CHARS` 调整。这样不依赖供应商对 `tool_choice=none` 的兼容性，也不会把 DSML 当作最终答案或让上一轮证据挤占当前轮预算。
+
+### 36.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/research_agent.py` | 可缺省摘要状态、工具轮数预算、终局证据综合节点 |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | 流式瞬态消息与持久化 transcript 归并；保存失败保留本地回答 |
+| `tests/test_research_agent_scope.py` | 缺省摘要工具注入、轮数路由、扁平终局 payload 回归 |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | 重复回答替换、顺序与保存失败保留回答回归 |
+
+### 36.4 验证
+
+```text
+UV_CACHE_DIR=/tmp/lumina-uv-cache uv run pytest -q tests/test_research_agent_scope.py tests/test_chat_transcript_service.py tests/test_chat_transcript_router.py tests/test_message_history.py tests/test_chat_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py
+52 passed, 1 warning
+
+cd frontend && npm test -- --run
+167 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+
+UV_CACHE_DIR=/tmp/lumina-uv-cache uv run ruff check open_notebook/graphs/research_agent.py tests/test_research_agent_scope.py
+All checks passed
+```
+
+登录实测使用原问题“OCW-2L冲洗剂在盐水/海水条件下与本文降失水剂、缓凝剂的相容性如何？高温老化后界面润湿性是否仍稳定？”：
+
+- 工具成功读取当前笔记本来源，不再输出“工具不可用”；6 轮工具后进入终局综合，36 秒内完成 7 个可见步骤并保存自然语言答案。
+- 最终回答引用 5 个当前笔记本来源，明确区分产品声明、证据缺口和建议验证方案，没有 DSML 工具标记。
+- 刷新后精确统计为 1 条用户问题、1 条对应回答标题，消息顺序正确且无重复回答。
+- 实测过程中产生的 3 个失败/中间验证会话已删除，仅保留最终成功会话供复核。
+
+---
+
+> 最后更新：2026-07-12 | 新增 §36。修复 Research 工具状态注入与流式/持久化消息重复，并增加有界工具调用和供应商无关的终局证据综合。
+
+### 36.5 正文工作区引用可点击（2026-07-12）
+
+- 部分模型会把内部引用输出为转义 Markdown，例如 `\[1\]\(#ref-source-uuid\)`，或用反引号包成行内代码；ReactMarkdown 会将其显示为普通文字/代码，虽然回答末尾由前端生成的“工作区引用”仍可点击。
+- 引用预处理会规范化指向 `#ref-source-*`、`#ref-note-*`、`#ref-source_insight-*` 的转义或代码包裹内部链接；Markdown code 渲染器也会把内容完全等于内部引用链接的代码节点转为引用按钮。正文编号和末尾工作区引用统一调用现有 `SourceDialog` / Note / Insight 模态框，不改变普通代码和外部链接行为。
+- `ChatPanel` 回归测试覆盖转义正文引用的渲染与点击，确认 `[1]` 点击后以完整 ID 打开对应来源。
+
+验证：
+
+```text
+cd frontend && npm test -- --run
+168 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+```
+
+登录实测刷新原 Research 会话后，页面中 `[1](#ref-source-4qzydafkvwagspw0g9j7)` 字面文本从 2 处降为 0；点击正文编号 `[1]` 成功打开“测试查重-固井用油基泥浆冲洗剂OCW-2L-2024版”来源详情，并显示解析后的正文内容。
+
+### 36.6 对话模式 Tab 单行显示（2026-07-12）
+
+- Quick/Research 模式切换器不再参与工具栏剩余空间压缩，两个 Tab 标签统一使用 `whitespace-nowrap`。
+- 窄宽度下优先由工具栏现有 `flex-wrap` 将右侧会话操作换行，避免“科研 Agent”被拆成两行并改变 Tab 高度。
+- `ChatPanel` 组件测试增加两个模式 Tab 的单行样式断言。
+- 完整前端验证：`npm test -- --run` 为 `168 passed | 9 skipped`；`npm run lint` 为 0 error、4 个既有 warning；`npm run build` 通过。
+- 640px 浏览器视口实测：Research Tab 的 `white-space` 为 `nowrap`，高度 28px、内容滚动高度 26px，保持单行且没有纵向溢出。
+
+### 36.7 切换模型保留本地失败轮次（2026-07-12）
+
+- 供应商通过 SSE 返回 error 时，该轮 human / error AI 不会写入成功 transcript；此前用户问题仍使用 `temp-*`，切换模型触发会话详情刷新后会被瞬态消息归并逻辑删除，活动面板也因失去 human 锚点而消失。
+- SSE error 到达后，用户问题改标为当前会话的本地失败消息；若已有部分 AI 输出，也统一改标为 `ai-error-*`。同一会话因模型更新或列表同步而 refetch 时保留问题、错误气泡和执行步骤。
+- 首条消息自动创建会话后立即失败时，消息归属会在创建成功后立刻绑定到新 session，避免首次详情加载被误判为切换会话。
+- 失败轮次仍遵循“保存失败”语义，不写入长期 transcript；主动切换到其他会话或刷新整个页面后不会伪装成已持久化消息。
+- 完整前端验证：`npm test -- --run` 为 `169 passed | 9 skipped`；`npm run lint` 为 0 error、4 个既有 warning；`npm run build` 通过。

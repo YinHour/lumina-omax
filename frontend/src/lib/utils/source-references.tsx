@@ -38,6 +38,27 @@ export interface ReferenceData {
 }
 
 /**
+ * Some models escape the complete internal Markdown link, which makes
+ * ReactMarkdown render the citation syntax as plain text. Only unescape links
+ * that target the app's own reference anchors.
+ */
+export function normalizeInternalReferenceLinks(text: string): string {
+  return text
+    .replace(
+      /`+(\[[^\]\n`]+\]\(#ref-(?:source_insight|note|source)-[a-zA-Z0-9_-]{1,100}\))`+/g,
+      '$1'
+    )
+    .replace(
+      /<code>(\[[^\]\n<]+\]\(#ref-(?:source_insight|note|source)-[a-zA-Z0-9_-]{1,100}\))<\/code>/g,
+      '$1'
+    )
+    .replace(
+      /\\\[([^\]\n]+)\\\]\\\(#ref-(source_insight|note|source)-([a-zA-Z0-9_-]{1,100})\\\)/g,
+      '[$1](#ref-$2-$3)'
+    )
+}
+
+/**
  * Parse source references from text
  *
  * Handles various formats:
@@ -343,6 +364,8 @@ export function createReferenceLinkComponent(
  * Output: "See [1] and [2]. Also [1] again.\n\nReferences:\n[1] - [source:abc]\n[2] - [note:xyz]"
  */
 export function convertReferencesToCompactMarkdown(text: string, referencesLabel: string = 'References'): string {
+  text = normalizeInternalReferenceLinks(text)
+
   // Step 1: Parse all references using existing function
   const references = parseSourceReferences(text)
 
@@ -478,6 +501,48 @@ export function createCompactReferenceLinkComponent(
 
   CompactReferenceLinkComponent.displayName = 'CompactReferenceLinkComponent'
   return CompactReferenceLinkComponent
+}
+
+/**
+ * Render model-produced code spans that contain only an internal reference
+ * link as the same clickable citation button used by normal Markdown links.
+ */
+export function createCompactReferenceCodeComponent(
+  onReferenceClick: (type: ReferenceType, id: string) => void
+) {
+  const CompactReferenceCodeComponent = ({
+    children,
+    ...props
+  }: React.HTMLAttributes<HTMLElement> & {
+    children?: React.ReactNode
+  }) => {
+    const value = String(children ?? '').trim()
+    const match = value.match(
+      /^\[([^\]\n]+)\]\(#ref-(source_insight|note|source)-([a-zA-Z0-9_-]{1,100})\)$/
+    )
+
+    if (match) {
+      const [, label, type, id] = match
+      return (
+        <button
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            onReferenceClick(type as ReferenceType, id)
+          }}
+          className="text-primary hover:underline cursor-pointer inline font-medium"
+          type="button"
+        >
+          {label}
+        </button>
+      )
+    }
+
+    return <code {...props}>{children}</code>
+  }
+
+  CompactReferenceCodeComponent.displayName = 'CompactReferenceCodeComponent'
+  return CompactReferenceCodeComponent
 }
 
 /**

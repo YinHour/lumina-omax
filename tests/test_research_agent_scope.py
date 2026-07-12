@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
 def test_chat_session_mode_defaults_to_quick():
@@ -21,6 +22,60 @@ def test_chunked_read_tool_exposes_start_char_but_not_injected_state():
     ]
     assert properties["start_char"]["default"] == 0
     assert "state" not in properties
+
+
+@pytest.mark.asyncio
+async def test_tool_node_accepts_state_without_conversation_summary(monkeypatch):
+    from langgraph.graph import END, START, StateGraph
+
+    from open_notebook.graphs import research_agent
+
+    notebook = SimpleNamespace(
+        id="notebook:current",
+        get_sources=AsyncMock(
+            return_value=[SimpleNamespace(id="source:inside", title="Inside")]
+        ),
+        get_notes=AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        research_agent,
+        "_scope",
+        AsyncMock(return_value=(notebook, {"source:inside"}, set())),
+    )
+    state = {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "list_notebook_sources",
+                        "args": {},
+                        "id": "call-1",
+                    }
+                ],
+            )
+        ],
+        "notebook_id": "notebook:current",
+        "model_override": None,
+        "enable_web_search": False,
+        "allow_cross_notebook_discovery": False,
+        "user_id": "user:alice",
+        "user_role": "user",
+        "chat_trace": "trace-1",
+    }
+
+    graph_builder = StateGraph(research_agent.ResearchState)
+    graph_builder.add_node("tools", research_agent.tool_node)
+    graph_builder.add_edge(START, "tools")
+    graph_builder.add_edge("tools", END)
+    result = await graph_builder.compile().ainvoke(state)
+
+    tool_message = result["messages"][-1]
+    assert isinstance(tool_message, ToolMessage)
+    assert tool_message.status == "success"
+    assert json.loads(tool_message.content)["sources"] == [
+        {"id": "source:inside", "title": "Inside"}
+    ]
 
 
 @pytest.mark.asyncio
@@ -239,6 +294,91 @@ def test_research_session_uses_separate_checkpoint():
 
     assert graph is agent_state
     assert checkpoint == LANGGRAPH_RESEARCH_CHAT_CHECKPOINT_FILE
+
+
+def test_research_agent_routes_to_final_after_tool_budget(monkeypatch):
+    from open_notebook.graphs import research_agent
+
+    monkeypatch.setenv("RESEARCH_AGENT_MAX_TOOL_ROUNDS", "2")
+    messages = [
+        AIMessage(content="", tool_calls=[{"name": "first", "args": {}, "id": "1"}]),
+        ToolMessage(content="one", tool_call_id="1"),
+        AIMessage(content="", tool_calls=[{"name": "second", "args": {}, "id": "2"}]),
+        ToolMessage(content="two", tool_call_id="2"),
+    ]
+
+    assert research_agent.route_after_tools({"messages": messages}) == "final"
+
+
+def test_research_agent_resets_tool_budget_for_each_user_turn(monkeypatch):
+    from open_notebook.graphs import research_agent
+
+    monkeypatch.setenv("RESEARCH_AGENT_MAX_TOOL_ROUNDS", "2")
+    messages = [
+        HumanMessage(content="first question"),
+        AIMessage(content="", tool_calls=[{"name": "first", "args": {}, "id": "1"}]),
+        ToolMessage(content="old evidence", tool_call_id="1"),
+        AIMessage(content="first answer"),
+        HumanMessage(content="follow-up"),
+        AIMessage(content="", tool_calls=[{"name": "second", "args": {}, "id": "2"}]),
+        ToolMessage(content="new evidence", tool_call_id="2"),
+    ]
+
+    assert research_agent.route_after_tools({"messages": messages}) == "agent"
+
+
+@pytest.mark.asyncio
+async def test_research_final_synthesis_flattens_tool_history(monkeypatch):
+    from open_notebook.graphs import research_agent
+
+    captured_payload = []
+    model = MagicMock()
+
+    async def invoke(payload, config=None):
+        captured_payload.extend(payload)
+        return AIMessage(content="final answer")
+
+    model.ainvoke = AsyncMock(side_effect=invoke)
+    monkeypatch.setattr(
+        research_agent.Prompter, "render", MagicMock(return_value="system")
+    )
+    monkeypatch.setattr(
+        research_agent,
+        "provision_langchain_model",
+        AsyncMock(return_value=model),
+    )
+
+    result = await research_agent.call_research_model_final(
+        {
+            "messages": [
+                HumanMessage(content="old question"),
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "old search", "args": {}, "id": "old"}],
+                ),
+                ToolMessage(content='{"id":"source:old"}', tool_call_id="old"),
+                AIMessage(content="old answer"),
+                HumanMessage(content="question"),
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "search", "args": {}, "id": "1"}],
+                ),
+                ToolMessage(content='{"id":"source:one"}', tool_call_id="1"),
+            ],
+            "notebook_id": "notebook:1",
+            "enable_web_search": False,
+            "allow_cross_notebook_discovery": False,
+        },
+        {},
+    )
+
+    model.bind_tools.assert_not_called()
+    assert len(captured_payload) == 2
+    assert all(not isinstance(message, ToolMessage) for message in captured_payload)
+    assert "question" in captured_payload[1].content
+    assert "source:one" in captured_payload[1].content
+    assert "source:old" not in captured_payload[1].content
+    assert result["messages"].content == "final answer"
 
 
 @pytest.mark.asyncio
