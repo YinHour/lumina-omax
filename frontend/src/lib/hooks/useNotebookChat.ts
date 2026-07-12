@@ -42,6 +42,12 @@ export type NotebookChatSaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 type ModeState<T> = Record<NotebookChatMode, T>
 
+function isTransientNotebookMessage(message: NotebookChatMessage): boolean {
+  return message.id.startsWith('temp-') || (
+    message.id.startsWith('ai-') && !message.id.startsWith('ai-error-')
+  )
+}
+
 export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -211,14 +217,14 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       const sessionChanged = messageSessionIdRef.current !== currentSession.id
       messageSessionIdRef.current = currentSession.id
       setMessages(prev => {
-        const optimisticMessages = prev.filter(msg => msg.id.startsWith('temp-'))
+        const transientMessages = prev.filter(isTransientNotebookMessage)
         if (sessionChanged) {
           return isSendingRef.current
-            ? [...currentSession.messages, ...optimisticMessages]
+            ? [...currentSession.messages, ...transientMessages]
             : currentSession.messages
         }
 
-        const existingMessages = prev.filter(msg => !msg.id.startsWith('temp-'))
+        const existingMessages = prev.filter(msg => !isTransientNotebookMessage(msg))
         const mergedById = new Map(
           [...existingMessages, ...currentSession.messages].map(message => [message.id, message])
         )
@@ -228,12 +234,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
           }
           return 0
         })
-        if (!isSendingRef.current || optimisticMessages.length === 0) {
+        if (!isSendingRef.current || transientMessages.length === 0) {
           return persistedMessages
         }
 
         const persistedIds = new Set(persistedMessages.map(msg => msg.id))
-        const pendingMessages = optimisticMessages.filter(msg => !persistedIds.has(msg.id))
+        const pendingMessages = transientMessages.filter(msg => !persistedIds.has(msg.id))
         return [...persistedMessages, ...pendingMessages]
       })
 
@@ -738,7 +744,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       // that bubble lives only in front-end state, and reloading the
       // persisted session would overwrite it with the empty/last-known
       // server state.
-      if (!inlineStreamError) {
+      if (!inlineStreamError && transcriptSaveStatus !== 'error') {
         const refetchResult = await refetchCurrentSession()
         let persistedMessages = refetchResult.data?.messages
         if (!persistedMessages && pendingSuggestedQuestions) {

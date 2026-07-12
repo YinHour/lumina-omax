@@ -639,6 +639,10 @@ describe('useNotebookChat', () => {
     await act(async () => result.current.sendMessage('Check persistence'))
     expect(result.current.saveStatus).toBe('error')
     expect(result.current.activityTerminal).toBe('complete')
+    expect(result.current.messages.filter(message => message.type === 'ai')).toEqual([
+      expect.objectContaining({ content: 'Answer' }),
+    ])
+    expect(chatApiMock.getSession).toHaveBeenCalledTimes(1)
   })
 
   it('keeps suggested questions after persisted session messages replace streamed message ids', async () => {
@@ -688,6 +692,18 @@ describe('useNotebookChat', () => {
 
     await waitFor(() => {
       expect(result.current.suggestedQuestionsByMessageId['persisted-ai-1']).toEqual(['Q1?', 'Q2?', 'Q3?'])
+      expect(result.current.messages).toEqual([
+        expect.objectContaining({
+          id: 'persisted-human-1',
+          type: 'human',
+          content: 'What should I inspect next?',
+        }),
+        expect.objectContaining({
+          id: 'persisted-ai-1',
+          type: 'ai',
+          content: 'The answer.',
+        }),
+      ])
     })
   })
 

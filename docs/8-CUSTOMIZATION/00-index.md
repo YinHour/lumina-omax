@@ -3074,3 +3074,59 @@ exit 0
 ---
 
 > 最后更新：2026-07-11 | 新增 §35。笔记本长会话改为 SurrealDB transcript 分页归档与近期 checkpoint 执行记忆；先持久化后压缩，失败不裁剪；完整导出不受首屏 50 条限制。
+
+---
+
+## 36. Research Agent 工具执行与消息归并稳定性（2026-07-12）
+
+### 36.1 问题与根因
+
+- Research 状态新增 `conversation_summary` 后使用了 `Optional[str]`。在 `TypedDict` 中这只表示值可以为 `None`，键本身仍必填；旧会话和首轮请求没有该键时，LangGraph `InjectedState` 在工具调用前校验失败，模型因此误判 `list_notebook_sources`、`search_notebook_evidence` 等工具不可用。
+- 流式 AI 消息使用本地 `ai-*` ID，持久化 transcript 使用 `${trace_id}-ai` ID。保存完成后的查询结果按 ID 合并时，两份相同回答被当成不同消息，形成“流式回答 / 用户问题 / 持久化回答”的错误顺序。
+- 修复工具注入后，真实模型可能在证据已经足够时继续重复搜索，最终触发 LangGraph 默认递归上限；部分供应商即使声明不允许工具仍会把 DSML 工具标记输出为正文。
+
+### 36.2 实现决策
+
+- `ResearchState.conversation_summary` 改为 `NotRequired[Optional[str]]`，保持旧 checkpoint 和首轮状态兼容。
+- 前端把发送期 `temp-*` 与普通 `ai-*` 视为瞬态消息；持久化 transcript 到达后用服务端 human/AI 消息整体替换瞬态副本。`ai-error-*` 错误气泡不参与替换，保存失败时也不再用空的服务端结果覆盖本地成功回答。该逻辑由 Quick/Research 共用，因此两种对话都覆盖。
+- Research Agent 每轮默认最多执行 6 轮工具调用，可通过 `RESEARCH_AGENT_MAX_TOOL_ROUNDS` 调整；预算在每条新用户消息后重置。达到预算后执行一次终局综合，不再继续工具循环。
+- 终局综合不复用 AI tool-call / ToolMessage 协议历史，而是把最新用户问题与当前轮成功工具证据整理为普通文本 payload；证据默认最多 60000 字符，可通过 `RESEARCH_AGENT_FINAL_EVIDENCE_MAX_CHARS` 调整。这样不依赖供应商对 `tool_choice=none` 的兼容性，也不会把 DSML 当作最终答案或让上一轮证据挤占当前轮预算。
+
+### 36.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/research_agent.py` | 可缺省摘要状态、工具轮数预算、终局证据综合节点 |
+| `frontend/src/lib/hooks/useNotebookChat.ts` | 流式瞬态消息与持久化 transcript 归并；保存失败保留本地回答 |
+| `tests/test_research_agent_scope.py` | 缺省摘要工具注入、轮数路由、扁平终局 payload 回归 |
+| `frontend/src/lib/hooks/useNotebookChat.test.tsx` | 重复回答替换、顺序与保存失败保留回答回归 |
+
+### 36.4 验证
+
+```text
+UV_CACHE_DIR=/tmp/lumina-uv-cache uv run pytest -q tests/test_research_agent_scope.py tests/test_chat_transcript_service.py tests/test_chat_transcript_router.py tests/test_message_history.py tests/test_chat_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py
+52 passed, 1 warning
+
+cd frontend && npm test -- --run
+167 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+
+UV_CACHE_DIR=/tmp/lumina-uv-cache uv run ruff check open_notebook/graphs/research_agent.py tests/test_research_agent_scope.py
+All checks passed
+```
+
+登录实测使用原问题“OCW-2L冲洗剂在盐水/海水条件下与本文降失水剂、缓凝剂的相容性如何？高温老化后界面润湿性是否仍稳定？”：
+
+- 工具成功读取当前笔记本来源，不再输出“工具不可用”；6 轮工具后进入终局综合，36 秒内完成 7 个可见步骤并保存自然语言答案。
+- 最终回答引用 5 个当前笔记本来源，明确区分产品声明、证据缺口和建议验证方案，没有 DSML 工具标记。
+- 刷新后精确统计为 1 条用户问题、1 条对应回答标题，消息顺序正确且无重复回答。
+- 实测过程中产生的 3 个失败/中间验证会话已删除，仅保留最终成功会话供复核。
+
+---
+
+> 最后更新：2026-07-12 | 新增 §36。修复 Research 工具状态注入与流式/持久化消息重复，并增加有界工具调用和供应商无关的终局证据综合。

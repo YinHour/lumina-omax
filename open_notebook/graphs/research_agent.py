@@ -4,14 +4,14 @@ import os
 from typing import Annotated, Optional
 
 from ai_prompter import Prompter
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.graph import START, StateGraph
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import InjectedState, ToolNode, tools_condition
 from loguru import logger
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 from open_notebook.ai.provision import provision_langchain_model
 from open_notebook.database.repository import ensure_record_id, repo_query
@@ -50,7 +50,7 @@ class ResearchState(TypedDict):
     user_id: Optional[str]
     user_role: Optional[str]
     chat_trace: Optional[str]
-    conversation_summary: Optional[str]
+    conversation_summary: NotRequired[Optional[str]]
 
 
 async def _scope(state: ResearchState) -> tuple[Notebook, set[str], set[str]]:
@@ -238,10 +238,34 @@ PRIVATE_TOOLS = [
 async def call_research_model(
     state: ResearchState, config: RunnableConfig
 ) -> dict:
+    return await _call_research_model(state, config, allow_tools=True)
+
+
+async def call_research_model_final(
+    state: ResearchState, config: RunnableConfig
+) -> dict:
+    return await _call_research_model(state, config, allow_tools=False)
+
+
+async def _call_research_model(
+    state: ResearchState,
+    config: RunnableConfig,
+    *,
+    allow_tools: bool,
+) -> dict:
     try:
         system_prompt = Prompter(prompt_template="research_agent/system").render(
             data=state
         )
+        if not allow_tools:
+            system_prompt = (
+                f"{system_prompt}\n\n# FINAL SYNTHESIS\n"
+                "The tool-call budget is exhausted. Do not request more tools. "
+                "Answer now using the evidence already returned, and state any "
+                "remaining evidence gaps explicitly. Your entire response must be "
+                "natural-language Markdown. Never emit tool-call markup, DSML, XML, "
+                "JSON, or tool names as a request."
+            )
         max_history = _env_positive_int("RESEARCH_AGENT_HISTORY_MAX_MESSAGES", 20)
         max_history_tokens = _env_positive_int(
             "RESEARCH_AGENT_HISTORY_MAX_TOKENS", 32000
@@ -270,7 +294,10 @@ async def call_research_model(
                 f"{system_prompt}\n\n# COMPRESSED EARLIER CONVERSATION\n"
                 f"{combined_summary}"
             )
-        payload = [SystemMessage(content=system_prompt), *history_window.messages]
+        if allow_tools:
+            payload = [SystemMessage(content=system_prompt), *history_window.messages]
+        else:
+            payload = _final_synthesis_payload(system_prompt, history)
         if history_window.dropped_messages or history_window.repaired_messages:
             logger.info(
                 "chat_trace={} step=research_history_compressed total_messages={} valid_messages={} kept_messages={} dropped_messages={} repaired_messages={} estimated_tokens={} max_messages={} max_tokens={} summary_chars={}".format(
@@ -295,7 +322,8 @@ async def call_research_model(
         tools = list(PRIVATE_TOOLS)
         if state.get("enable_web_search"):
             tools.append(tavily_search)
-        ai_message = await model.bind_tools(tools).ainvoke(payload, config=config)
+        runnable = model.bind_tools(tools) if allow_tools else model
+        ai_message = await runnable.ainvoke(payload, config=config)
         content = extract_text_content(ai_message.content)
         cleaned = clean_thinking_content(content)
         return {"messages": ai_message.model_copy(update={"content": cleaned})}
@@ -307,10 +335,83 @@ async def call_research_model(
         raise error_class(user_message) from exc
 
 
+def _final_synthesis_payload(
+    system_prompt: str, history: list
+) -> list[SystemMessage | HumanMessage]:
+    latest_human_index = next(
+        (
+            index
+            for index in range(len(history) - 1, -1, -1)
+            if isinstance(history[index], HumanMessage)
+        ),
+        -1,
+    )
+    question = (
+        extract_text_content(history[latest_human_index].content)
+        if latest_human_index >= 0
+        else ""
+    )
+    max_chars = _env_positive_int("RESEARCH_AGENT_FINAL_EVIDENCE_MAX_CHARS", 60000)
+    evidence_parts: list[str] = []
+    seen: set[str] = set()
+    remaining = max_chars
+    for message in history[latest_human_index + 1 :]:
+        if not isinstance(message, ToolMessage) or message.status == "error":
+            continue
+        content = extract_text_content(message.content).strip()
+        if not content or content == "null" or content in seen:
+            continue
+        seen.add(content)
+        excerpt = content[:remaining]
+        evidence_parts.append(excerpt)
+        remaining -= len(excerpt)
+        if remaining <= 0:
+            break
+
+    evidence = "\n\n---\n\n".join(evidence_parts) or "No usable evidence was returned."
+    synthesis_request = (
+        f"# Research question\n{question}\n\n"
+        f"# Evidence returned by completed tools\n{evidence}\n\n"
+        "# Task\nWrite the final answer now. Use only the evidence above, preserve exact "
+        "source/note IDs for citations, and state evidence gaps explicitly."
+    )
+    return [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=synthesis_request),
+    ]
+
+
 tool_node = ToolNode([*PRIVATE_TOOLS, tavily_search])
+
+
+def route_after_tools(state: ResearchState) -> str:
+    messages = state.get("messages", [])
+    latest_human_index = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if isinstance(messages[index], HumanMessage)
+        ),
+        -1,
+    )
+    tool_rounds = sum(
+        1
+        for message in messages[latest_human_index + 1 :]
+        if getattr(message, "tool_calls", [])
+    )
+    max_tool_rounds = _env_positive_int("RESEARCH_AGENT_MAX_TOOL_ROUNDS", 6)
+    return "final" if tool_rounds >= max_tool_rounds else "agent"
+
+
 agent_state = StateGraph(ResearchState)
 agent_state.add_node("agent", call_research_model)
 agent_state.add_node("tools", tool_node)
+agent_state.add_node("final", call_research_model_final)
 agent_state.add_edge(START, "agent")
 agent_state.add_conditional_edges("agent", tools_condition)
-agent_state.add_edge("tools", "agent")
+agent_state.add_conditional_edges(
+    "tools",
+    route_after_tools,
+    {"agent": "agent", "final": "final"},
+)
+agent_state.add_edge("final", END)
