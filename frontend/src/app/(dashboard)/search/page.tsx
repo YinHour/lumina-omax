@@ -431,6 +431,7 @@ export default function SearchPage() {
                   answers={ask.answers}
                   finalAnswer={ask.finalAnswer}
                   coverage={ask.coverage}
+                  progress={ask.progress}
                   errorBubble={ask.errorBubble}
                   activityElapsedSeconds={ask.activityElapsedSeconds}
                   onSaveRequest={() => setShowSaveDialog(true)}

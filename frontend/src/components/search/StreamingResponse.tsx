@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { CheckCircle, Sparkles, Lightbulb, ChevronDown, Copy, Save } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Sparkles, Lightbulb, ChevronDown, Copy, Save } from 'lucide-react'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -14,6 +14,7 @@ import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { toast } from '@/lib/hooks/use-toast'
 import type { AskCoverage } from '@/lib/types/search'
+import type { AskProgressState, AskProgressStage } from '@/lib/stores/ask-store'
 
 interface StrategyData {
   reasoning: string
@@ -26,6 +27,7 @@ interface StreamingResponseProps {
   answers: string[]
   finalAnswer: string | null
   coverage?: AskCoverage | null
+  progress?: AskProgressState | null
   errorBubble?: string | null
   activityElapsedSeconds?: number
   onSaveRequest?: () => void
@@ -37,6 +39,7 @@ export function StreamingResponse({
   answers,
   finalAnswer,
   coverage,
+  progress,
   errorBubble,
   activityElapsedSeconds,
   onSaveRequest
@@ -94,7 +97,7 @@ export function StreamingResponse({
     }
   }
 
-  if (!strategy && !answers.length && !finalAnswer && !isStreaming && !errorBubble) {
+  if (!strategy && !answers.length && !finalAnswer && !isStreaming && !errorBubble && !progress) {
     return null
   }
 
@@ -106,6 +109,10 @@ export function StreamingResponse({
       aria-live="polite"
       aria-busy={isStreaming}
     >
+      {progress && (isStreaming || !finalAnswer || progress.terminal === 'error' || progress.terminal === 'cancelled') && (
+        <AskProgressPanel progress={progress} isStreaming={isStreaming} />
+      )}
+
       {/* Strategy Section - Collapsible */}
       {strategy && (
         <Collapsible open={strategyOpen} onOpenChange={setStrategyOpen}>
@@ -260,6 +267,108 @@ export function StreamingResponse({
         </Card>
       )}
     </div>
+  )
+}
+
+function AskProgressPanel({
+  progress,
+  isStreaming,
+}: {
+  progress: AskProgressState
+  isStreaming: boolean
+}) {
+  const { t } = useTranslation()
+  const stageOrder: AskProgressStage[] = ['received', 'planning', 'searching', 'writing']
+  const stageText: Record<AskProgressStage, { title: string; description: string }> = {
+    received: {
+      title: t.searchPage.askProgressReceivedTitle,
+      description: t.searchPage.askProgressReceivedDesc,
+    },
+    planning: {
+      title: t.searchPage.askProgressPlanningTitle,
+      description: t.searchPage.askProgressPlanningDesc,
+    },
+    searching: {
+      title: t.searchPage.askProgressSearchingTitle,
+      description: t.searchPage.askProgressSearchingDesc,
+    },
+    writing: {
+      title: t.searchPage.askProgressWritingTitle,
+      description: t.searchPage.askProgressWritingDesc,
+    },
+  }
+  const currentIndex = Math.max(0, stageOrder.indexOf(progress.stage))
+  const terminal = progress.terminal
+  const headline = terminal === 'error'
+    ? t.searchPage.askProgressError
+    : terminal === 'cancelled'
+      ? t.searchPage.askProgressCancelled
+      : terminal === 'complete'
+        ? t.searchPage.askProgressComplete
+        : t.searchPage.askProgressTitle
+
+  return (
+    <Card className="border-primary/30 bg-primary/5">
+      <CardContent className="space-y-4 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              {isStreaming ? (
+                <LoadingSpinner size="sm" />
+              ) : terminal === 'complete' ? (
+                <CheckCircle className="h-4 w-4 text-primary" />
+              ) : (
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              )}
+              <span>{headline}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t.searchPage.askProgressNote}
+            </p>
+          </div>
+          <Badge variant="outline" className="w-fit tabular-nums">
+            {t.searchPage.askProgressElapsed.replace('{seconds}', String(progress.elapsedSeconds))}
+          </Badge>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-4">
+          {stageOrder.map((stage, index) => {
+            const isComplete = terminal === 'complete' || index < currentIndex
+            const isActive = !terminal && index === currentIndex
+            const isTerminalIssue = (terminal === 'error' || terminal === 'cancelled') && index === currentIndex
+
+            return (
+              <div
+                key={stage}
+                className={`rounded-md border px-3 py-2 ${
+                  isActive
+                    ? 'border-primary/40 bg-background shadow-sm'
+                    : isTerminalIssue
+                      ? 'border-destructive/40 bg-destructive/5'
+                      : isComplete
+                        ? 'border-primary/20 bg-background/70'
+                        : 'bg-background/50'
+                }`}
+              >
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  {isComplete ? (
+                    <CheckCircle className="h-3.5 w-3.5 text-primary" />
+                  ) : isActive ? (
+                    <LoadingSpinner size="sm" />
+                  ) : (
+                    <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                  <span>{stageText[stage].title}</span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {stageText[stage].description}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

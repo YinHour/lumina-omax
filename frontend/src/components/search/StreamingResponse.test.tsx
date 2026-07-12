@@ -16,6 +16,29 @@ vi.mock('sonner', () => ({
 }))
 
 describe('StreamingResponse', () => {
+  it('renders a visible Ask progress panel while streaming', () => {
+    render(
+      <StreamingResponse
+        isStreaming={true}
+        strategy={null}
+        answers={[]}
+        finalAnswer={null}
+        progress={{
+          stage: 'searching',
+          elapsedSeconds: 8,
+          terminal: null,
+        }}
+      />
+    )
+
+    expect(screen.getByText('Question received, working on it')).toBeInTheDocument()
+    expect(screen.getByText('8s elapsed')).toBeInTheDocument()
+    expect(screen.getByText('Received')).toBeInTheDocument()
+    expect(screen.getByText('Planning')).toBeInTheDocument()
+    expect(screen.getByText('Searching')).toBeInTheDocument()
+    expect(screen.getByText('Writing')).toBeInTheDocument()
+  })
+
   it('renders the final answer as formatted markdown', () => {
     render(
       <StreamingResponse

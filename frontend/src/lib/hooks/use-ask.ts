@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { searchApi } from '@/lib/api/search'
 import { AskStreamEvent } from '@/lib/types/search'
 import { useAskStore } from '@/lib/stores/ask-store'
+import type { AskProgressStage } from '@/lib/stores/ask-store'
 import { buildErrorBubbleBody } from '@/lib/chat/error-bubble'
 
 interface AskModels {
@@ -39,6 +40,33 @@ export function useAsk() {
     useAskStore.getState().setStreaming(true)
     useAskStore.getState().setActivityElapsedSeconds(0)
     useAskStore.getState().setErrorBubble(null)
+    useAskStore.getState().setProgress({
+      stage: 'received',
+      elapsedSeconds: 0,
+      terminal: null,
+    })
+
+    const startedAt = Date.now()
+    let progressTimer: number | null = null
+    if (typeof window !== 'undefined') {
+      progressTimer = window.setInterval(() => {
+        const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+        useAskStore.getState().updateProgress({ elapsedSeconds })
+      }, 1000)
+    }
+
+    const askProgressStages: AskProgressStage[] = ['received', 'planning', 'searching', 'writing']
+    const setAskStage = (stage: unknown, elapsedMs?: unknown) => {
+      if (typeof stage !== 'string' || !askProgressStages.includes(stage as AskProgressStage)) {
+        return
+      }
+      useAskStore.getState().updateProgress({
+        stage: stage as AskProgressStage,
+        ...(typeof elapsedMs === 'number'
+          ? { elapsedSeconds: Math.max(0, Math.floor(elapsedMs / 1000)) }
+          : {}),
+      })
+    }
 
     try {
       const response = await searchApi.askKnowledgeBase({
@@ -77,18 +105,25 @@ export function useAsk() {
 
               const data: AskStreamEvent = JSON.parse(jsonStr)
 
-              if (data.type === 'strategy') {
+              if (data.type === 'status') {
+                setAskStage(data.stage, data.elapsed_ms)
+              } else if (data.type === 'strategy') {
+                setAskStage('searching')
                 useAskStore.getState().setStrategy({
                   reasoning: data.reasoning || useAskStore.getState().strategy?.reasoning || '',
                   searches: data.searches || []
                 })
               } else if (data.type === 'strategy_reasoning_chunk') {
+                setAskStage('planning')
                 useAskStore.getState().updateStrategyReasoning(data.chunk || '')
               } else if (data.type === 'answer') {
+                setAskStage('searching')
                 useAskStore.getState().addAnswer(data.content || '')
               } else if (data.type === 'final_answer') {
+                setAskStage('writing')
                 useAskStore.getState().setFinalAnswer(data.content || '')
               } else if (data.type === 'coverage') {
+                setAskStage('received')
                 useAskStore.getState().setCoverage({
                   total_sources: data.total_sources || 0,
                   embedded_sources: data.embedded_sources || 0,
@@ -103,8 +138,12 @@ export function useAsk() {
                   useAskStore.getState().setActivityElapsedSeconds(
                     Math.max(1, Math.floor(data.elapsed_ms / 1000)),
                   )
+                  useAskStore.getState().updateProgress({
+                    elapsedSeconds: Math.max(1, Math.floor(data.elapsed_ms / 1000)),
+                  })
                 }
               } else if (data.type === 'complete') {
+                useAskStore.getState().updateProgress({ terminal: 'complete' })
                 if (data.coverage) {
                   useAskStore.getState().setCoverage(data.coverage)
                 }
@@ -136,6 +175,7 @@ export function useAsk() {
                   errorInternal: t.chat.errorInternal,
                   errorGeneric: t.chat.errorGeneric,
                 })
+                useAskStore.getState().updateProgress({ terminal: 'error' })
                 useAskStore.getState().setErrorBubble(body)
                 useAskStore.getState().setStreaming(false)
                 useAskStore.getState().setActivityElapsedSeconds(0)
@@ -161,6 +201,7 @@ export function useAsk() {
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('Ask request aborted')
+        useAskStore.getState().updateProgress({ terminal: 'cancelled' })
         return
       }
 
@@ -171,12 +212,16 @@ export function useAsk() {
       console.error('Ask error:', error)
 
       useAskStore.getState().setError(errorMessage)
+      useAskStore.getState().updateProgress({ terminal: 'error' })
       useAskStore.getState().setActivityElapsedSeconds(0)
 
       toast.error(t('apiErrors.askFailed'), {
         description: getApiErrorMessage(errorMessage, (key) => t(key))
       })
     } finally {
+      if (progressTimer) {
+        window.clearInterval(progressTimer)
+      }
       // Clean up abort controller if it's the current one
       if (useAskStore.getState().abortController === abortController) {
         useAskStore.getState().setAbortController(null)
@@ -191,6 +236,7 @@ export function useAsk() {
     }
     useAskStore.getState().setStreaming(false)
     useAskStore.getState().setActivityElapsedSeconds(0)
+    useAskStore.getState().updateProgress({ terminal: 'cancelled' })
   }, [])
 
   return useMemo(() => ({
@@ -199,6 +245,7 @@ export function useAsk() {
     answers: store.answers,
     finalAnswer: store.finalAnswer,
     coverage: store.coverage,
+    progress: store.progress,
     history: store.history,
     error: store.error,
     errorBubble: store.errorBubble,
@@ -215,6 +262,7 @@ export function useAsk() {
     store.answers,
     store.finalAnswer,
     store.coverage,
+    store.progress,
     store.history,
     store.error,
     store.errorBubble,

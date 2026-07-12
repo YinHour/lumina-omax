@@ -30,6 +30,19 @@ ASK_STREAM_HEARTBEAT_SECONDS = env_positive_float(
 )
 
 
+def elapsed_ms(started_at: float) -> int:
+    return int((time.perf_counter() - started_at) * 1000)
+
+
+def ask_status_sse_event(stage: str, started_at: float) -> str:
+    event = {
+        "type": "status",
+        "stage": stage,
+        "elapsed_ms": elapsed_ms(started_at),
+    }
+    return f"data: {json.dumps(event)}\n\n"
+
+
 async def get_ask_corpus_stats() -> dict[str, int]:
     """Return corpus-level source counts used to qualify global Ask answers."""
     total_result = await repo_query("SELECT count() AS count FROM source GROUP ALL")
@@ -114,6 +127,8 @@ async def stream_ask_response(
         final_answer: dict | None = None
         retrieved_source_ids: list[str] = []
 
+        yield ask_status_sse_event("received", started_at)
+
         coverage_start = {
             "type": "coverage",
             **corpus_stats,
@@ -124,6 +139,7 @@ async def stream_ask_response(
 
         async def run_producer(out_queue: asyncio.Queue) -> None:
             nonlocal final_answer
+            await out_queue.put(ask_status_sse_event("planning", started_at))
             async for event in ask_graph.astream_events(
                 input=dict(question=question, corpus_stats=corpus_stats),  # type: ignore[arg-type]
                 config=dict(
@@ -149,6 +165,9 @@ async def stream_ask_response(
                 elif kind == "on_chain_end":
                     if event["name"] == "agent" and "output" in event["data"] and event["data"]["output"] and "strategy" in event["data"]["output"]:
                         strategy = event["data"]["output"]["strategy"]
+                        await out_queue.put(
+                            ask_status_sse_event("searching", started_at)
+                        )
                         strategy_data = {
                             "type": "strategy",
                             "reasoning": strategy.reasoning,
@@ -169,6 +188,9 @@ async def stream_ask_response(
 
                     elif event["name"] == "write_final_answer" and "output" in event["data"] and event["data"]["output"] and "final_answer" in event["data"]["output"]:
                         final_answer = event["data"]["output"]["final_answer"]
+                        await out_queue.put(
+                            ask_status_sse_event("writing", started_at)
+                        )
                         final_data = {"type": "final_answer", "content": final_answer}
                         await out_queue.put(f"data: {json.dumps(final_data)}\n\n")
 
