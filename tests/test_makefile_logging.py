@@ -11,8 +11,9 @@ def test_source_frontend_targets_write_frontend_log():
 def test_database_target_follows_surrealdb_log():
     makefile = Path("Makefile").read_text()
 
-    assert "docker logs -f surrealdb-v2" in makefile
-    assert "logs/surrealdb.log" in makefile
+    assert (
+        "docker logs --tail 0 -f surrealdb-v2 > logs/surrealdb.log 2>&1 &" in makefile
+    )
 
 
 def test_makefile_version_does_not_require_python_command():
