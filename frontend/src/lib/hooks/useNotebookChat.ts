@@ -13,10 +13,16 @@ import {
   UpdateNotebookChatSessionRequest,
   SourceListResponse,
   NoteResponse,
-  BuildContextResponse
+  BuildContextResponse,
+  NotebookChatMode,
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
 import { buildErrorBubbleBody } from '@/lib/chat/error-bubble'
+import {
+  NotebookChatActivityStep,
+  NotebookChatActivityTerminal,
+  NotebookChatProgressStage,
+} from '@/lib/chat/notebook-chat-activity'
 
 interface UseNotebookChatParams {
   notebookId: string
@@ -36,16 +42,23 @@ export type NotebookChatActivityStatus =
 export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [chatMode, setChatModeState] = useState<NotebookChatMode>('quick')
+  const [allowCrossNotebookDiscovery, setAllowCrossNotebookDiscovery] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<NotebookChatMessage[]>([])
   const [suggestedQuestionsByMessageId, setSuggestedQuestionsByMessageId] = useState<Record<string, string[]>>({})
   const [isSending, setIsSending] = useState(false)
   const [activityStatus, setActivityStatus] = useState<NotebookChatActivityStatus | null>(null)
   const [activityElapsedSeconds, setActivityElapsedSeconds] = useState<number>(0)
+  const [activitySteps, setActivitySteps] = useState<NotebookChatActivityStep[]>([])
+  const [activityTerminal, setActivityTerminal] = useState<NotebookChatActivityTerminal>(null)
+  const [activityMessageId, setActivityMessageId] = useState<string | null>(null)
+  const [activityTotalElapsedSeconds, setActivityTotalElapsedSeconds] = useState(0)
   const [tokenCount, setTokenCount] = useState<number>(0)
   const [charCount, setCharCount] = useState<number>(0)
   const isSendingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const activityStartedAtRef = useRef<number | null>(null)
   const pendingSuggestedQuestionsRef = useRef<string[] | null>(null)
   const contextCacheRef = useRef<{ signature: string; response: BuildContextResponse } | null>(null)
   const contextRequestRef = useRef<{ signature: string; promise: Promise<BuildContextResponse> } | null>(null)
@@ -68,9 +81,68 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     }
   }, [pendingModelOverride])
 
+  useEffect(() => {
+    if (!isSending || activityStartedAtRef.current === null) return
+
+    const updateElapsed = () => {
+      const startedAt = activityStartedAtRef.current
+      if (startedAt !== null) {
+        setActivityTotalElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+      }
+    }
+
+    updateElapsed()
+    const intervalId = window.setInterval(updateElapsed, 1000)
+    return () => window.clearInterval(intervalId)
+  }, [isSending])
+
+  const recordActivityStep = useCallback((
+    stage: NotebookChatProgressStage,
+    status: NotebookChatActivityStep['status'] = 'active'
+  ) => {
+    setActivitySteps(previous => {
+      const next = previous.map(step =>
+        step.status === 'active' && step.stage !== stage
+          ? { ...step, status: 'complete' as const }
+          : step
+      )
+      const existingIndex = next.findIndex(step => step.stage === stage)
+
+      if (existingIndex === -1) {
+        return [...next, { stage, status }]
+      }
+
+      next[existingIndex] = { ...next[existingIndex], status }
+      return next
+    })
+  }, [])
+
+  const finishActivity = useCallback((terminal: Exclude<NotebookChatActivityTerminal, null>) => {
+    const terminalStepStatus: NotebookChatActivityStep['status'] = terminal === 'complete'
+      ? 'complete'
+      : terminal
+    setActivitySteps(previous => previous.map(step => (
+      step.status === 'active' ? { ...step, status: terminalStepStatus } : step
+    )))
+    const startedAt = activityStartedAtRef.current
+    if (startedAt !== null) {
+      const localElapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+      setActivityTotalElapsedSeconds(previous => Math.max(previous, localElapsed))
+    }
+    setActivityTerminal(terminal)
+  }, [])
+
+  const resetActivity = useCallback(() => {
+    activityStartedAtRef.current = null
+    setActivitySteps([])
+    setActivityTerminal(null)
+    setActivityMessageId(null)
+    setActivityTotalElapsedSeconds(0)
+  }, [])
+
   // Fetch sessions for this notebook
   const {
-    data: sessions = [],
+    data: allSessions = [],
     isLoading: loadingSessions,
     refetch: refetchSessions
   } = useQuery({
@@ -78,6 +150,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     queryFn: () => chatApi.listSessions(notebookId),
     enabled: !!notebookId
   })
+  const sessions = allSessions.filter(
+    session => (session.mode ?? 'quick') === chatMode
+  )
 
   // Fetch current session with messages
   const {
@@ -91,7 +166,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
   // Update messages when current session changes
   useEffect(() => {
-    if (currentSession?.messages) {
+    if (
+      currentSession?.messages &&
+      (currentSession.mode ?? 'quick') === chatMode
+    ) {
       const pendingSuggestedQuestions = pendingSuggestedQuestionsRef.current
       const persistedAiMessage = currentSession.messages
         .filter(msg => msg.type === 'ai')
@@ -117,11 +195,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         pendingSuggestedQuestionsRef.current = null
       }
     }
-  }, [currentSession])
+  }, [currentSession, chatMode])
 
   // Auto-select most recent session when sessions are loaded
   useEffect(() => {
-    if (sessions.length > 0 && !currentSessionId) {
+    const currentBelongsToMode = sessions.some(session => session.id === currentSessionId)
+    if (sessions.length > 0 && !currentBelongsToMode) {
       // Sessions are sorted by created date desc from API
       const mostRecentSession = sessions[0]
       setCurrentSessionId(mostRecentSession.id)
@@ -281,10 +360,21 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
     isSendingRef.current = true
     setIsSending(true)
-    setActivityStatus('gettingContext')
+    setActivityStatus(chatMode === 'research' ? 'thinking' : 'gettingContext')
     setActivityElapsedSeconds(0)
 
     const userMessageId = `temp-${Date.now()}`
+    activityStartedAtRef.current = Date.now()
+    setActivityMessageId(userMessageId)
+    setActivityTerminal(null)
+    setActivityTotalElapsedSeconds(0)
+    setActivitySteps([
+      { stage: 'received', status: 'complete' },
+      {
+        stage: chatMode === 'research' ? 'planning' : 'preparing_context',
+        status: 'active',
+      },
+    ])
     const userMessage: NotebookChatMessage = {
       id: userMessageId,
       type: 'human',
@@ -306,6 +396,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
           const newSession = await chatApi.createSession({
             notebook_id: notebookId,
             title: defaultTitle,
+            mode: chatMode,
             // Include pending model override when creating session
             model_override: pendingModelOverride ?? undefined
           })
@@ -319,13 +410,20 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         } catch (err: unknown) {
           const error = err as { response?: { data?: { detail?: string } }, message?: string };
           toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToCreateSession'))
+          finishActivity('error')
           setMessages(prev => prev.filter(msg => msg.id !== userMessageId))
           return
         }
       }
 
-      // Build context
-      const context = await buildContext()
+      const context = chatMode === 'quick'
+        ? await buildContext()
+        : { sources: [], notes: [] }
+      if (chatMode === 'quick') {
+        recordActivityStep('preparing_context', 'complete')
+        recordActivityStep('context_ready', 'complete')
+        recordActivityStep(enableWebSearch ? 'searching_web' : 'awaiting_model')
+      }
       setActivityStatus(enableWebSearch ? 'searchingWeb' : 'awaitingModel')
       setActivityElapsedSeconds(0)
       
@@ -334,13 +432,21 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       abortControllerRef.current = abortController
 
       // Start streaming request
-      const response = await chatApi.sendMessage({
-        session_id: sessionId,
-        message: trimmedMessage,
-        context,
-        model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
-        enable_web_search: enableWebSearch
-      }, abortController.signal)
+      const response = chatMode === 'research'
+        ? await chatApi.sendResearchMessage({
+            session_id: sessionId,
+            message: trimmedMessage,
+            model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
+            enable_web_search: enableWebSearch,
+            allow_cross_notebook_discovery: allowCrossNotebookDiscovery,
+          }, abortController.signal)
+        : await chatApi.sendMessage({
+            session_id: sessionId,
+            message: trimmedMessage,
+            context,
+            model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
+            enable_web_search: enableWebSearch
+          }, abortController.signal)
 
       if (!response) {
         throw new Error('No response body')
@@ -351,19 +457,23 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       let aiMessage: NotebookChatMessage | null = null
       let pendingSuggestedQuestions: string[] | null = null
       let inlineStreamError = false
+      let activityTerminalReached = false
       let buffer = ''
-      const markAnswerComplete = () => {
+      const markAnswerComplete = (terminal: Exclude<NotebookChatActivityTerminal, null> = 'complete') => {
+        activityTerminalReached = true
+        finishActivity(terminal)
         isSendingRef.current = false
         setActivityStatus(null)
         setActivityElapsedSeconds(0)
         setIsSending(false)
       }
 
-      const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown; stage?: string; elapsed_ms?: number; error_code?: string; timeout_seconds?: number }) => {
+      const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown; stage?: string; status?: string; elapsed_ms?: number; error_code?: string; timeout_seconds?: number }) => {
         if (data.type === 'ai_message') {
           if (!aiMessage) {
             setActivityStatus('modelStreaming')
             setActivityElapsedSeconds(0)
+            recordActivityStep('model_streaming')
           }
           if (!aiMessage) {
             aiMessage = {
@@ -382,12 +492,37 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
               )
             )
           }
+        } else if (data.type === 'chat_status') {
+          const validStages: NotebookChatProgressStage[] = [
+            'received',
+            'preparing_context',
+            'context_ready',
+            'planning',
+            'inspecting_scope',
+            'searching_notebook',
+            'reading_evidence',
+            'searching_cross_notebook',
+            'searching_web',
+            'using_research_tool',
+            'awaiting_model',
+            'synthesizing',
+            'model_streaming',
+          ]
+          if (
+            data.stage &&
+            validStages.includes(data.stage as NotebookChatProgressStage) &&
+            (data.status === 'active' || data.status === 'complete')
+          ) {
+            recordActivityStep(
+              data.stage as NotebookChatProgressStage,
+              data.status
+            )
+          }
         } else if (data.type === 'heartbeat') {
-          // Backend keep-alive while waiting for first model byte. Surface elapsed
-          // seconds so the UI can show "model still working, waited Ns".
-          if (data.stage === 'awaiting_model' && typeof data.elapsed_ms === 'number') {
-            setActivityStatus('awaitingModel')
-            setActivityElapsedSeconds(Math.max(1, Math.floor(data.elapsed_ms / 1000)))
+          if (typeof data.elapsed_ms === 'number') {
+            const elapsedSeconds = Math.max(1, Math.floor(data.elapsed_ms / 1000))
+            setActivityElapsedSeconds(elapsedSeconds)
+            setActivityTotalElapsedSeconds(previous => Math.max(previous, elapsedSeconds))
           }
         } else if (data.type === 'suggested_questions') {
           const questions = Array.isArray(data.questions)
@@ -439,7 +574,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             )
           }
           inlineStreamError = true
-          markAnswerComplete()
+          markAnswerComplete('error')
           return
         }
       }
@@ -486,6 +621,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         }
       }
 
+      if (!activityTerminalReached && !abortController.signal.aborted) {
+        markAnswerComplete()
+      }
+
       // Refetch current session to get updated data and persistence. Skip
       // this when the stream ended with an inline error (e.g. llm_timeout):
       // that bubble lives only in front-end state, and reloading the
@@ -514,6 +653,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     } catch (err: unknown) {
       // AbortError is user-initiated cancellation, not a real error
       if (err instanceof DOMException && err.name === 'AbortError') {
+        finishActivity('cancelled')
         return
       }
       // Genuine transport-layer failures (e.g. Next.js proxy reset, network
@@ -522,6 +662,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       // errors are rendered inline as AI bubbles in `handleStreamEvent`.
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
       console.error('Error sending message:', error)
+      finishActivity('error')
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
@@ -536,13 +677,17 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     }
   }, [
     notebookId,
+    chatMode,
+    allowCrossNotebookDiscovery,
     currentSessionId,
     currentSession,
     pendingModelOverride,
     buildContext,
     refetchCurrentSession,
     queryClient,
-    t
+    t,
+    finishActivity,
+    recordActivityStep,
   ])
 
   const cancelStreaming = useCallback(() => {
@@ -550,11 +695,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       abortControllerRef.current.abort()
       abortControllerRef.current = null
       isSendingRef.current = false
+      finishActivity('cancelled')
       setActivityStatus(null)
       setActivityElapsedSeconds(0)
       setIsSending(false)
     }
-  }, [])
+  }, [finishActivity])
 
   const sendSuggestedQuestion = useCallback((question: string, modelOverride?: string, enableWebSearch?: boolean) => {
     return sendMessage(question, modelOverride, enableWebSearch)
@@ -562,17 +708,32 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
   // Switch session
   const switchSession = useCallback((sessionId: string) => {
+    resetActivity()
     setSuggestedQuestionsByMessageId({})
     setCurrentSessionId(sessionId)
-  }, [])
+  }, [resetActivity])
 
   // Create session
   const createSession = useCallback((title?: string) => {
     return createSessionMutation.mutate({
       notebook_id: notebookId,
-      title
+      title,
+      mode: chatMode,
     })
-  }, [createSessionMutation, notebookId])
+  }, [createSessionMutation, notebookId, chatMode])
+
+  const setChatMode = useCallback((mode: NotebookChatMode) => {
+    if (isSendingRef.current || mode === chatMode) return
+    resetActivity()
+    setChatModeState(mode)
+    setAllowCrossNotebookDiscovery(false)
+    setSuggestedQuestionsByMessageId({})
+    setMessages([])
+    const nextSession = allSessions.find(
+      session => (session.mode ?? 'quick') === mode
+    )
+    setCurrentSessionId(nextSession?.id ?? null)
+  }, [allSessions, chatMode, resetActivity])
 
   // Update session
   const updateSession = useCallback((sessionId: string, data: UpdateNotebookChatSessionRequest) => {
@@ -603,6 +764,11 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
   // Update token/char counts when context selections change
   useEffect(() => {
+    if (chatMode !== 'quick') {
+      setTokenCount(0)
+      setCharCount(0)
+      return
+    }
     const updateContextCounts = async () => {
       try {
         await buildContext()
@@ -611,22 +777,30 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       }
     }
     updateContextCounts()
-  }, [buildContext])
+  }, [buildContext, chatMode])
 
   return {
     // State
     sessions,
-    currentSession: currentSession || sessions.find(s => s.id === currentSessionId),
+    currentSession: currentSession && (currentSession.mode ?? 'quick') === chatMode
+      ? currentSession
+      : sessions.find(s => s.id === currentSessionId),
     currentSessionId,
     messages,
     suggestedQuestionsByMessageId,
     isSending,
     activityStatus,
     activityElapsedSeconds,
+    activitySteps,
+    activityTerminal,
+    activityMessageId,
+    activityTotalElapsedSeconds,
     loadingSessions,
     tokenCount,
     charCount,
     pendingModelOverride,
+    chatMode,
+    allowCrossNotebookDiscovery,
 
     // Actions
     createSession,
@@ -637,6 +811,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     sendSuggestedQuestion,
     cancelStreaming,
     setModelOverride,
+    setChatMode,
+    setAllowCrossNotebookDiscovery,
     refetchSessions
   }
 }

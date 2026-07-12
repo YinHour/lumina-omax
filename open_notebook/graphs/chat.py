@@ -13,6 +13,7 @@ from typing_extensions import TypedDict
 from open_notebook.ai.provision import provision_langchain_model
 from open_notebook.domain.notebook import Notebook
 from open_notebook.exceptions import OpenNotebookError
+from open_notebook.graphs.message_history import select_history_window
 from open_notebook.graphs.observability import chat_trace_id
 from open_notebook.utils import clean_thinking_content
 from open_notebook.utils.error_classifier import classify_error
@@ -32,33 +33,6 @@ def _env_positive_int(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
-def _select_history_window(
-    messages: list, max_messages: int, trace_id: str
-) -> list:
-    """Return the most recent ``max_messages`` items from ``messages``.
-
-    The full history is preserved in LangGraph state (checkpoint). This
-    only narrows what we hand to the LLM in a single turn so that long
-    sessions do not blow up the prompt budget. ``max_messages <= 0``
-    disables the cap.
-    """
-    if max_messages <= 0 or len(messages) <= max_messages:
-        return list(messages)
-
-    trimmed = list(messages[-max_messages:])
-    dropped = len(messages) - len(trimmed)
-    logger.info(
-        "chat_trace={} step=history_truncated total_messages={} kept_messages={} dropped_messages={} max_messages={}".format(
-            trace_id,
-            len(messages),
-            len(trimmed),
-            dropped,
-            max_messages,
-        )
-    )
-    return trimmed
-
-
 class ThreadState(TypedDict):
     messages: Annotated[list, add_messages]
     notebook: Optional[Notebook]
@@ -74,11 +48,38 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
         trace_id = state.get("chat_trace") or chat_trace_id.get() or "unknown"
         system_prompt = Prompter(prompt_template="chat/system").render(data=state)  # type: ignore[arg-type]
         history = state.get("messages", []) or []
-        # Slice history for this LLM call only; LangGraph checkpoint keeps the
-        # full transcript so the UI can still display everything.
         max_history = _env_positive_int("CHAT_HISTORY_MAX_MESSAGES", 12)
-        windowed_history = _select_history_window(history, max_history, trace_id)
-        payload = [SystemMessage(content=system_prompt)] + windowed_history
+        max_history_tokens = _env_positive_int("CHAT_HISTORY_MAX_TOKENS", 16000)
+        summary_max_chars = _env_positive_int(
+            "CHAT_HISTORY_SUMMARY_MAX_CHARS", 6000
+        )
+        history_window = select_history_window(
+            history,
+            max_messages=max_history,
+            max_tokens=max_history_tokens,
+            summary_max_chars=summary_max_chars,
+        )
+        if history_window.summary:
+            system_prompt = (
+                f"{system_prompt}\n\n# COMPRESSED EARLIER CONVERSATION\n"
+                f"{history_window.summary}"
+            )
+        payload = [SystemMessage(content=system_prompt), *history_window.messages]
+        if history_window.dropped_messages or history_window.repaired_messages:
+            logger.info(
+                "chat_trace={} step=history_compressed total_messages={} valid_messages={} kept_messages={} dropped_messages={} repaired_messages={} estimated_tokens={} max_messages={} max_tokens={} summary_chars={}".format(
+                    trace_id,
+                    history_window.total_messages,
+                    history_window.valid_messages,
+                    len(history_window.messages),
+                    history_window.dropped_messages,
+                    history_window.repaired_messages,
+                    history_window.estimated_tokens,
+                    max_history,
+                    max_history_tokens,
+                    len(history_window.summary or ""),
+                )
+            )
         model_id = config.get("configurable", {}).get("model_id") or state.get(
             "model_override"
         )
@@ -89,7 +90,7 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
                 bool(state.get("enable_web_search")),
                 len(payload),
                 len(history),
-                len(windowed_history),
+                len(history_window.messages),
             )
         )
 
