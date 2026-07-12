@@ -34,7 +34,8 @@ import { useModels } from '@/lib/hooks/use-models'
 interface SessionManagerProps {
   sessions: BaseChatSession[]
   currentSessionId: string | null
-  onCreateSession: (title: string) => void
+  onCreateSession?: (title: string) => void
+  onStartNewSession?: () => void
   onSelectSession: (sessionId: string) => void
   onUpdateSession: (sessionId: string, title: string) => void
   onDeleteSession: (sessionId: string) => void
@@ -45,6 +46,7 @@ export function SessionManager({
   sessions,
   currentSessionId,
   onCreateSession,
+  onStartNewSession,
   onSelectSession,
   onUpdateSession,
   onDeleteSession,
@@ -69,7 +71,7 @@ export function SessionManager({
   }, [models, customModelLabel])
 
   const handleCreateSession = () => {
-    if (newSessionTitle.trim()) {
+    if (newSessionTitle.trim() && onCreateSession) {
       onCreateSession(newSessionTitle.trim())
       setNewSessionTitle('')
       setIsCreating(false)
@@ -113,7 +115,14 @@ export function SessionManager({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setIsCreating(true)}
+              onClick={() => {
+                if (onStartNewSession) {
+                  onStartNewSession()
+                } else {
+                  setIsCreating(true)
+                }
+              }}
+              aria-label={t.chat.newSession}
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -121,7 +130,7 @@ export function SessionManager({
         </CardHeader>
         <CardContent className="flex-1 p-0 min-h-0">
           <ScrollArea className="h-full px-4">
-            {isCreating && (
+            {isCreating && onCreateSession && (
               <div className="p-3 border rounded-lg mb-3">
                 <Input
                   value={newSessionTitle}
