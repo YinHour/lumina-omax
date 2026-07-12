@@ -3271,3 +3271,36 @@ exit 0
 - 760px 视口下来源正文强制显示，展开/收起控件隐藏，无水平溢出。
 
 未验证项：本轮浏览器实测使用暗色主题；浅色主题未单独重新截图，组件使用现有语义颜色与表面 token。
+
+---
+
+## 39. 模型 Provision 日志凭据脱敏（2026-07-12）
+
+### 39.1 问题与决策
+
+- `provision_langchain_model()` 原来把 Esperanto `LanguageModel` 对象直接写入 DEBUG 日志；OpenAI-compatible 模型的对象表示包含 `api_key` 和完整配置，因此普通 `make start-all` 终端输出会泄露模型凭据。
+- 模型类型不匹配时的 `ConfigurationError` 也直接插入模型对象，存在同类潜在泄露路径。
+- 日志改为只记录模型对象类型和不含凭据的选择原因，例如显式 `model_id` 或默认模型类型；类型不匹配异常只报告实际 Python 类型，不再序列化模型对象。
+- 已出现在历史终端或附件中的密钥视为已泄露，必须由管理员在供应商侧轮换；代码脱敏不能使旧密钥重新安全。
+
+### 39.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/ai/provision.py` | 移除日志和类型错误中的模型对象序列化，只保留安全元数据 |
+| `tests/test_model_provision_logging.py` | **新增** — 使用带假密钥的恶意 `repr` 验证 DEBUG 日志与异常文本均不包含凭据 |
+
+### 39.3 验证
+
+```text
+.venv/bin/python -m pytest -q --noconftest tests/test_model_provision_logging.py
+2 passed
+
+uv run ruff check open_notebook/ai/provision.py tests/test_model_provision_logging.py
+All checks passed
+
+git diff --check
+exit 0
+```
+
+未验证项：未使用真实供应商密钥重新触发模型请求；自动测试通过故意泄密的模型 `repr` 覆盖日志和异常路径。
