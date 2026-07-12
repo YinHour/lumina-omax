@@ -20,6 +20,23 @@ from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
 from open_notebook.podcasts.models import EpisodeProfile, SpeakerProfile
 
+
+@pytest.fixture
+def source_delete_dependencies():
+    """Keep source deletion tests isolated from ContentSettings and SurrealDB."""
+    with (
+        patch.object(
+            ContentSettings, "get_instance", new_callable=AsyncMock
+        ) as mock_settings,
+        patch(
+            "open_notebook.domain.notebook.repo_transaction",
+            new_callable=AsyncMock,
+        ),
+    ):
+        mock_settings.return_value = ContentSettings(auto_delete_files="yes")
+        yield
+
+
 # ============================================================================
 # TEST SUITE 1: RecordModel Singleton Pattern
 # ============================================================================
@@ -124,7 +141,7 @@ class TestSourceDomain:
         assert "command" in save_data
 
     @pytest.mark.asyncio
-    async def test_source_delete_cleans_up_file(self):
+    async def test_source_delete_cleans_up_file(self, source_delete_dependencies):
         """Test that deleting a source removes the associated file."""
         # Create a temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp_file:
@@ -164,7 +181,7 @@ class TestSourceDomain:
                 tmp_path.unlink()
 
     @pytest.mark.asyncio
-    async def test_source_delete_without_file(self):
+    async def test_source_delete_without_file(self, source_delete_dependencies):
         """Test that deleting a source without a file doesn't fail."""
         # Create source without file asset
         source = Source(id="source:test_no_file", title="Test Source", asset=None)
@@ -181,7 +198,9 @@ class TestSourceDomain:
             mock_delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_source_delete_continues_on_file_error(self):
+    async def test_source_delete_continues_on_file_error(
+        self, source_delete_dependencies
+    ):
         """Test that source deletion continues even if file deletion fails."""
         # Create source with non-existent file
         source = Source(
@@ -200,7 +219,6 @@ class TestSourceDomain:
             result = await source.delete()
             assert result is True
             mock_delete.assert_called_once()
-
 
     @pytest.mark.asyncio
     async def test_vectorize_raises_valueerror_when_no_text(self):
@@ -369,7 +387,7 @@ class TestContentSettings:
     def test_content_settings_defaults(self):
         """Test ContentSettings has proper defaults."""
         settings = ContentSettings()
-    
+
         assert settings.record_id == "open_notebook:content_settings"
         assert settings.default_content_processing_engine_doc in ["auto", "mineru"]
         assert settings.default_embedding_option == "ask"
