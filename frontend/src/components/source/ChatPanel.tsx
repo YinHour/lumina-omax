@@ -25,6 +25,7 @@ import { SessionManager } from '@/components/source/SessionManager'
 import { MessageActions } from '@/components/source/MessageActions'
 import {
   convertReferencesToCompactMarkdown,
+  createCompactReferenceCodeComponent,
   createCompactReferenceLinkComponent,
   ensureNumberedWebBibliographySection
 } from '@/lib/utils/source-references'
@@ -740,6 +741,7 @@ function AIMessageContent({
 
   // Create custom link component for compact references
   const LinkComponent = createCompactReferenceLinkComponent(onReferenceClick)
+  const CodeComponent = createCompactReferenceCodeComponent(onReferenceClick)
 
   return (
     <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
@@ -748,6 +750,7 @@ function AIMessageContent({
         rehypePlugins={[rehypeRaw]}
         components={{
           a: LinkComponent,
+          code: CodeComponent,
           p: ({ children }) => <p className="mb-4">{children}</p>,
           h1: ({ children }) => <h1 className="mb-4 mt-6">{children}</h1>,
           h2: ({ children }) => <h2 className="mb-3 mt-5">{children}</h2>,

@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 
+const { openModalMock } = vi.hoisted(() => ({
+  openModalMock: vi.fn(),
+}))
+
+vi.mock('@/lib/hooks/use-modal-manager', () => ({
+  useModalManager: () => ({ openModal: openModalMock }),
+}))
+
 vi.mock('@/components/source/MessageActions', () => ({
   MessageActions: () => <div data-testid="message-actions" />,
 }))
@@ -11,6 +19,7 @@ vi.mock('@/components/source/MessageActions', () => ({
 describe('ChatPanel stop button', () => {
   beforeEach(() => {
     localStorage.clear()
+    openModalMock.mockClear()
   })
 
   const baseProps = {
@@ -308,6 +317,28 @@ describe('ChatPanel stop button', () => {
     )
 
     expect(container.querySelector('[data-slot="scroll-area-viewport"]')).toHaveClass('[&>div]:!block')
+  })
+
+  it('turns escaped inline workspace citations into source links', () => {
+    render(
+      <ChatPanel
+        {...baseProps}
+        messages={[
+          {
+            id: 'ai-reference',
+            type: 'ai',
+            content: 'Evidence comes from \\[1\\]\\(#ref-source-abc123\\) and ``[2](#ref-source-def456)``.',
+          },
+        ]}
+      />
+    )
+
+    expect(screen.queryByText('[1](#ref-source-abc123)')).not.toBeInTheDocument()
+    expect(screen.queryByText('[2](#ref-source-def456)')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '1' }))
+    expect(openModalMock).toHaveBeenCalledWith('source', 'abc123')
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
+    expect(openModalMock).toHaveBeenCalledWith('source', 'def456')
   })
 
   it('disables suggested questions while streaming', () => {

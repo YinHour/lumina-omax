@@ -3130,3 +3130,24 @@ All checks passed
 ---
 
 > 最后更新：2026-07-12 | 新增 §36。修复 Research 工具状态注入与流式/持久化消息重复，并增加有界工具调用和供应商无关的终局证据综合。
+
+### 36.5 正文工作区引用可点击（2026-07-12）
+
+- 部分模型会把内部引用输出为转义 Markdown，例如 `\[1\]\(#ref-source-uuid\)`，或用反引号包成行内代码；ReactMarkdown 会将其显示为普通文字/代码，虽然回答末尾由前端生成的“工作区引用”仍可点击。
+- 引用预处理会规范化指向 `#ref-source-*`、`#ref-note-*`、`#ref-source_insight-*` 的转义或代码包裹内部链接；Markdown code 渲染器也会把内容完全等于内部引用链接的代码节点转为引用按钮。正文编号和末尾工作区引用统一调用现有 `SourceDialog` / Note / Insight 模态框，不改变普通代码和外部链接行为。
+- `ChatPanel` 回归测试覆盖转义正文引用的渲染与点击，确认 `[1]` 点击后以完整 ID 打开对应来源。
+
+验证：
+
+```text
+cd frontend && npm test -- --run
+168 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+```
+
+登录实测刷新原 Research 会话后，页面中 `[1](#ref-source-4qzydafkvwagspw0g9j7)` 字面文本从 2 处降为 0；点击正文编号 `[1]` 成功打开“测试查重-固井用油基泥浆冲洗剂OCW-2L-2024版”来源详情，并显示解析后的正文内容。
