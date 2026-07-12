@@ -54,7 +54,9 @@ describe('ChatPanel stop button', () => {
     )
 
     expect(screen.getByRole('tab', { name: 'Quick Chat' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Quick Chat' })).toHaveClass('whitespace-nowrap')
     expect(screen.getByRole('tab', { name: 'Research Agent' })).toHaveAttribute('data-state', 'inactive')
+    expect(screen.getByRole('tab', { name: 'Research Agent' })).toHaveClass('whitespace-nowrap')
     const optionsRow = screen.getByTestId('chat-options-row')
     expect(within(optionsRow).getAllByRole('checkbox')).toHaveLength(1)
     expect(within(optionsRow).getByRole('checkbox', { name: 'Web Search' })).not.toBeChecked()

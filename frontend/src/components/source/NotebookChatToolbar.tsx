@@ -87,14 +87,14 @@ export function NotebookChatToolbar({
       <Tabs
         value={mode}
         onValueChange={value => onModeChange(value as NotebookChatMode)}
-        className="min-w-0 gap-0"
+        className="shrink-0 gap-0"
       >
         <TabsList className="h-9">
-          <TabsTrigger value="quick" disabled={disabled} className="h-7 px-3 text-xs">
+          <TabsTrigger value="quick" disabled={disabled} className="h-7 whitespace-nowrap px-3 text-xs">
             <MessageCircle />
             {t.chat.quickChat}
           </TabsTrigger>
-          <TabsTrigger value="research" disabled={disabled} className="h-7 px-3 text-xs">
+          <TabsTrigger value="research" disabled={disabled} className="h-7 whitespace-nowrap px-3 text-xs">
             <FlaskConical />
             {t.chat.researchAgent}
           </TabsTrigger>

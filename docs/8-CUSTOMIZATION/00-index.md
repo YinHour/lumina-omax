@@ -3151,3 +3151,11 @@ exit 0
 ```
 
 登录实测刷新原 Research 会话后，页面中 `[1](#ref-source-4qzydafkvwagspw0g9j7)` 字面文本从 2 处降为 0；点击正文编号 `[1]` 成功打开“测试查重-固井用油基泥浆冲洗剂OCW-2L-2024版”来源详情，并显示解析后的正文内容。
+
+### 36.6 对话模式 Tab 单行显示（2026-07-12）
+
+- Quick/Research 模式切换器不再参与工具栏剩余空间压缩，两个 Tab 标签统一使用 `whitespace-nowrap`。
+- 窄宽度下优先由工具栏现有 `flex-wrap` 将右侧会话操作换行，避免“科研 Agent”被拆成两行并改变 Tab 高度。
+- `ChatPanel` 组件测试增加两个模式 Tab 的单行样式断言。
+- 完整前端验证：`npm test -- --run` 为 `168 passed | 9 skipped`；`npm run lint` 为 0 error、4 个既有 warning；`npm run build` 通过。
+- 640px 浏览器视口实测：Research Tab 的 `white-space` 为 `nowrap`，高度 28px、内容滚动高度 26px，保持单行且没有纵向溢出。
