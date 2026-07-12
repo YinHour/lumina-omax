@@ -31,6 +31,75 @@ describe('useAsk', () => {
     useAskStore.getState().clearHistory()
   })
 
+  it('sets local progress before reading the first server event', async () => {
+    const stream = {
+      getReader: () => {
+        let step = 0
+        return {
+          read: vi.fn(async () => {
+            step += 1
+            if (step === 1) {
+              expect(setProgressSpy).toHaveBeenCalledWith({
+                stage: 'received',
+                elapsedSeconds: 0,
+                terminal: null,
+              })
+            }
+            return { done: true, value: undefined }
+          }),
+        }
+      },
+    } as unknown as ReadableStream<Uint8Array>
+    const setProgressSpy = vi.spyOn(useAskStore.getState(), 'setProgress')
+    searchApiMock.askKnowledgeBase.mockResolvedValue(stream)
+
+    const { result } = renderHook(() => useAsk())
+
+    await act(async () => {
+      await result.current.sendAsk('Hello?', models)
+    })
+
+    setProgressSpy.mockRestore()
+  })
+
+  it('updates Ask progress from status and heartbeat events', async () => {
+    const stream = {
+      getReader: () => {
+        let step = 0
+        return {
+          read: vi.fn(async () => {
+            step += 1
+            if (step === 1) {
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"status","stage":"planning","elapsed_ms":1200}\n\n' +
+                  'data: {"type":"heartbeat","stage":"planning","elapsed_ms":5000}\n\n' +
+                  'data: {"type":"status","stage":"searching","elapsed_ms":6000}\n\n' +
+                  'data: {"type":"final_answer","content":"final"}\n\n' +
+                  'data: {"type":"complete","final_answer":"final"}\n\n',
+                ),
+              }
+            }
+            return { done: true, value: undefined }
+          }),
+        }
+      },
+    } as unknown as ReadableStream<Uint8Array>
+    searchApiMock.askKnowledgeBase.mockResolvedValue(stream)
+
+    const { result } = renderHook(() => useAsk())
+
+    await act(async () => {
+      await result.current.sendAsk('Hello?', models)
+    })
+
+    expect(result.current.finalAnswer).toBe('final')
+    expect(result.current.progress?.stage).toBe('writing')
+    expect(result.current.progress?.terminal).toBe('complete')
+    expect(result.current.progress?.elapsedSeconds).toBe(6)
+  })
+
   it('surfaces SSE llm_timeout as errorBubble (not a toast)', async () => {
     const { toast } = await import('@/lib/hooks/use-toast')
 

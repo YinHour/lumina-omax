@@ -15,6 +15,15 @@ export interface AskHistoryEntry {
   createdAt: string
 }
 
+export type AskProgressStage = 'received' | 'planning' | 'searching' | 'writing'
+export type AskProgressTerminal = 'complete' | 'error' | 'cancelled' | null
+
+export interface AskProgressState {
+  stage: AskProgressStage
+  elapsedSeconds: number
+  terminal: AskProgressTerminal
+}
+
 interface AskState {
   isStreaming: boolean
   strategy: StrategyData | null
@@ -25,6 +34,7 @@ interface AskState {
   error: string | null
   errorBubble: string | null
   activityElapsedSeconds: number
+  progress: AskProgressState | null
   abortController: AbortController | null
 
   setStreaming: (isStreaming: boolean) => void
@@ -39,6 +49,8 @@ interface AskState {
   setError: (error: string | null) => void
   setErrorBubble: (body: string | null) => void
   setActivityElapsedSeconds: (seconds: number) => void
+  setProgress: (progress: AskProgressState | null) => void
+  updateProgress: (patch: Partial<AskProgressState>) => void
   setAbortController: (controller: AbortController | null) => void
   clearState: () => void
 }
@@ -55,6 +67,7 @@ export const useAskStore = create<AskState>()(
       error: null,
       errorBubble: null,
       activityElapsedSeconds: 0,
+      progress: null,
       abortController: null,
 
       setStreaming: (isStreaming) => set({ isStreaming }),
@@ -68,7 +81,7 @@ export const useAskStore = create<AskState>()(
       addAnswer: (answer) => set((state) => ({
         answers: [...state.answers, answer]
       })),
-      setFinalAnswer: (finalAnswer) => set({ finalAnswer, isStreaming: false }),
+      setFinalAnswer: (finalAnswer) => set({ finalAnswer }),
       setCoverage: (coverage) => set({ coverage }),
       addHistoryEntry: (entry) => set((state) => ({
         history: [
@@ -91,6 +104,7 @@ export const useAskStore = create<AskState>()(
             error: null,
             errorBubble: null,
             activityElapsedSeconds: 0,
+            progress: null,
             isStreaming: false,
           })
         }
@@ -100,6 +114,18 @@ export const useAskStore = create<AskState>()(
       setError: (error) => set({ error, isStreaming: false }),
       setErrorBubble: (errorBubble) => set({ errorBubble, isStreaming: false }),
       setActivityElapsedSeconds: (activityElapsedSeconds) => set({ activityElapsedSeconds }),
+      setProgress: (progress) => set({ progress }),
+      updateProgress: (patch) => set((state) => ({
+        progress: state.progress
+          ? { ...state.progress, ...patch }
+          : patch.stage
+            ? {
+                stage: patch.stage,
+                elapsedSeconds: patch.elapsedSeconds ?? 0,
+                terminal: patch.terminal ?? null,
+              }
+            : null,
+      })),
       setAbortController: (controller) => set({ abortController: controller }),
       clearState: () => {
         const { abortController } = get()
@@ -115,6 +141,7 @@ export const useAskStore = create<AskState>()(
           error: null,
           errorBubble: null,
           activityElapsedSeconds: 0,
+          progress: null,
           abortController: null
         })
       }

@@ -60,6 +60,7 @@ export interface StrategyData {
 
 export interface AskStreamEvent {
   type:
+    | 'status'
     | 'strategy'
     | 'strategy_reasoning_chunk'
     | 'answer'

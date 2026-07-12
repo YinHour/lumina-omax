@@ -3167,3 +3167,54 @@ exit 0
 - 首条消息自动创建会话后立即失败时，消息归属会在创建成功后立刻绑定到新 session，避免首次详情加载被误判为切换会话。
 - 失败轮次仍遵循“保存失败”语义，不写入长期 transcript；主动切换到其他会话或刷新整个页面后不会伪装成已持久化消息。
 - 完整前端验证：`npm test -- --run` 为 `169 passed | 9 skipped`；`npm run lint` 为 0 error、4 个既有 warning；`npm run build` 通过。
+
+---
+
+## 37. 全局 Ask 即时进度反馈（2026-07-12）
+
+### 37.1 问题与决策
+
+- Quick Chat 与 Research Agent 已通过本地即时反馈、结构化阶段事件和读秒面板解决“提交后像没反应”的体验问题；全局 Ask 仍只有较弱的 loading 行和 10 秒级 heartbeat，用户在规划/检索/最终综合阶段容易误判系统卡死。
+- 本轮采用窄范围“方案 B”：不改 Ask 的检索策略、LangGraph 节点、覆盖率统计、历史记录或最终答案生成，只补用户可见进度反馈。
+- 前端提交 Ask 后立即在响应区顶部显示进度面板，不等待 `/api/search/ask` 第一条 SSE；后端同时新增轻量 `status` SSE，阶段为 `received`、`planning`、`searching`、`writing`。
+- `status` 事件只包含阶段和耗时，不暴露 LangGraph、向量检索、prompt、模型推理或来源原文。前端仍从既有 `coverage`、`strategy_reasoning_chunk`、`strategy`、`answer`、`final_answer`、`heartbeat` 事件推断阶段作为兜底。
+- Ask 进度状态是 transient UI state，不写入 `ask-store-state` 持久化；恢复历史记录不会显示过期的“正在处理”状态。
+
+### 37.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `api/routers/search.py` | 新增 `status` SSE 事件和阶段耗时，保留原有 coverage/strategy/answer/final_answer/heartbeat/complete/error 协议 |
+| `frontend/src/lib/stores/ask-store.ts` | 新增 transient Ask progress 状态与更新动作；`final_answer` 不再提前结束 streaming，等待 `complete` |
+| `frontend/src/lib/hooks/use-ask.ts` | 提交瞬间设置 received 进度与本地读秒；消费 status/heartbeat 并从既有 Ask 事件兜底推进阶段 |
+| `frontend/src/components/search/StreamingResponse.tsx` | 响应区顶部新增 Ask 进度面板，显示四步、当前状态和已用秒数 |
+| `frontend/src/app/(dashboard)/search/page.tsx` | 将 Ask progress 传入响应组件 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包新增 Ask 进度文案 |
+| `frontend/src/lib/types/search.ts` | Ask SSE 类型新增 `status` |
+| `tests/test_ask_heartbeat_sse.py`、`frontend/src/lib/hooks/use-ask.test.tsx`、`frontend/src/components/search/StreamingResponse.test.tsx` | 新增/更新 Ask status、progress state、进度面板回归 |
+
+### 37.3 验证
+
+```text
+uv run pytest -q tests/test_ask_heartbeat_sse.py
+4 passed, 1 warning
+
+cd frontend && npm test -- --run src/lib/hooks/use-ask.test.tsx src/components/search/StreamingResponse.test.tsx
+10 passed
+
+uv run ruff check api/routers/search.py tests/test_ask_heartbeat_sse.py
+All checks passed!
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+未验证项：
+
+- 登录后的真实全局 Ask 页面手工检查：提交后响应区 0 秒内显示进度面板；长等待期间阶段和秒数持续可见；最终答案、覆盖率和历史记录仍正常。

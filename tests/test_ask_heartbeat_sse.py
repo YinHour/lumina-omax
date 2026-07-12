@@ -44,8 +44,10 @@ async def test_stream_ask_response_emits_error_code_for_rate_limit(monkeypatch):
             except json.JSONDecodeError:
                 continue
 
-    # Coverage event always fires first (eager yield before producer).
-    assert events[0].get("type") == "coverage"
+    # Status/coverage events always fire before the graph producer can fail.
+    assert events[0].get("type") == "status"
+    assert events[0].get("stage") == "received"
+    assert events[1].get("type") == "coverage"
     error_event = next((e for e in events if e.get("type") == "error"), None)
     assert error_event is not None
     assert error_event.get("error_code") == "rate_limit"
@@ -148,3 +150,74 @@ async def test_stream_ask_response_emits_silence_heartbeats(monkeypatch):
     )
     assert "final_answer" in types
     assert "complete" in types
+
+
+@pytest.mark.asyncio
+async def test_stream_ask_response_emits_user_visible_status_events(monkeypatch):
+    """Ask should expose broad user-readable phases so the UI can show
+    immediate and continuous progress instead of a silent loading state."""
+    from api.routers import search as search_mod
+
+    monkeypatch.setattr(search_mod, "ASK_STREAM_HEARTBEAT_SECONDS", 5.0)
+    monkeypatch.setattr(search_mod, "ASK_LLM_TIMEOUT_SECONDS", 5.0)
+
+    class _Search:
+        term = "slurry compatibility"
+        instructions = "Find compatibility evidence."
+
+    class _Strategy:
+        reasoning = "Need compatibility evidence."
+        searches = [_Search()]
+
+    async def _ask_stream(*, input, config=None, version=None):  # noqa: A002
+        yield {
+            "event": "on_chain_end",
+            "name": "agent",
+            "data": {"output": {"strategy": _Strategy()}},
+        }
+        yield {
+            "event": "on_chain_end",
+            "name": "provide_answer",
+            "data": {
+                "output": {
+                    "retrieved_source_ids": ["source:a"],
+                    "answers": ["evidence"],
+                }
+            },
+        }
+        yield {
+            "event": "on_chain_end",
+            "name": "write_final_answer",
+            "data": {"output": {"final_answer": "final"}},
+        }
+
+    fake_graph = MagicMock()
+    fake_graph.astream_events = _ask_stream
+    monkeypatch.setattr(search_mod, "ask_graph", fake_graph)
+
+    strategy_model = MagicMock(id="model:strategy")
+    answer_model = MagicMock(id="model:answer")
+    final_answer_model = MagicMock(id="model:final")
+
+    events: list[dict] = []
+    async for raw in search_mod.stream_ask_response(
+        question="placeholder",
+        strategy_model=strategy_model,
+        answer_model=answer_model,
+        final_answer_model=final_answer_model,
+        corpus_stats={"total_sources": 3, "embedded_sources": 2},
+    ):
+        if raw.startswith("data: "):
+            events.append(json.loads(raw.removeprefix("data: ").strip()))
+
+    status_stages = [
+        event.get("stage")
+        for event in events
+        if event.get("type") == "status"
+    ]
+    assert status_stages == ["received", "planning", "searching", "writing"]
+    assert all(
+        isinstance(event.get("elapsed_ms"), int)
+        for event in events
+        if event.get("type") == "status"
+    )
