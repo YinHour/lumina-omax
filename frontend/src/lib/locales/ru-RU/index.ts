@@ -322,6 +322,9 @@ export const ruRU = {
     details: "Детали",
     detailsTitle: "Детали источника",
     content: "Содержимое",
+    sourceContent: "Содержимое источника",
+    collapseSourceContent: "Свернуть содержимое источника",
+    expandSourceContent: "Развернуть содержимое источника",
     metadata: "Метаданные",
     type: {
       link: "Ссылка",

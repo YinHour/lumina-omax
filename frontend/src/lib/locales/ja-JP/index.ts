@@ -322,6 +322,9 @@ export const jaJP = {
     details: "詳細",
     detailsTitle: "ソース詳細",
     content: "コンテンツ",
+    sourceContent: "ソースの内容",
+    collapseSourceContent: "ソースの内容を折りたたむ",
+    expandSourceContent: "ソースの内容を展開する",
     metadata: "メタデータ",
     type: {
       link: "リンク",

@@ -388,6 +388,9 @@ export const zhCN = {
     details: "详情",
     detailsTitle: "来源详情",
     content: "内容",
+    sourceContent: "来源内容",
+    collapseSourceContent: "收起来源内容",
+    expandSourceContent: "展开来源内容",
     metadata: "元数据",
     type: {
       link: "链接",

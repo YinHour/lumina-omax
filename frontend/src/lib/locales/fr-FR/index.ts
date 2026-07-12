@@ -322,6 +322,9 @@ export const frFR = {
     details: "Détails",
     detailsTitle: "Détails de la source",
     content: "Contenu",
+    sourceContent: "Contenu de la source",
+    collapseSourceContent: "Réduire le contenu de la source",
+    expandSourceContent: "Développer le contenu de la source",
     metadata: "Métadonnées",
     type: {
       link: "Lien",

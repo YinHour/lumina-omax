@@ -322,6 +322,9 @@ export const zhTW = {
     details: "詳情",
     detailsTitle: "來源詳情",
     content: "內容",
+    sourceContent: "來源內容",
+    collapseSourceContent: "收合來源內容",
+    expandSourceContent: "展開來源內容",
     metadata: "元資料",
     type: {
       link: "連結",
