@@ -485,6 +485,18 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     }
     setMessages(prev => [...prev, userMessage])
 
+    const preserveFailedUserMessage = () => {
+      const failedUserMessageId = `failed-${userMessageId}`
+      setMessages(previous => previous.map(item => (
+        item.id === userMessageId
+          ? { ...item, id: failedUserMessageId }
+          : item
+      )))
+      setActivityMessageId(previous => (
+        previous === userMessageId ? failedUserMessageId : previous
+      ))
+    }
+
     let abortController: AbortController | null = null
     try {
       let sessionId = currentSessionId
@@ -503,6 +515,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             model_override: pendingModelOverride ?? undefined
           })
           sessionId = newSession.id
+          messageSessionIdRef.current = sessionId
           setSessionIdForMode(chatMode, sessionId)
           // Clear pending model override now that it's applied to the session
           setPendingModelOverrides(previous => ({ ...previous, [chatMode]: null }))
@@ -670,6 +683,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             errorGeneric: t.chat.errorGeneric,
           })
 
+          preserveFailedUserMessage()
+
           if (!aiMessage) {
             aiMessage = {
               id: `ai-error-${Date.now()}`,
@@ -679,10 +694,17 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             }
             setMessages(prev => [...prev, aiMessage!])
           } else {
-            aiMessage.content += `\n\n${bubbleBody}`
+            const previousAiMessageId = aiMessage.id
+            aiMessage = {
+              ...aiMessage,
+              id: previousAiMessageId.startsWith('ai-error-')
+                ? previousAiMessageId
+                : `ai-error-${Date.now()}`,
+              content: `${aiMessage.content}\n\n${bubbleBody}`,
+            }
             setMessages(prev =>
-              prev.map(msg => msg.id === aiMessage!.id
-                ? { ...msg, content: aiMessage!.content }
+              prev.map(msg => msg.id === previousAiMessageId
+                ? aiMessage!
                 : msg
               )
             )

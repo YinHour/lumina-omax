@@ -3159,3 +3159,11 @@ exit 0
 - `ChatPanel` 组件测试增加两个模式 Tab 的单行样式断言。
 - 完整前端验证：`npm test -- --run` 为 `168 passed | 9 skipped`；`npm run lint` 为 0 error、4 个既有 warning；`npm run build` 通过。
 - 640px 浏览器视口实测：Research Tab 的 `white-space` 为 `nowrap`，高度 28px、内容滚动高度 26px，保持单行且没有纵向溢出。
+
+### 36.7 切换模型保留本地失败轮次（2026-07-12）
+
+- 供应商通过 SSE 返回 error 时，该轮 human / error AI 不会写入成功 transcript；此前用户问题仍使用 `temp-*`，切换模型触发会话详情刷新后会被瞬态消息归并逻辑删除，活动面板也因失去 human 锚点而消失。
+- SSE error 到达后，用户问题改标为当前会话的本地失败消息；若已有部分 AI 输出，也统一改标为 `ai-error-*`。同一会话因模型更新或列表同步而 refetch 时保留问题、错误气泡和执行步骤。
+- 首条消息自动创建会话后立即失败时，消息归属会在创建成功后立刻绑定到新 session，避免首次详情加载被误判为切换会话。
+- 失败轮次仍遵循“保存失败”语义，不写入长期 transcript；主动切换到其他会话或刷新整个页面后不会伪装成已持久化消息。
+- 完整前端验证：`npm test -- --run` 为 `169 passed | 9 skipped`；`npm run lint` 为 0 error、4 个既有 warning；`npm run build` 通过。

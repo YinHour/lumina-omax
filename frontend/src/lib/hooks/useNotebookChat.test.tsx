@@ -1108,6 +1108,7 @@ describe('useNotebookChat', () => {
     // New AI bubble carries the warning prefix + localized body + diagnostic line.
     const aiMessages = result.current.messages.filter(m => m.type === 'ai')
     expect(aiMessages.length).toBe(1)
+    expect(aiMessages[0].id).toMatch(/^ai-error-/)
     const aiContent = aiMessages[0].content
     expect(aiContent).toContain('⚠️')
     expect(aiContent.toLowerCase()).toContain('timed out')
@@ -1119,6 +1120,72 @@ describe('useNotebookChat', () => {
     expect(result.current.activityStatus).toBeNull()
     expect(result.current.activityElapsedSeconds).toBe(0)
     expect(result.current.isSending).toBe(false)
+    expect(result.current.activityTerminal).toBe('error')
+    expect(result.current.activitySteps.some(step => step.status === 'error')).toBe(true)
+  })
+
+  it('keeps a failed local turn and its activity after changing the session model', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:failed-turn',
+      title: 'Failed turn',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-12T00:00:00Z',
+      updated: '2026-07-12T00:00:00Z',
+    })
+    chatApiMock.getSession.mockResolvedValue({
+      id: 'session:failed-turn',
+      title: 'Failed turn',
+      notebook_id: 'notebook:1',
+      mode: 'quick',
+      created: '2026-07-12T00:00:00Z',
+      updated: '2026-07-12T00:00:00Z',
+      messages: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    chatApiMock.sendMessage.mockResolvedValue(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(
+          'data: {"type":"error","error_code":"external_service","message":"Content Exists Risk"}\n\n',
+        ))
+        controller.close()
+      },
+    }))
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('Question rejected by provider')
+    })
+    const failedHuman = result.current.messages.find(message => message.type === 'human')
+    expect(failedHuman).toBeDefined()
+    const getSessionCallsBeforeModelChange = chatApiMock.getSession.mock.calls.length
+
+    act(() => result.current.setModelOverride('model:replacement'))
+    await waitFor(() => expect(chatApiMock.updateSession).toHaveBeenCalledWith(
+      'session:failed-turn',
+      { model_override: 'model:replacement' },
+    ))
+    await waitFor(() => {
+      expect(chatApiMock.getSession.mock.calls.length).toBeGreaterThan(getSessionCallsBeforeModelChange)
+    })
+
+    expect(result.current.messages.some(message => (
+      message.type === 'human' && message.content === 'Question rejected by provider'
+    ))).toBe(true)
+    expect(result.current.messages.some(message => (
+      message.type === 'ai' && message.content.includes('Content Exists Risk')
+    ))).toBe(true)
+    expect(result.current.activityMessageId).toBe(failedHuman?.id)
     expect(result.current.activityTerminal).toBe('error')
     expect(result.current.activitySteps.some(step => step.status === 'error')).toBe(true)
   })
@@ -1175,6 +1242,7 @@ describe('useNotebookChat', () => {
     // Exactly one AI bubble — the timeout notice was appended, not a new bubble.
     const aiMessages = result.current.messages.filter(m => m.type === 'ai')
     expect(aiMessages.length).toBe(1)
+    expect(aiMessages[0].id).toMatch(/^ai-error-/)
     const aiContent = aiMessages[0].content
     expect(aiContent).toContain('partial answer')
     expect(aiContent).toContain('⚠️')
