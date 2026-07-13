@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.8] - 2026-07-13
+
+### Added
+- Notebook Research Agent with scoped evidence tools and explicit cross-notebook discovery
+- Independent Quick Chat and Research Agent tabs, sessions, checkpoints, and conversation management
+- Immediate progress feedback for notebook chat and global Ask
+- Collapsible source content panel in source chat
+
+### Changed
+- Long chat transcripts are persisted and paginated, with complete Markdown export
+- Version displayed to users is now 2.0.8
+
+### Fixed
+- Research Agent tool execution, final evidence synthesis, and duplicate transcript handling
+- Knowledge Graph searches now retain entities that have no relationship edges
+- Model provisioning logs no longer serialize credential-bearing model objects
+
 ## [1.9.6] - 2026-06-08
 
 ### Added

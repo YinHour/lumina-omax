@@ -3337,3 +3337,40 @@ exit 0
 ```
 
 未验证项：未直接读取本机 SurrealDB 中触发日志的 KG 实体和关系记录；回归测试使用与日志堆栈一致的 `null` traversal projection 复现并验证修复。
+
+---
+
+## 41. 用户显示版本更新为 2.0.8（2026-07-13）
+
+### 41.1 决策
+
+- 项目版本从 `1.9.6` 更新为 `2.0.8`，并同步 editable package 的锁文件版本。
+- `/api/config` 从项目元数据读取当前版本；前端登录页继续使用该接口返回值，因此服务重启后用户可见版本将显示为 `2.0.8`。
+- `CHANGELOG.md` 新增 `2.0.8` 发布条目，概括 PR #33 至 #40 中用户可感知的 Research Agent、对话会话、执行反馈、来源栏折叠和稳定性改进；历史 `1.9.6` 条目保持不变。
+- 本次不修改依赖版本、数据库 schema 或部署拓扑。
+
+### 41.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `pyproject.toml` | 项目版本更新为 `2.0.8` |
+| `uv.lock` | `open-notebook` editable package 版本同步为 `2.0.8` |
+| `CHANGELOG.md` | 新增 `2.0.8` 发布摘要 |
+
+### 41.3 验证
+
+```text
+UV_CACHE_DIR=/tmp/lumina-uv-cache uv lock --check
+Resolved 341 packages in 1ms
+
+.venv/bin/python -c "from api.routers.config import get_version; version = get_version(); print(version); assert version == '2.0.8'"
+2.0.8
+
+curl -fsS --max-time 5 http://127.0.0.1:5056/api/config
+{"version":"2.0.8","latestVersion":null,"hasUpdate":false,"dbStatus":"online"}
+
+git diff --check
+exit 0
+```
+
+未验证项：未重新构建 Docker 镜像或发布版本标签；本轮范围是仓库版本、锁文件、用户显示链路和发布记录。
