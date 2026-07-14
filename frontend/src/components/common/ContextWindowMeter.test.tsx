@@ -3,20 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { ContextWindowMeter } from './ContextWindowMeter'
 
 describe('ContextWindowMeter', () => {
-  it('shows model, context usage, percentage, and progress for quick chat', () => {
+  it('does not render a separate meter for quick chat', () => {
     render(
       <ContextWindowMeter
         mode="quick"
         modelName="deepseek-v4-pro"
-        usedTokens={93_400}
-        contextWindowTokens={1_000_000}
       />
     )
 
-    expect(screen.getByText('deepseek-v4-pro')).toBeInTheDocument()
-    expect(screen.getByText(/93\.4K \/ 1M/)).toBeInTheDocument()
-    expect(screen.getByText(/9%/)).toBeInTheDocument()
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '9.34')
+    expect(screen.queryByTestId('context-window-meter')).not.toBeInTheDocument()
   })
 
   it('does not show a misleading fixed percentage for research mode', () => {
@@ -24,8 +19,6 @@ describe('ContextWindowMeter', () => {
       <ContextWindowMeter
         mode="research"
         modelName="deepseek-v4-pro"
-        usedTokens={93_400}
-        contextWindowTokens={1_000_000}
       />
     )
 

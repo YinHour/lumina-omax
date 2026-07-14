@@ -56,7 +56,6 @@ interface NotebookContextStats {
   sourcesFull: number
   notesCount: number
   tokenCount?: number
-  charCount?: number
 }
 
 interface ContextWindowStats {
@@ -646,17 +645,16 @@ export function ChatPanel({
             sourcesFull={notebookContextStats.sourcesFull}
             notesCount={notebookContextStats.notesCount}
             tokenCount={notebookContextStats.tokenCount}
-            charCount={notebookContextStats.charCount}
+            usedTokens={contextWindowStats?.usedTokens}
+            contextWindowTokens={contextWindowStats?.contextWindowTokens}
+            estimated={contextWindowStats?.estimated}
           />
         )}
 
-        {contextWindowStats && (
+        {contextWindowStats && chatMode === 'research' && (
           <ContextWindowMeter
             mode={chatMode}
             modelName={contextWindowStats.modelName}
-            usedTokens={contextWindowStats.usedTokens}
-            contextWindowTokens={contextWindowStats.contextWindowTokens}
-            estimated={contextWindowStats.estimated}
           />
         )}
 

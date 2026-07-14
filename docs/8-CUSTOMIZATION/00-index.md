@@ -3426,7 +3426,7 @@ exit 0
 
 ### 43.1 问题与决策
 
-- 原有笔记本快速对话只统计用户勾选的来源/笔记字符与词元，不能回答“本轮实际发送给模型的上下文占模型窗口多少”。该来源统计继续保留；新增的上下文窗口条带是独立指标，不改变上下文选择或截断策略。
+- 原有笔记本快速对话只统计用户勾选的来源/笔记字符与词元，不能回答“本轮实际发送给模型的上下文占模型窗口多少”。该来源统计继续保留；新增的上下文窗口用量是独立指标，不改变上下文选择或截断策略。Quick 展示已在第 45 节合并为单行摘要。
 - Quick 模式在模型调用前，对最终模型 payload（系统提示、压缩后的历史消息、当前问题和已选择上下文）进行词元估算，并通过 `context_usage` SSE 返回实际选中的模型、估算输入词元和窗口上限。该值明确标为估算值，不冒充供应商账单中的精确 token usage。
 - Research Agent 采用按需工具检索，没有一个可在提交时稳定定义的固定上下文分母，因此只显示模型和“按需检索上下文”，不显示虚假的百分比。
 - 模型窗口上限优先使用管理员在 API Keys 模型列表中维护的正整数覆盖值；仅内置已确认的 `deepseek/deepseek-v4-pro = 1,000,000`。未知模型不猜测上限，界面显示“上限未知”。
@@ -3441,7 +3441,7 @@ exit 0
 | `open_notebook/graphs/chat.py`、`api/routers/chat.py` | 模型调用前发出经过白名单过滤的 `context_usage` 自定义事件/SSE |
 | `api/models.py`、`api/routers/models.py` | 模型 API 返回有效窗口与来源；新增管理员专用 PATCH 更新入口 |
 | `frontend/src/lib/hooks/useNotebookChat.ts`、`use-models.ts`、`api/models.ts` | 消费上下文 SSE，并通过相对 API 更新模型窗口配置 |
-| `frontend/src/components/common/ContextWindowMeter.tsx`、`ChatPanel.tsx`、`ChatColumn.tsx` | Quick 展示估算用量/窗口/百分比，Research 展示按需检索语义 |
+| `frontend/src/components/common/ContextIndicator.tsx`、`ContextWindowMeter.tsx`、`ChatPanel.tsx`、`ChatColumn.tsx` | Quick 在单行摘要中展示估算用量/窗口/百分比，Research 展示按需检索语义 |
 | `frontend/src/app/(dashboard)/settings/api-keys/page.tsx` | 管理员在语言模型徽标旁维护上下文窗口覆盖值 |
 | `frontend/src/lib/locales/*/index.ts` | 9 个语言包新增上下文窗口和配置文案 |
 | `tests/test_model_context.py`、`test_message_history.py`、`test_chat_heartbeat_sse.py` 及对应前端测试 | 覆盖模型选择、窗口来源、SSE 白名单、Hook 状态和界面语义 |
@@ -3534,3 +3534,49 @@ exit 0
 ```
 
 未验证项：浏览器控制运行时初始化报错，因此未完成登录态 Dashboard 的自动截图和移动端视觉验收；Next.js 生产构建与组件测试已覆盖路由、角色控件、汇总、工作流标签和表格。`tests/test_integration_e2e.py` 固定连接 `localhost:5055` 且不携带当前认证，本机服务为 `5056`，完整 `uv run pytest tests/ -q` 因此有 18 个既有 E2E 连接失败；与 CI 一致的 `-m 'not e2e'` 范围全部通过。未调用真实供应商接口专门制造一笔测试账单，但本机现有真实 AI 操作已在管理员聚合 API 中形成迁移后的审计记录。
+
+---
+
+## 45. 笔记本 Quick 上下文摘要单行化（2026-07-14）
+
+### 45.1 问题与决策
+
+- 原 Quick 对话输入区上方先显示来源/笔记词元与字符数，再用独立条带显示模型、上下文窗口用量、整行进度条和更新提示，占用三行高度且信息顺序与用户阅读顺序不一致。
+- Quick 模式合并为一行三列等宽布局：左侧展示上下文选择数量，中间展示已选来源/笔记词元，右侧展示最终模型 payload 的估算输入词元、窗口上限、紧凑进度条和百分比；三列分别左对齐、居中和右对齐。
+- 左侧保持原统计口径，不合并成含义模糊的总数：灯泡为以 `insights` 模式选入的来源数，文档为以 `full` 模式选入的来源数，便签为以 `full` 模式选入的笔记数。该数值不是回答中实际生成的引用数。
+- 中间不再显示字符数，但 `useNotebookChat` 仍保留字符统计，不改变 `/chat/context` 数据契约和上下文构建行为。
+- 右侧移除重复的模型名称和单独的“下次提问后更新”提示；首次提问前显示 `-- / 上限`，收到 `context_usage` 后以 `≈` 标明估算值并显示进度。模型选择器仍是模型名称的单一可见入口。
+- Research 模式继续单独显示模型与“按需检索上下文”，不展示固定百分比。未新增生产依赖、API 或部署服务，所有可见文案复用既有 i18n 键。
+
+### 45.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/components/common/ContextIndicator.tsx` | Quick 三列摘要、三类计数、来源词元、估算窗口用量与紧凑进度条 |
+| `frontend/src/components/common/ContextWindowMeter.tsx` | 收窄为 Research 按需上下文提示，不再为 Quick 生成第二条带 |
+| `frontend/src/components/source/ChatPanel.tsx`、`frontend/src/app/(dashboard)/notebooks/components/ChatColumn.tsx` | 合并 Quick 展示数据并停止向可见摘要传递字符数 |
+| `frontend/src/components/common/ContextIndicator.test.tsx`、`ContextWindowMeter.test.tsx` | 覆盖三栏信息顺序、首次提问前状态、估算进度和 Research 语义 |
+
+### 45.3 验证
+
+```text
+cd frontend && npm test -- --run src/components/common/ContextIndicator.test.tsx src/components/common/ContextWindowMeter.test.tsx 'src/app/(dashboard)/notebooks/components/ChatColumn.test.tsx'
+6 passed
+
+cd frontend && npx eslint src/components/common/ContextIndicator.tsx src/components/common/ContextIndicator.test.tsx src/components/common/ContextWindowMeter.tsx src/components/common/ContextWindowMeter.test.tsx src/components/source/ChatPanel.tsx 'src/app/(dashboard)/notebooks/components/ChatColumn.tsx' 'src/app/(dashboard)/notebooks/components/ChatColumn.test.tsx'
+exit 0
+
+cd frontend && npm test
+191 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 生产构建与 TypeScript 检查通过
+
+git diff --check
+exit 0
+```
+
+未验证项：应用内浏览器控制运行时初始化失败，尚未完成真实登录态笔记本的桌面端和移动端截图验收；本地 Next.js `3001` 与 API `5056` 服务均可访问。未发送新的真实模型请求，右侧数据链路沿用第 43 节已验证的 `context_usage` SSE。
