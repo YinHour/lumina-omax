@@ -3374,3 +3374,48 @@ exit 0
 ```
 
 未验证项：未重新构建 Docker 镜像或发布版本标签；本轮范围是仓库版本、锁文件、用户显示链路和发布记录。
+
+---
+
+## 42. AI 内容公式与 Insight 引用渲染（2026-07-14）
+
+### 42.1 问题与决策
+
+- 用户反馈中的 `$C_3A$` 与 `$$...$$` 原来只按普通 Markdown 文本展示。前端现统一接入 `remark-math`、`rehype-katex` 与 `katex`，覆盖笔记本/来源聊天、全局 Ask、Insight 预览、Transformation 输出和来源正文；仅模型输出面板执行单行块公式规范化。
+- 模型常把块公式输出为单行 `$$formula$$`，而标准 Markdown 数学语法会把这种形态按行内公式处理。新增预处理只把非代码内容中的单行双美元公式规范化为块级语法；已经正确的多行块公式、行内代码、未闭合反引号和 fenced code block 保持原样。来源正文不执行该预处理，避免改变非模型原始资料。
+- 模型输出 `[insight:<id>]` 时，引用解析器把 `insight` 作为 `source_insight` 的兼容别名。内部链接、模态框和已有 `source_insight` 协议不变，避免历史消息与现有 URL 行为分叉。
+- 现有 `rehypeRaw` HTML 表格渲染保持不变，并增加全局 Ask 回归测试，确认公式插件接入没有破坏原始 HTML 表格。
+
+### 42.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/package.json`、`frontend/package-lock.json` | 新增 Markdown 数学与 KaTeX 生产依赖 |
+| `frontend/src/lib/markdown/plugins.ts`、`normalize-math.ts` | 共享 Markdown 插件配置；逐行规范化模型常见的单行块公式并保护完整/未闭合代码内容 |
+| `frontend/src/lib/utils/source-references.tsx` | 接受 `insight:` 别名并规范化到 `source_insight` |
+| `frontend/src/components/source/ChatPanel.tsx`、`SourceInsightDialog.tsx`、`SourceDetailContent.tsx` | 聊天、Insight 与来源内容接入统一公式插件；仅模型输出执行单行块公式规范化 |
+| `frontend/src/components/search/StreamingResponse.tsx` | Ask 分阶段答案、最终答案与错误气泡接入统一公式渲染 |
+| `frontend/src/app/(dashboard)/transformations/components/TransformationPlayground.tsx` | Transformation 输出接入统一公式渲染 |
+| `frontend/src/app/layout.tsx` | 全局加载 KaTeX 样式 |
+| `frontend/src/lib/markdown/normalize-math.test.ts`、`frontend/src/lib/utils/source-references.test.ts`、`frontend/src/components/source/ChatPanel.test.tsx`、`frontend/src/components/search/StreamingResponse.test.tsx` | 覆盖行内/块级公式、代码保护、Insight 导航与 HTML 表格回归 |
+
+### 42.3 验证
+
+```text
+cd frontend && npm test -- --run src/lib/markdown/normalize-math.test.ts src/lib/utils/source-references.test.ts src/components/source/ChatPanel.test.tsx src/components/search/StreamingResponse.test.tsx
+40 passed
+
+cd frontend && npm test -- --run src/components/source/SourceDetailContent.test.tsx
+7 passed
+
+cd frontend && npm test
+184 passed | 9 skipped
+
+cd frontend && npx eslint src/lib/markdown/plugins.ts src/lib/markdown/normalize-math.ts src/lib/markdown/normalize-math.test.ts src/lib/utils/source-references.tsx src/lib/utils/source-references.test.ts src/components/source/ChatPanel.tsx src/components/source/ChatPanel.test.tsx src/components/search/StreamingResponse.tsx src/components/search/StreamingResponse.test.tsx src/components/source/SourceInsightDialog.tsx 'src/app/(dashboard)/transformations/components/TransformationPlayground.tsx' src/components/source/SourceDetailContent.tsx src/app/layout.tsx
+exit 0（2 个 SourceDetailContent 既有 no-img-element warning）
+
+cd frontend && npm run build
+exit 0
+```
+
+未验证项：尚未在真实登录态笔记本中使用客户原始回答进行浏览器视觉验收；自动测试已验证 KaTeX DOM、块级公式、Insight 点击和原始 HTML 表格。`npm install` 报告当前依赖树存在 15 个 audit findings，本轮未执行自动升级，避免引入无关依赖变更。

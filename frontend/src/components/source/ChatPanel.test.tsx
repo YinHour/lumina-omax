@@ -343,6 +343,38 @@ describe('ChatPanel stop button', () => {
     expect(openModalMock).toHaveBeenCalledWith('source', 'def456')
   })
 
+  it('renders inline and block LaTeX in AI messages', () => {
+    const { container } = render(
+      <ChatPanel
+        {...baseProps}
+        messages={[{
+          id: 'ai-math',
+          type: 'ai',
+          content: '活性最高的铝酸三钙($C_3A$)\n\n$$w_d = \\frac{m_2 - m_0}{m_1 - m_0} \\times 100\\%$$',
+        }]}
+      />
+    )
+
+    expect(container.querySelectorAll('.katex')).toHaveLength(2)
+    expect(container.querySelector('.katex-display')).toBeInTheDocument()
+  })
+
+  it('opens insight aliases in the insight preview', () => {
+    render(
+      <ChatPanel
+        {...baseProps}
+        messages={[{
+          id: 'ai-insight-reference',
+          type: 'ai',
+          content: 'See [insight:ide0gvve6vdoqm6tvt35].',
+        }]}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '1' }))
+    expect(openModalMock).toHaveBeenCalledWith('insight', 'ide0gvve6vdoqm6tvt35')
+  })
+
   it('disables suggested questions while streaming', () => {
     render(
       <ChatPanel

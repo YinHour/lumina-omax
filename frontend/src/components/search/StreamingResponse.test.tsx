@@ -1,10 +1,14 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StreamingResponse } from './StreamingResponse'
+
+const { openModalMock } = vi.hoisted(() => ({
+  openModalMock: vi.fn(),
+}))
 
 vi.mock('@/lib/hooks/use-modal-manager', () => ({
   useModalManager: () => ({
-    openModal: vi.fn(),
+    openModal: openModalMock,
   }),
 }))
 
@@ -16,6 +20,10 @@ vi.mock('sonner', () => ({
 }))
 
 describe('StreamingResponse', () => {
+  beforeEach(() => {
+    openModalMock.mockClear()
+  })
+
   it('renders a visible Ask progress panel while streaming', () => {
     render(
       <StreamingResponse
@@ -68,6 +76,35 @@ describe('StreamingResponse', () => {
     expect(screen.getByRole('heading', { name: 'Candidate' })).toBeInTheDocument()
     expect(screen.getByText('Step one')).toBeInTheDocument()
     expect(screen.getByText('Step two')).toBeInTheDocument()
+  })
+
+  it('renders LaTeX and raw HTML tables in the final answer', () => {
+    const { container } = render(
+      <StreamingResponse
+        isStreaming={false}
+        strategy={null}
+        answers={[]}
+        finalAnswer={'Inline $C_3A$\n\n$$w_d = \\frac{m_2-m_0}{m_1-m_0}$$\n\n<table><tbody><tr><td>Rendered cell</td></tr></tbody></table>'}
+      />
+    )
+
+    expect(container.querySelectorAll('.katex')).toHaveLength(2)
+    expect(container.querySelector('.katex-display')).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'Rendered cell' })).toBeInTheDocument()
+  })
+
+  it('opens insight aliases in the insight preview', () => {
+    render(
+      <StreamingResponse
+        isStreaming={false}
+        strategy={null}
+        answers={[]}
+        finalAnswer={'See [insight:ide0gvve6vdoqm6tvt35].'}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '[insight:ide0gvve6vdoqm6tvt35]' }))
+    expect(openModalMock).toHaveBeenCalledWith('insight', 'ide0gvve6vdoqm6tvt35')
   })
 
   it('lets long answers expand with the page instead of using a nested scroll box', () => {

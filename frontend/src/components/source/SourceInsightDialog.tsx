@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
+import { markdownRehypePlugins, markdownRemarkPlugins } from '@/lib/markdown/plugins'
+import { normalizeMathMarkdown } from '@/lib/markdown/normalize-math'
 import { useInsight } from '@/lib/hooks/use-insights'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -128,8 +128,8 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
             ) : displayInsight ? (
               <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
+                  remarkPlugins={markdownRemarkPlugins}
+                  rehypePlugins={markdownRehypePlugins}
                   components={{
                     table: ({ children }) => (
                       <div className="my-4 overflow-x-auto">
@@ -143,7 +143,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
                     td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
                   }}
                 >
-                  {displayInsight.content}
+                  {normalizeMathMarkdown(displayInsight.content ?? '')}
                 </ReactMarkdown>
               </div>
             ) : (

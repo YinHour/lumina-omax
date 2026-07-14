@@ -10,8 +10,6 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 import {
   SourceChatMessage,
   SourceChatContextIndicator,
@@ -42,6 +40,8 @@ import {
 } from '@/lib/chat/notebook-chat-activity'
 import { NotebookChatToolbar } from './NotebookChatToolbar'
 import type { NotebookChatSaveStatus } from '@/lib/hooks/useNotebookChat'
+import { markdownRehypePlugins, markdownRemarkPlugins } from '@/lib/markdown/plugins'
+import { normalizeMathMarkdown } from '@/lib/markdown/normalize-math'
 
 type ChatActivityStatus =
   | 'gettingContext'
@@ -731,7 +731,7 @@ function AIMessageContent({
   onReferenceClick: (type: string, id: string) => void
 }) {
   const { t } = useTranslation()
-  const visibleContent = stripThinkingContent(content)
+  const visibleContent = normalizeMathMarkdown(stripThinkingContent(content))
   // Ensure ## 参考文献 / ## Web References lists are ordered (1. 2. …) when the model omits numbers
   const withNumberedBibliography = ensureNumberedWebBibliographySection(visibleContent)
   const markdownWithCompactRefs = convertReferencesToCompactMarkdown(
@@ -746,8 +746,8 @@ function AIMessageContent({
   return (
     <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
+        remarkPlugins={markdownRemarkPlugins}
+        rehypePlugins={markdownRehypePlugins}
         components={{
           a: LinkComponent,
           code: CodeComponent,
