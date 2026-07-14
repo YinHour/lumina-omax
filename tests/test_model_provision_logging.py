@@ -25,11 +25,18 @@ async def test_provision_logs_safe_model_metadata(monkeypatch):
     debug = MagicMock()
 
     monkeypatch.setattr(provision, "LanguageModel", FakeLanguageModel)
+    model_record = type("ModelRecord", (), {"id": "model:test"})()
+    monkeypatch.setattr(
+        provision,
+        "resolve_model_record",
+        AsyncMock(return_value=(model_record, 3)),
+    )
     monkeypatch.setattr(
         provision.model_manager,
-        "get_model",
-        AsyncMock(return_value=model),
+        "get_model_from_record",
+        AsyncMock(return_value=(model, None)),
     )
+    monkeypatch.setattr(provision, "attach_usage_callback", lambda value, **_kwargs: value)
     monkeypatch.setattr(provision.logger, "debug", debug)
 
     result = await provision.provision_langchain_model(
@@ -54,10 +61,16 @@ async def test_type_mismatch_error_does_not_render_model(monkeypatch):
             return f"WrongModel(api_key='{secret}')"
 
     error = MagicMock()
+    model_record = type("ModelRecord", (), {"id": "model:test"})()
+    monkeypatch.setattr(
+        provision,
+        "resolve_model_record",
+        AsyncMock(return_value=(model_record, 3)),
+    )
     monkeypatch.setattr(
         provision.model_manager,
-        "get_model",
-        AsyncMock(return_value=WrongModel()),
+        "get_model_from_record",
+        AsyncMock(return_value=(WrongModel(), None)),
     )
     monkeypatch.setattr(provision.logger, "error", error)
 

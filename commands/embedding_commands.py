@@ -6,6 +6,12 @@ from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command, submit_command
 
 from open_notebook.ai.models import model_manager
+from open_notebook.ai.usage_audit import (
+    command_audit_fields,
+    command_usage_context,
+    reset_usage_audit_context,
+    set_usage_audit_context,
+)
 from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query
 from open_notebook.domain.notebook import Note, Source, SourceInsight
 from open_notebook.exceptions import ConfigurationError
@@ -36,6 +42,9 @@ class RebuildEmbeddingsInput(CommandInput):
     include_sources: bool = True
     include_notes: bool = True
     include_insights: bool = True
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 
 class RebuildEmbeddingsOutput(CommandOutput):
@@ -61,6 +70,9 @@ class CreateInsightInput(CommandInput):
     source_id: str
     insight_type: str
     content: str
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 
 class CreateInsightOutput(CommandOutput):
@@ -76,6 +88,9 @@ class EmbedNoteInput(CommandInput):
     """Input for embedding a single note."""
 
     note_id: str
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 
 class EmbedNoteOutput(CommandOutput):
@@ -91,6 +106,9 @@ class EmbedInsightInput(CommandInput):
     """Input for embedding a single source insight."""
 
     insight_id: str
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 
 class EmbedInsightOutput(CommandOutput):
@@ -106,6 +124,9 @@ class EmbedSourceInput(CommandInput):
     """Input for embedding a source (creates multiple chunk embeddings)."""
 
     source_id: str
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 
 class EmbedSourceOutput(CommandOutput):
@@ -148,6 +169,14 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="embedding",
+        )
+    )
 
     try:
         logger.info(f"Starting embedding for note: {input_data.note_id}")
@@ -208,6 +237,8 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
             f"(command: {cmd_id}): {e}"
         )
         raise
+    finally:
+        reset_usage_audit_context(audit_token)
 
 
 @command(
@@ -240,6 +271,14 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="embedding",
+        )
+    )
 
     try:
         logger.info(f"Starting embedding for insight: {input_data.insight_id}")
@@ -302,6 +341,8 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
             f"(command: {cmd_id}): {e}"
         )
         raise
+    finally:
+        reset_usage_audit_context(audit_token)
 
 
 @command(
@@ -337,6 +378,14 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="embedding",
+        )
+    )
 
     try:
         logger.info(f"Starting embedding for source: {input_data.source_id}")
@@ -438,6 +487,8 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
             f"(command: {cmd_id}): {e}"
         )
         raise
+    finally:
+        reset_usage_audit_context(audit_token)
 
 
 @command(
@@ -473,6 +524,14 @@ async def create_insight_command(
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="transformation",
+        )
+    )
 
     try:
         logger.info(
@@ -507,7 +566,7 @@ async def create_insight_command(
         submit_command(
             "open_notebook",
             "embed_insight",
-            {"insight_id": insight_id},
+            {"insight_id": insight_id, **command_audit_fields()},
         )
         logger.debug(f"Submitted embed_insight command for {insight_id}")
 
@@ -544,6 +603,8 @@ async def create_insight_command(
             f"(command: {cmd_id}): {e}"
         )
         raise
+    finally:
+        reset_usage_audit_context(audit_token)
 
 
 async def collect_items_for_rebuild(
@@ -640,6 +701,14 @@ async def rebuild_embeddings_command(
     - Individual embed_* commands handle their own retries
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="embedding_rebuild",
+        )
+    )
 
     try:
         logger.info("=" * 60)
@@ -694,7 +763,7 @@ async def rebuild_embeddings_command(
                 submit_command(
                     "open_notebook",
                     "embed_source",
-                    {"source_id": source_id},
+                    {"source_id": source_id, **command_audit_fields()},
                 )
                 sources_submitted += 1
 
@@ -714,7 +783,7 @@ async def rebuild_embeddings_command(
                 submit_command(
                     "open_notebook",
                     "embed_note",
-                    {"note_id": note_id},
+                    {"note_id": note_id, **command_audit_fields()},
                 )
                 notes_submitted += 1
 
@@ -734,7 +803,7 @@ async def rebuild_embeddings_command(
                 submit_command(
                     "open_notebook",
                     "embed_insight",
-                    {"insight_id": insight_id},
+                    {"insight_id": insight_id, **command_audit_fields()},
                 )
                 insights_submitted += 1
 
@@ -785,3 +854,5 @@ async def rebuild_embeddings_command(
             processing_time=processing_time,
             error_message=str(e),
         )
+    finally:
+        reset_usage_audit_context(audit_token)

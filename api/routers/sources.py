@@ -40,6 +40,7 @@ from api.models import (
 )
 from api.routers.auth import get_current_user_from_state
 from commands.source_commands import SourceProcessingInput
+from open_notebook.ai.usage_audit import command_audit_fields
 from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Asset, Notebook, Source
@@ -587,6 +588,7 @@ async def create_source(
                     transformations=transformation_ids,
                     embed=source_data.embed,
                     language=language,
+                    **command_audit_fields(),
                 )
 
                 command_id = await CommandService.submit_command_job(
@@ -672,6 +674,7 @@ async def create_source(
                     transformations=transformation_ids,
                     embed=source_data.embed,
                     language=language,
+                    **command_audit_fields(),
                 )
 
                 # Run in thread pool to avoid blocking the event loop
@@ -1199,6 +1202,7 @@ async def retry_source_processing(request: Request, source_id: str):
                 transformations=[],  # Use default transformations on retry
                 embed=True,  # Always embed on retry
                 language=language,
+                **command_audit_fields(),
             )
 
             command_id = await CommandService.submit_command_job(
@@ -1401,6 +1405,7 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
             {
                 "source_id": source_id,
                 "transformation_id": request.transformation_id,
+                **command_audit_fields(),
             },
         )
         logger.info(

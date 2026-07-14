@@ -1408,9 +1408,8 @@ async def content_process(state: SourceState) -> dict:
                     if f.lower().endswith(SUPPORTED_VISION_IMAGE_EXTENSIONS)
                 ])
                 if image_files:
-                    from esperanto import LanguageModel
-
                     from open_notebook.ai.models import model_manager
+                    from open_notebook.ai.provision import provision_langchain_model
 
                     defaults = await model_manager.get_defaults()
                     vision_model_id = defaults.default_vision_model
@@ -1420,15 +1419,20 @@ async def content_process(state: SourceState) -> dict:
                         vision_model_kwargs = _vision_model_inference_kwargs(
                             vision_model_config.provider
                         )
-                    vision_model = await model_manager.get_vision_model(
-                        **vision_model_kwargs
-                    )
-                    if vision_model and isinstance(vision_model, LanguageModel):
+                    if vision_model_id:
+                        vision_lc = await provision_langchain_model(
+                            "vision figure description",
+                            vision_model_id,
+                            "vision",
+                            **vision_model_kwargs,
+                        )
+                    else:
+                        vision_lc = None
+                    if vision_lc:
                         import base64
 
                         from langchain_core.messages import HumanMessage
 
-                        vision_lc = vision_model.to_langchain()
                         mime_map = {
                             '.jpg': 'jpeg',
                             '.jpeg': 'jpeg',
@@ -1659,12 +1663,15 @@ async def transform_content(state: TransformationState) -> Optional[dict]:
 
     logger.info(f"Submitting background job for transformation {transformation.title or transformation.name}")
     from surreal_commands import submit_command
+
+    from open_notebook.ai.usage_audit import command_audit_fields
     submit_command(
         "open_notebook",
         "run_transformation",
         {
             "source_id": str(source.id),
-            "transformation_id": str(transformation.id)
+            "transformation_id": str(transformation.id),
+            **command_audit_fields(),
         }
     )
     

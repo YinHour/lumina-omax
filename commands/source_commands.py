@@ -5,6 +5,11 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
+from open_notebook.ai.usage_audit import (
+    command_usage_context,
+    reset_usage_audit_context,
+    set_usage_audit_context,
+)
 from open_notebook.database.repository import ensure_record_id
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
@@ -36,6 +41,9 @@ class SourceProcessingInput(CommandInput):
     transformations: List[str]
     embed: bool
     language: Optional[str] = None
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 
 class SourceProcessingOutput(CommandOutput):
@@ -66,6 +74,14 @@ async def process_source_command(
     Process source content using the source_graph workflow
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="source_processing",
+        )
+    )
 
     try:
         logger.info(f"Starting source processing for source: {input_data.source_id}")
@@ -111,6 +127,9 @@ async def process_source_command(
                 "embed": input_data.embed,
                 "source_id": input_data.source_id,  # Add the source_id to the state
                 "language": input_data.language,
+                "audit_user_id": input_data.audit_user_id,
+                "audit_username": input_data.audit_username,
+                "audit_request_id": input_data.audit_request_id,
             }
         )
 
@@ -156,6 +175,8 @@ async def process_source_command(
             f"Transient error processing source {input_data.source_id}: {e}"
         )
         raise
+    finally:
+        reset_usage_audit_context(audit_token)
 
 
 # =============================================================================
@@ -168,6 +189,9 @@ class RunTransformationInput(CommandInput):
 
     source_id: str
     transformation_id: str
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 
 class RunTransformationOutput(CommandOutput):
@@ -212,6 +236,14 @@ async def run_transformation_command(
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="transformation",
+        )
+    )
 
     try:
         logger.info(
@@ -270,3 +302,5 @@ async def run_transformation_command(
             f"on source {input_data.source_id}: {e}"
         )
         raise
+    finally:
+        reset_usage_audit_context(audit_token)

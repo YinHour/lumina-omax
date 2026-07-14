@@ -4,6 +4,11 @@ from typing import Optional
 from loguru import logger
 from surreal_commands import CommandInput, CommandOutput, command
 
+from open_notebook.ai.usage_audit import (
+    command_usage_context,
+    reset_usage_audit_context,
+    set_usage_audit_context,
+)
 from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query
 from open_notebook.domain.notebook import Source
 from open_notebook.exceptions import ConfigurationError
@@ -11,6 +16,9 @@ from open_notebook.exceptions import ConfigurationError
 
 class ExtractKGInput(CommandInput):
     source_id: str
+    audit_user_id: Optional[str] = None
+    audit_username: Optional[str] = None
+    audit_request_id: Optional[str] = None
 
 class ExtractKGOutput(CommandOutput):
     success: bool
@@ -37,6 +45,14 @@ async def extract_knowledge_graph_command(input_data: ExtractKGInput) -> Extract
     Extract knowledge graph from a source using an LLM and save to SurrealDB.
     """
     start_time = time.time()
+    audit_token = set_usage_audit_context(
+        command_usage_context(
+            user_id=input_data.audit_user_id,
+            username=input_data.audit_username,
+            request_id=input_data.audit_request_id,
+            surface="knowledge_graph",
+        )
+    )
 
     try:
         from open_notebook.graphs.knowledge_graph import graph as kg_graph
@@ -97,3 +113,5 @@ async def extract_knowledge_graph_command(input_data: ExtractKGInput) -> Extract
     except Exception as e:
         logger.debug(f"Transient error extracting KG for source {input_data.source_id}: {e}")
         raise
+    finally:
+        reset_usage_audit_context(audit_token)

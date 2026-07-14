@@ -1,3 +1,5 @@
+import { enUS } from '../en-US'
+
 export const itIT = {
   common: {
     search: "Cerca...",
@@ -215,6 +217,7 @@ export const itIT = {
     transformation: "Trasformazione",
     settings: "Impostazioni",
     advanced: "Avanzate",
+    usage: "Utilizzo",
     nav: "Navigazione",
     language: "Cambia lingua",
     theme: "Tema",
@@ -1009,6 +1012,7 @@ export const itIT = {
     configDeleteSuccess: "Configurazione eliminata con successo",
     apiKeyEditHint: "Lascia vuoto per mantenere la chiave API esistente",
   },
+  usage: enUS.usage,
   setupBanner: {
     encryptionRequired: "Chiave di crittografia non configurata",
     encryptionRequiredDescription: "Imposta la variabile d'ambiente OPEN_NOTEBOOK_ENCRYPTION_KEY per abilitare l'archiviazione sicura delle credenziali.",

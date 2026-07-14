@@ -10,6 +10,7 @@ from api.models import (
     RebuildStats,
     RebuildStatusResponse,
 )
+from open_notebook.ai.usage_audit import command_audit_fields
 from open_notebook.database.repository import repo_query
 
 router = APIRouter()
@@ -101,6 +102,7 @@ async def start_rebuild(request: RebuildRequest):
                 "include_sources": request.include_sources,
                 "include_notes": request.include_notes,
                 "include_insights": request.include_insights,
+                **command_audit_fields(),
             },
         )
 

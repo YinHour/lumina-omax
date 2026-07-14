@@ -476,6 +476,9 @@ class Source(ObjectModel):
         logger.info(f"Submitting embed_source job for source {self.id}")
 
         try:
+            from open_notebook.ai.usage_audit import command_audit_fields
+
+            audit_fields = command_audit_fields()
             if not self.full_text or not self.full_text.strip():
                 raise ValueError(f"Source {self.id} has no text to vectorize")
 
@@ -483,7 +486,7 @@ class Source(ObjectModel):
             command_id = submit_command(
                 "open_notebook",
                 "embed_source",
-                {"source_id": str(self.id)},
+                {"source_id": str(self.id), **audit_fields},
             )
 
             command_id_str = str(command_id)
@@ -499,7 +502,7 @@ class Source(ObjectModel):
                 kg_command_id = submit_command(
                     "open_notebook",
                     "extract_knowledge_graph",
-                    {"source_id": str(self.id)},
+                    {"source_id": str(self.id), **audit_fields},
                 )
                 logger.info(f"Extract KG job submitted for source {self.id}: command_id={kg_command_id}")
 
@@ -540,6 +543,8 @@ class Source(ObjectModel):
             raise InvalidInputError("Insight type and content must be provided")
 
         try:
+            from open_notebook.ai.usage_audit import command_audit_fields
+
             # Submit create_insight command (fire-and-forget)
             # Command handles retries internally for transaction conflicts
             command_id = submit_command(
@@ -549,6 +554,7 @@ class Source(ObjectModel):
                     "source_id": str(self.id),
                     "insight_type": insight_type,
                     "content": content,
+                    **command_audit_fields(),
                 },
             )
             logger.info(
@@ -661,10 +667,12 @@ class Note(ObjectModel):
 
         # Submit embedding command (fire-and-forget) if note has content
         if self.id and self.content and self.content.strip():
+            from open_notebook.ai.usage_audit import command_audit_fields
+
             command_id = submit_command(
                 "open_notebook",
                 "embed_note",
-                {"note_id": str(self.id)},
+                {"note_id": str(self.id), **command_audit_fields()},
             )
             logger.debug(f"Submitted embed_note command {command_id} for {self.id}")
             return command_id

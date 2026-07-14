@@ -1,3 +1,5 @@
+import { zhCN } from '../zh-CN'
+
 export const zhTW = {
   common: {
     search: "搜尋...",
@@ -215,6 +217,7 @@ export const zhTW = {
     transformation: "轉換",
     settings: "設定",
     advanced: "進階",
+    usage: "用量",
     nav: "導覽",
     language: "切換語言",
     theme: "主題",
@@ -1010,6 +1013,7 @@ export const zhTW = {
     configDeleteSuccess: "設定刪除成功",
     apiKeyEditHint: "留空以保留現有 API 金鑰",
   },
+  usage: zhCN.usage,
   setupBanner: {
     encryptionRequired: "未設定加密金鑰",
     encryptionRequiredDescription: "請設定 OPEN_NOTEBOOK_ENCRYPTION_KEY 環境變數以啟用安全憑據儲存。",

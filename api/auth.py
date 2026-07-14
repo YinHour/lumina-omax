@@ -7,6 +7,11 @@ from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from open_notebook.ai.usage_audit import (
+    request_usage_context,
+    reset_usage_audit_context,
+    set_usage_audit_context,
+)
 from open_notebook.utils.encryption import get_secret_from_env
 from open_notebook.utils.jwt_config import JWT_ALGORITHM, JWT_SECRET
 
@@ -35,9 +40,58 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
             "/redoc",
         ]
 
+    async def _call_next_with_usage(self, request: Request, call_next, user: dict):
+        context = request_usage_context(user, request.method, request.url.path)
+        token = set_usage_audit_context(context)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_usage_audit_context(token)
+
+        body_iterator = getattr(response, "body_iterator", None)
+        if body_iterator is not None:
+            async def audited_body_iterator():
+                iterator_token = set_usage_audit_context(context)
+                try:
+                    async for chunk in body_iterator:
+                        yield chunk
+                finally:
+                    reset_usage_audit_context(iterator_token)
+
+            response.body_iterator = audited_body_iterator()
+        return response
+
+    def _optional_audit_user(self, request: Request) -> Optional[dict]:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return None
+        token = auth_header[7:]
+        if self.password and token == self.password:
+            return {
+                "id": "user:admin",
+                "username": "admin",
+                "display_name": "System Admin",
+                "role": "admin",
+                "status": "active",
+            }
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        except jwt.PyJWTError:
+            return None
+        return payload if payload.get("status") == "active" else None
+
     async def dispatch(self, request: Request, call_next):
-        # Skip authentication for excluded paths (prefix match)
+        # Keep the existing prefix-compatible exclusions, but capture identity
+        # from valid tokens so model work can still be attributed safely.
         if any(request.url.path.startswith(path) for path in self.excluded_paths):
+            audit_user = self._optional_audit_user(request)
+            if audit_user:
+                request.state.user = audit_user
+                return await self._call_next_with_usage(
+                    request,
+                    call_next,
+                    audit_user,
+                )
             return await call_next(request)
 
         # Skip authentication for CORS preflight requests (OPTIONS)
@@ -76,7 +130,11 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
                 "role": "admin",
                 "status": "active",
             }
-            return await call_next(request)
+            return await self._call_next_with_usage(
+                request,
+                call_next,
+                request.state.user,
+            )
 
         # 2. JWT Verification
         try:
@@ -117,8 +175,7 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
             )
 
         # User is authenticated, proceed
-        response = await call_next(request)
-        return response
+        return await self._call_next_with_usage(request, call_next, request.state.user)
 
 
 # Optional: HTTPBearer security scheme for OpenAPI documentation

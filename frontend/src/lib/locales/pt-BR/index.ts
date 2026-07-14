@@ -1,3 +1,5 @@
+import { enUS } from '../en-US'
+
 export const ptBR = {
   common: {
     search: "Buscar...",
@@ -215,6 +217,7 @@ export const ptBR = {
     transformation: "Transformação",
     settings: "Configurações",
     advanced: "Avançado",
+    usage: "Uso",
     nav: "Navegação",
     language: "Alternar idioma",
     theme: "Tema",
@@ -1009,6 +1012,7 @@ export const ptBR = {
     configDeleteSuccess: "Configuração excluída com sucesso",
     apiKeyEditHint: "Deixe em branco para manter a chave de API existente",
   },
+  usage: enUS.usage,
   setupBanner: {
     encryptionRequired: "Chave de criptografia não configurada",
     encryptionRequiredDescription: "Configure a variável de ambiente OPEN_NOTEBOOK_ENCRYPTION_KEY para habilitar o armazenamento seguro de credenciais.",

@@ -11,6 +11,7 @@ to ensure consistent behavior and proper handling of large content.
 """
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
@@ -110,12 +111,19 @@ async def generate_embeddings(
 
     # Lazy import to avoid circular dependency
     from open_notebook.ai.models import model_manager
+    from open_notebook.ai.usage_audit import (
+        get_model_audit_metadata,
+        persist_estimated_embedding_usage,
+    )
+    from open_notebook.utils import token_count
 
     embedding_model = await model_manager.get_embedding_model()
     if not embedding_model:
         raise ValueError(
             "No embedding model configured. Please configure one in the Models section."
         )
+    audit_metadata = get_model_audit_metadata(embedding_model)
+    model_record, credential = audit_metadata if audit_metadata else (None, None)
 
     model_name = getattr(embedding_model, "model_name", "unknown")
 
@@ -136,9 +144,18 @@ async def generate_embeddings(
         batch = texts[start:end]
 
         for attempt in range(1, EMBEDDING_MAX_RETRIES + 1):
+            attempt_started_at = time.perf_counter()
+            estimated_tokens = sum(token_count(text) for text in batch)
             try:
                 batch_embeddings = await embedding_model.aembed(batch)
                 all_embeddings.extend(batch_embeddings)
+                if model_record:
+                    await persist_estimated_embedding_usage(
+                        model=model_record,
+                        credential=credential,
+                        input_tokens=estimated_tokens,
+                        duration_ms=int((time.perf_counter() - attempt_started_at) * 1000),
+                    )
                 
                 # Add a small delay between batches to respect rate limits
                 if batch_idx < total_batches - 1:
@@ -155,6 +172,15 @@ async def generate_embeddings(
                     )
                     await asyncio.sleep(EMBEDDING_RETRY_DELAY)
                 else:
+                    if model_record:
+                        await persist_estimated_embedding_usage(
+                            model=model_record,
+                            credential=credential,
+                            input_tokens=estimated_tokens,
+                            duration_ms=int((time.perf_counter() - attempt_started_at) * 1000),
+                            status="failed",
+                            error_type=type(e).__name__,
+                        )
                     logger.debug(
                         f"Embedding batch {batch_idx + 1}/{total_batches} "
                         f"failed after {EMBEDDING_MAX_RETRIES} attempts "

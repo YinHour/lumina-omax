@@ -1,3 +1,5 @@
+import { enUS } from '../en-US'
+
 export const ruRU = {
   common: {
     search: "Поиск...",
@@ -215,6 +217,7 @@ export const ruRU = {
     transformation: "Трансформация",
     settings: "Настройки",
     advanced: "Дополнительно",
+    usage: "Использование",
     nav: "Навигация",
     language: "Переключить язык",
     theme: "Тема",
@@ -1009,6 +1012,7 @@ export const ruRU = {
     configDeleteSuccess: "Конфигурация успешно удалена",
     apiKeyEditHint: "Оставьте пустым, чтобы сохранить текущий API-ключ",
   },
+  usage: enUS.usage,
   setupBanner: {
     encryptionRequired: "Ключ шифрования не настроен",
     encryptionRequiredDescription: "Установите переменную окружения OPEN_NOTEBOOK_ENCRYPTION_KEY для безопасного хранения учётных данных.",

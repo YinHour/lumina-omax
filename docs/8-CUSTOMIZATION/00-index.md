@@ -3469,3 +3469,68 @@ HTTP 200；`deepseek-v4-pro` 返回 `context_window_tokens=1000000`、`context_w
 ```
 
 未验证项：浏览器控制连接初始化失败，因此未自动操作登录页面，也未发送真实模型请求核对 SSE 百分比或修改管理员配置；供应商返回的精确输入 token 不属于本轮数据源，界面展示的是项目现有 tokenizer 对最终 payload 的估算。为避免改变用户现有模型记录，运行时验证只读取 `/api/models`，未调用 PATCH。
+
+---
+
+## 44. 用户与管理员 AI Token 用量审计（2026-07-14）
+
+### 44.1 问题与决策
+
+- 新增不可变 `ai_token_usage` 审计账本，记录用户、凭据名称快照、服务商、模型、工作流、成功/失败、耗时和输入/输出/总词元；不记录提示词、回答、来源内容、Authorization、原始 API Key 或异常正文。
+- 语言模型调用统一在 `provision_langchain_model()` 返回的每次调用副本上附加 LangChain callback。优先采用服务商返回的 usage metadata；缺失时只提取消息中的可见文本并使用现有 tokenizer 估算，结果标记为 `estimated`，避免把 Python 结构表示或图片 data URL 计入，也不把估算值冒充账单精确值。
+- Embedding 接口当前不返回 usage metadata，因此按成功批次记录估算输入词元。TTS/STT 的计费单位并非本系统定义的 token，本轮明确不纳入，避免生成错误账单口径。
+- 同步 HTTP/SSE 请求由认证中间件写入用户与请求上下文；来源处理、Transformation、Knowledge Graph 和 Embedding 后台命令显式传递发起用户。没有真实请求上下文时不向旧命令 payload 注入空字段，保持现有命令契约。
+- `GET /api/usage` 只允许普通用户查询本人；管理员可查询全部用户或筛选单个用户。返回汇总、每日序列、按 Key、按用户和最近 50 条安全元数据，不返回密钥值。
+- 新增 `/usage` 工作型 Dashboard：普通用户查看自己的 7/30/90 天用量，管理员增加“全部用户”和用户筛选；图表使用现有 CSS/颜色 token，不新增生产依赖，浏览器请求继续走相对 `/api`。
+- 审计只覆盖迁移 29 之后的调用，不追溯历史用量，也不尝试换算货币或对账服务商发票。
+
+### 44.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/database/migrations/29*.surrealql` | `ai_token_usage` SCHEMAFULL 账本、查询索引和回滚迁移 |
+| `open_notebook/ai/usage_audit.py`、`models.py`、`provision.py` | 审计上下文、模型/凭据安全元数据、provider/estimated 统计和每次调用 callback |
+| `api/auth.py`、`commands/*_commands.py`、`open_notebook/domain/notebook.py`、`open_notebook/graphs/source.py` | 同步、流式及后台任务的用户审计身份传播 |
+| `open_notebook/utils/embedding.py` | Embedding 成功批次的估算输入词元审计 |
+| `api/routers/usage.py`、`api/main.py` | 本人/管理员授权、7/30/90 天聚合 API 与路由注册 |
+| `frontend/src/app/(dashboard)/usage/` | 用量 Dashboard、CSS 日图、按 Key/用户汇总、最近活动和角色行为测试 |
+| `frontend/src/lib/{api,hooks,types}/usage.*` | 相对 API client、TanStack Query hook 和响应类型 |
+| `frontend/src/components/layout/AppSidebar.tsx`、`frontend/src/lib/locales/*/index.ts` | 全用户侧栏入口和 i18n 文案 |
+| `tests/test_usage_audit.py` 及模型/Embedding/聊天回归测试 | 安全字段、回调副本、统计来源、授权聚合、时间范围和兼容性覆盖 |
+| `docs/superpowers/specs/2026-07-14-token-usage-audit-design.md`、`plans/2026-07-14-token-usage-audit-implementation.md` | 数据边界、界面与实施记录 |
+
+### 44.3 验证
+
+```text
+uv run ruff check <本轮变更的 Python 文件>
+All checks passed
+
+uv run pytest tests/ -m 'not e2e' -q
+346 passed, 33 deselected, 6 warnings
+
+cd frontend && npm test
+189 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0（4 个既有 warning，无 error）
+
+cd frontend && npm run build
+exit 0；生成静态 `/usage` 路由
+
+make start-all
+API initialization completed successfully；Current database version: 29；Next.js `/api/*` 代理到 `http://127.0.0.1:5056/api/*`
+
+curl 未认证访问 http://127.0.0.1:5056/api/usage?days=7&scope=mine
+HTTP 401
+
+curl 使用本机管理员凭据访问 http://127.0.0.1:5056/api/usage?days=7&scope=all
+HTTP 200；返回 scope=all、days=7、用户/调用/词元聚合且无密钥值
+
+curl 使用本机管理员凭据访问 http://127.0.0.1:5056/api/usage?days=8&scope=all
+HTTP 422
+
+git diff --check
+exit 0
+```
+
+未验证项：浏览器控制运行时初始化报错，因此未完成登录态 Dashboard 的自动截图和移动端视觉验收；Next.js 生产构建与组件测试已覆盖路由、角色控件、汇总、工作流标签和表格。`tests/test_integration_e2e.py` 固定连接 `localhost:5055` 且不携带当前认证，本机服务为 `5056`，完整 `uv run pytest tests/ -q` 因此有 18 个既有 E2E 连接失败；与 CI 一致的 `-m 'not e2e'` 范围全部通过。未调用真实供应商接口专门制造一笔测试账单，但本机现有真实 AI 操作已在管理员聚合 API 中形成迁移后的审计记录。

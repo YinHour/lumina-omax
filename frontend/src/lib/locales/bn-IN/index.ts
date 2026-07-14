@@ -1,3 +1,5 @@
+import { enUS } from '../en-US'
+
 export const bnIN = {
   common: {
     search: "অনুসন্ধান...",
@@ -215,6 +217,7 @@ export const bnIN = {
     transformation: "ট্রান্সফরমেশন",
     settings: "সেটিংস",
     advanced: "উন্নত",
+    usage: "ব্যবহার",
     nav: "নেভিগেশন",
     language: "ভাষা টগল",
     theme: "থিম",
@@ -1010,6 +1013,7 @@ export const bnIN = {
     configDeleteSuccess: "কনফিগারেশন সফলভাবে মুছে ফেলা",
     apiKeyEditHint: "বিদ্যমান API কী রাখতে খালি রাখুন",
   },
+  usage: enUS.usage,
   setupBanner: {
     encryptionRequired: "এনক্রিপশন কী কনফিগার করা হয়নি",
     encryptionRequiredDescription: "নিরাপদ credential স্টোরেজ সক্ষম করতে OPEN_NOTEBOOK_ENCRYPTION_KEY environment variable সেট করুন।",

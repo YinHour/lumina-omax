@@ -1,3 +1,5 @@
+import { enUS } from '../en-US'
+
 export const jaJP = {
   common: {
     search: "検索...",
@@ -215,6 +217,7 @@ export const jaJP = {
     transformation: "トランスフォーメーション",
     settings: "設定",
     advanced: "詳細設定",
+    usage: "使用量",
     nav: "ナビゲーション",
     language: "言語を切り替え",
     theme: "テーマ",
@@ -1009,6 +1012,7 @@ export const jaJP = {
     configDeleteSuccess: "設定が正常に削除されました",
     apiKeyEditHint: "既存のAPIキーを維持するには空白のままにしてください",
   },
+  usage: enUS.usage,
   setupBanner: {
     encryptionRequired: "暗号化キーが設定されていません",
     encryptionRequiredDescription: "OPEN_NOTEBOOK_ENCRYPTION_KEY 環境変数を設定して、安全な認証情報の保存を有効にしてください。",

@@ -43,6 +43,7 @@ import {
   Wrench,
   Command,
   HelpCircle,
+  ChartNoAxesCombined,
   X,
 } from 'lucide-react'
 
@@ -57,6 +58,7 @@ interface AppSidebarProps {
 const getNavigation = (t: TranslationKeys, isAdmin: boolean): { title: string; items: NavItem[] }[] => {
   const manageItems: NavItem[] = [
     { name: t.navigation.models, href: '/settings/api-keys', icon: Bot, adminOnly: true },
+    { name: t.navigation.usage, href: '/usage', icon: ChartNoAxesCombined },
     { name: t.navigation.transformations, href: '/transformations', icon: Shuffle },
     { name: t.navigation.settings, href: '/settings', icon: Settings, adminOnly: true },
     { name: t.navigation.help, href: '/help', icon: HelpCircle },
