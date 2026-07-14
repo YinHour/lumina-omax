@@ -68,6 +68,7 @@ async def test_provision_with_info_instantiates_resolved_model_once(monkeypatch)
             "id": "model:selected",
             "name": "deepseek-v4-pro",
             "provider": "deepseek",
+            "type": "language",
             "get_effective_context_window": lambda _self: (1_000_000, "builtin"),
         },
     )()
@@ -81,8 +82,13 @@ async def test_provision_with_info_instantiates_resolved_model_once(monkeypatch)
     )
     monkeypatch.setattr(
         provision.model_manager,
-        "get_model",
-        AsyncMock(return_value=language_model),
+        "get_model_from_record",
+        AsyncMock(return_value=(language_model, None)),
+    )
+    monkeypatch.setattr(
+        provision,
+        "attach_usage_callback",
+        lambda langchain_model, **_kwargs: langchain_model,
     )
     monkeypatch.setattr(
         provision,
@@ -101,6 +107,6 @@ async def test_provision_with_info_instantiates_resolved_model_once(monkeypatch)
     provision.resolve_model_record.assert_awaited_once_with(
         "payload", "model:requested", "chat"
     )
-    provision.model_manager.get_model.assert_awaited_once_with(
-        "model:selected", temperature=0.1
+    provision.model_manager.get_model_from_record.assert_awaited_once_with(
+        model_record, temperature=0.1
     )

@@ -120,6 +120,12 @@ class ModelManager:
         except Exception:
             raise ConfigurationError(f"Model with ID {model_id} not found")
 
+        resolved_model, _credential = await self.get_model_from_record(model, **kwargs)
+        return resolved_model
+
+    async def get_model_from_record(self, model: Model, **kwargs):
+        """Instantiate one resolved model record and return its credential metadata."""
+
         if not model.type or model.type not in [
             "language",
             "embedding",
@@ -161,31 +167,36 @@ class ModelManager:
 
         # Create model based on type (Esperanto will cache the instance)
         if model.type == "language":
-            return AIFactory.create_language(
+            resolved_model = AIFactory.create_language(
                 model_name=model.name,
                 provider=provider,
                 config=config,
             )
         elif model.type == "embedding":
-            return AIFactory.create_embedding(
+            resolved_model = AIFactory.create_embedding(
                 model_name=model.name,
                 provider=provider,
                 config=config,
             )
         elif model.type == "speech_to_text":
-            return AIFactory.create_speech_to_text(
+            resolved_model = AIFactory.create_speech_to_text(
                 model_name=model.name,
                 provider=provider,
                 config=config,
             )
         elif model.type == "text_to_speech":
-            return AIFactory.create_text_to_speech(
+            resolved_model = AIFactory.create_text_to_speech(
                 model_name=model.name,
                 provider=provider,
                 config=config,
             )
         else:
             raise ConfigurationError(f"Invalid model type: {model.type}")
+
+        from open_notebook.ai.usage_audit import register_model_audit_metadata
+
+        register_model_audit_metadata(resolved_model, model, credential)
+        return resolved_model, credential
 
     async def get_defaults(self) -> DefaultModels:
         """Get the default models configuration from database"""

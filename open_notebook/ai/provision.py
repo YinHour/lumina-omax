@@ -6,6 +6,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from loguru import logger
 
 from open_notebook.ai.models import Model, model_manager
+from open_notebook.ai.usage_audit import attach_usage_callback
 from open_notebook.exceptions import ConfigurationError
 from open_notebook.utils import token_count
 
@@ -57,7 +58,7 @@ async def provision_langchain_model_with_info(
     model_record, input_tokens = await resolve_model_record(
         content, model_id, default_type
     )
-    model = await model_manager.get_model(model_record.id, **kwargs)
+    model, credential = await model_manager.get_model_from_record(model_record, **kwargs)
     if model is None:
         raise ConfigurationError(
             f"No model configured for model_id={model_record.id}. "
@@ -68,7 +69,11 @@ async def provision_langchain_model_with_info(
             f"Model is not a LanguageModel: {type(model).__name__}."
         )
 
-    langchain_model = model.to_langchain()
+    langchain_model = attach_usage_callback(
+        model.to_langchain(),
+        model=model_record,
+        credential=credential,
+    )
     context_window_tokens, context_window_source = (
         model_record.get_effective_context_window()
     )
@@ -92,22 +97,15 @@ async def provision_langchain_model(
     If model_id is specified in Config, returns that model
     Otherwise, returns the default model for the given type
     """
-    tokens = token_count(content)
-    model = None
-    selection_reason = ""
-
-    if tokens > 105_000:
-        selection_reason = f"large_context (content has {tokens} tokens)"
-        logger.debug(
-            f"Using large context model because the content has {tokens} tokens"
-        )
-        model = await model_manager.get_default_model("large_context", **kwargs)
-    elif model_id:
-        selection_reason = f"explicit model_id={model_id}"
-        model = await model_manager.get_model(model_id, **kwargs)
-    else:
-        selection_reason = f"default for type={default_type}"
-        model = await model_manager.get_default_model(default_type, **kwargs)
+    model_record, tokens = await resolve_model_record(content, model_id, default_type)
+    selection_reason = (
+        f"large_context (content has {tokens} tokens)"
+        if tokens > 105_000
+        else f"explicit model_id={model_id}"
+        if model_id
+        else f"default for type={default_type}"
+    )
+    model, credential = await model_manager.get_model_from_record(model_record, **kwargs)
 
     logger.debug(
         "Using model type={} ({})",
@@ -138,4 +136,8 @@ async def provision_langchain_model(
             f"Please check that the model configured for '{default_type}' is a language model, not an embedding or speech model."
         )
 
-    return model.to_langchain()
+    return attach_usage_callback(
+        model.to_langchain(),
+        model=model_record,
+        credential=credential,
+    )

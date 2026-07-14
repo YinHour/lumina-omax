@@ -44,6 +44,7 @@ describe('AppSidebar', () => {
     // Check for navigation items (using actual locale values)
     expect(screen.getByText(/Sources/i)).toBeDefined()
     expect(screen.getByText(/Notebooks/i)).toBeDefined()
+    expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute('href', '/usage')
   })
 
   it('toggles collapse state when clicking handle', () => {

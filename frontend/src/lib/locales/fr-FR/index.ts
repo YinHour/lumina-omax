@@ -1,3 +1,5 @@
+import { enUS } from '../en-US'
+
 export const frFR = {
   common: {
     search: "Recherche...",
@@ -215,6 +217,7 @@ export const frFR = {
     transformation: "Transformation",
     settings: "Paramètres",
     advanced: "Avancé",
+    usage: "Utilisation",
     nav: "Navigation",
     language: "Changer de langue",
     theme: "Thème",
@@ -1009,6 +1012,7 @@ export const frFR = {
     configDeleteSuccess: "Configuration supprimée avec succès",
     apiKeyEditHint: "Laissez vide pour conserver la clé API existante",
   },
+  usage: enUS.usage,
   setupBanner: {
     encryptionRequired: "Clé de chiffrement non configurée",
     encryptionRequiredDescription: "Définissez la variable d'environnement OPEN_NOTEBOOK_ENCRYPTION_KEY pour activer le stockage sécurisé des identifiants.",

@@ -4,6 +4,7 @@ from loguru import logger
 from api.command_service import CommandService
 from api.models import EmbedRequest, EmbedResponse
 from open_notebook.ai.models import model_manager
+from open_notebook.ai.usage_audit import command_audit_fields
 from open_notebook.domain.notebook import Note, Source
 
 router = APIRouter()
@@ -41,10 +42,10 @@ async def embed_content(embed_request: EmbedRequest):
                 # Submit type-specific command
                 if item_type == "source":
                     command_name = "embed_source"
-                    command_input = {"source_id": item_id}
+                    command_input = {"source_id": item_id, **command_audit_fields()}
                 else:  # note
                     command_name = "embed_note"
-                    command_input = {"note_id": item_id}
+                    command_input = {"note_id": item_id, **command_audit_fields()}
 
                 command_id = await CommandService.submit_command_job(
                     "open_notebook",
