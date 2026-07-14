@@ -13,8 +13,8 @@ import { useExecuteTransformation } from '@/lib/hooks/use-transformations'
 import { ModelSelector } from '@/components/common/ModelSelector'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
+import { markdownRehypePlugins, markdownRemarkPlugins } from '@/lib/markdown/plugins'
+import { normalizeMathMarkdown } from '@/lib/markdown/normalize-math'
 
 interface TransformationPlaygroundProps {
   transformations: Transformation[] | undefined
@@ -126,8 +126,8 @@ export function TransformationPlayground({ transformations, selectedTransformati
                   <CardContent className="pt-6">
                     <div className="prose prose-sm max-w-none dark:prose-invert">
                       <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeRaw]}
+                        remarkPlugins={markdownRemarkPlugins}
+                        rehypePlugins={markdownRehypePlugins}
                         components={{
                           table: ({ children }) => (
                             <div className="my-4 overflow-x-auto">
@@ -141,7 +141,7 @@ export function TransformationPlayground({ transformations, selectedTransformati
                           td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
                         }}
                       >
-                        {output}
+                        {normalizeMathMarkdown(output)}
                       </ReactMarkdown>
                     </div>
                   </CardContent>

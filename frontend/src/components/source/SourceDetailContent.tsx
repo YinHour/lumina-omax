@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError, type AxiosResponse } from 'axios'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
+import { markdownRehypePlugins, markdownRemarkPlugins } from '@/lib/markdown/plugins'
 import { sourcesApi } from '@/lib/api/sources'
 import { insightsApi, SourceInsightResponse } from '@/lib/api/insights'
 import { transformationsApi } from '@/lib/api/transformations'
@@ -666,8 +665,8 @@ export function SourceDetailContent({
                 )}
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-blue-600 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
+                    remarkPlugins={markdownRemarkPlugins}
+                    rehypePlugins={markdownRehypePlugins}
                     components={{
                       p: ({ children }) => <p className="mb-4">{children}</p>,
                       h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-4">{children}</h1>,

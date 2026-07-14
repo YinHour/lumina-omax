@@ -7,8 +7,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { CheckCircle, Circle, Clock, Sparkles, Lightbulb, ChevronDown, Copy, Save } from 'lucide-react'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
+import { markdownRehypePlugins, markdownRemarkPlugins } from '@/lib/markdown/plugins'
+import { normalizeMathMarkdown } from '@/lib/markdown/normalize-math'
 import { convertReferencesToMarkdownLinks, createReferenceLinkComponent } from '@/lib/utils/source-references'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -258,10 +258,10 @@ export function StreamingResponse({
         <Card>
           <CardContent className="prose prose-sm dark:prose-invert max-w-none py-4">
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
+              remarkPlugins={markdownRemarkPlugins}
+              rehypePlugins={markdownRehypePlugins}
             >
-              {errorBubble}
+              {normalizeMathMarkdown(errorBubble)}
             </ReactMarkdown>
           </CardContent>
         </Card>
@@ -390,7 +390,7 @@ function MarkdownContent({
   onReferenceClick: (type: string, id: string) => void
 }) {
   // Convert references to markdown links
-  const markdownWithLinks = convertReferencesToMarkdownLinks(content)
+  const markdownWithLinks = convertReferencesToMarkdownLinks(normalizeMathMarkdown(content))
 
   // Create custom link component
   const LinkComponent = createReferenceLinkComponent(onReferenceClick)
@@ -398,8 +398,8 @@ function MarkdownContent({
   return (
     <div className="text-sm leading-7 break-words min-w-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
+        remarkPlugins={markdownRemarkPlugins}
+        rehypePlugins={markdownRehypePlugins}
         components={{
           a: LinkComponent,
           p: ({ children }) => <p className="my-3 whitespace-pre-wrap">{children}</p>,

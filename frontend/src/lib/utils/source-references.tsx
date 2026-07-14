@@ -9,6 +9,10 @@ export {
 
 export type ReferenceType = 'source' | 'note' | 'source_insight'
 
+function normalizeReferenceType(type: string): ReferenceType {
+  return type === 'insight' ? 'source_insight' : type as ReferenceType
+}
+
 export interface ParsedReference {
   type: ReferenceType
   id: string
@@ -45,15 +49,15 @@ export interface ReferenceData {
 export function normalizeInternalReferenceLinks(text: string): string {
   return text
     .replace(
-      /`+(\[[^\]\n`]+\]\(#ref-(?:source_insight|note|source)-[a-zA-Z0-9_-]{1,100}\))`+/g,
+      /`+(\[[^\]\n`]+\]\(#ref-(?:source_insight|insight|note|source)-[a-zA-Z0-9_-]{1,100}\))`+/g,
       '$1'
     )
     .replace(
-      /<code>(\[[^\]\n<]+\]\(#ref-(?:source_insight|note|source)-[a-zA-Z0-9_-]{1,100}\))<\/code>/g,
+      /<code>(\[[^\]\n<]+\]\(#ref-(?:source_insight|insight|note|source)-[a-zA-Z0-9_-]{1,100}\))<\/code>/g,
       '$1'
     )
     .replace(
-      /\\\[([^\]\n]+)\\\]\\\(#ref-(source_insight|note|source)-([a-zA-Z0-9_-]{1,100})\\\)/g,
+      /\\\[([^\]\n]+)\\\]\\\(#ref-(source_insight|insight|note|source)-([a-zA-Z0-9_-]{1,100})\\\)/g,
       '[$1](#ref-$2-$3)'
     )
 }
@@ -71,14 +75,14 @@ export function normalizeInternalReferenceLinks(text: string): string {
  * @returns Array of parsed references
  */
 export function parseSourceReferences(text: string): ParsedReference[] {
-  // Match pattern: (source_insight|note|source):alphanumeric_id
+  // Accept the model-facing `insight:` alias while keeping the internal type canonical.
   // This handles references both inside and outside brackets
-  const pattern = /(source_insight|note|source):([a-zA-Z0-9_]+)/g
+  const pattern = /(source_insight|insight|note|source):([a-zA-Z0-9_]+)/g
   const matches: ParsedReference[] = []
 
   let match
   while ((match = pattern.exec(text)) !== null) {
-    const type = match[1] as ReferenceType
+    const type = normalizeReferenceType(match[1])
     const id = match[2]
 
     matches.push({
@@ -200,22 +204,24 @@ export function convertSourceReferences(
  */
 export function convertReferencesToMarkdownLinks(text: string): string {
   // Step 1: Find ALL references using simple greedy pattern
-  const refPattern = /(source_insight|note|source):([a-zA-Z0-9_]+)/g
-  const references: Array<{ type: string; id: string; index: number; length: number }> = []
+  const refPattern = /(source_insight|insight|note|source):([a-zA-Z0-9_]+)/g
+  const references: Array<{ type: ReferenceType; labelType: string; id: string; index: number; length: number }> = []
 
   let match
   while ((match = refPattern.exec(text)) !== null) {
-    const type = match[1]
+    const labelType = match[1]
+    const type = normalizeReferenceType(labelType)
     const id = match[2]
 
     // Validate the reference
-    const validTypes = ['source', 'source_insight', 'note']
-    if (!validTypes.includes(type) || !id || id.length === 0 || id.length > 100) {
+    const validTypes = ['source', 'source_insight', 'insight', 'note']
+    if (!validTypes.includes(labelType) || !id || id.length === 0 || id.length > 100) {
       continue // Skip invalid references
     }
 
     references.push({
       type,
+      labelType,
       id,
       index: match.index,
       length: match[0].length
@@ -231,7 +237,7 @@ export function convertReferencesToMarkdownLinks(text: string): string {
     const ref = references[i]
     const refStart = ref.index
     const refEnd = refStart + ref.length
-    const refText = `${ref.type}:${ref.id}`
+    const refText = `${ref.labelType}:${ref.id}`
 
     // Step 3: Analyze context around the reference
     // Look back up to 50 chars for opening brackets/bold markers
@@ -305,7 +311,7 @@ export function createReferenceLinkComponent(
     if (href?.startsWith('#ref-')) {
       // Parse: #ref-source-abc123 → type=source, id=abc123
       const parts = href.substring(5).split('-') // Remove '#ref-'
-      const type = parts[0] as ReferenceType
+      const type = normalizeReferenceType(parts[0])
       const id = parts.slice(1).join('-') // Rejoin in case ID has dashes
 
       // Select appropriate icon based on reference type
@@ -473,7 +479,7 @@ export function createCompactReferenceLinkComponent(
     if (href?.startsWith('#ref-')) {
       // Parse: #ref-source-abc123 → type=source, id=abc123
       const parts = href.substring(5).split('-') // Remove '#ref-'
-      const type = parts[0] as ReferenceType
+      const type = normalizeReferenceType(parts[0])
       const id = parts.slice(1).join('-') // Rejoin in case ID has dashes
 
       return (
@@ -518,7 +524,7 @@ export function createCompactReferenceCodeComponent(
   }) => {
     const value = String(children ?? '').trim()
     const match = value.match(
-      /^\[([^\]\n]+)\]\(#ref-(source_insight|note|source)-([a-zA-Z0-9_-]{1,100})\)$/
+      /^\[([^\]\n]+)\]\(#ref-(source_insight|insight|note|source)-([a-zA-Z0-9_-]{1,100})\)$/
     )
 
     if (match) {
@@ -528,7 +534,7 @@ export function createCompactReferenceCodeComponent(
           onClick={(event) => {
             event.preventDefault()
             event.stopPropagation()
-            onReferenceClick(type as ReferenceType, id)
+            onReferenceClick(normalizeReferenceType(type), id)
           }}
           className="text-primary hover:underline cursor-pointer inline font-medium"
           type="button"
