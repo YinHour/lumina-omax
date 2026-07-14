@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger
 from pydantic import BaseModel
 
 from api.routers.auth import get_current_user_from_state
@@ -89,10 +90,17 @@ def _add_row(totals: dict[str, int], row: dict) -> None:
         totals["failed_calls"] += 1
 
 
-def _row_date(value) -> date:
+def _row_date(value) -> Optional[date]:
     if isinstance(value, datetime):
         return value.date()
-    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    except (TypeError, ValueError):
+        logger.warning(
+            "Skipping malformed ai_token_usage.created value in daily aggregation: type={}",
+            type(value).__name__,
+        )
+        return None
 
 
 @router.get("/usage", response_model=UsageDashboardResponse)

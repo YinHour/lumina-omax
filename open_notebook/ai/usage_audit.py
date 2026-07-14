@@ -32,7 +32,8 @@ _usage_context: ContextVar[UsageAuditContext] = ContextVar(
     "usage_audit_context",
     default=UsageAuditContext(),
 )
-_model_audit_metadata: dict[int, tuple[Model, Optional[Credential]]] = {}
+_MODEL_AUDIT_METADATA_LIMIT = 256
+_model_audit_metadata: dict[int, tuple[Any, Model, Optional[Credential]]] = {}
 
 
 def current_usage_audit_context() -> UsageAuditContext:
@@ -113,13 +114,50 @@ def register_model_audit_metadata(
     model: Model,
     credential: Optional[Credential],
 ) -> None:
-    _model_audit_metadata[id(model_instance)] = (model, credential)
+    instance_id = id(model_instance)
+    _model_audit_metadata.pop(instance_id, None)
+    _model_audit_metadata[instance_id] = (model_instance, model, credential)
+    while len(_model_audit_metadata) > _MODEL_AUDIT_METADATA_LIMIT:
+        _model_audit_metadata.pop(next(iter(_model_audit_metadata)))
 
 
 def get_model_audit_metadata(
     model_instance: Any,
 ) -> Optional[tuple[Model, Optional[Credential]]]:
-    return _model_audit_metadata.get(id(model_instance))
+    metadata = _model_audit_metadata.get(id(model_instance))
+    if metadata is None or metadata[0] is not model_instance:
+        return None
+    return metadata[1], metadata[2]
+
+
+def _content_text_chunks(content: Any) -> list[str]:
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        return []
+
+    chunks: list[str] = []
+    for part in content:
+        if isinstance(part, Mapping):
+            text = part.get("text") or part.get("content")
+        else:
+            text = getattr(part, "text", None) or getattr(part, "content", None)
+        if isinstance(text, str):
+            chunks.append(text)
+    return chunks
+
+
+def estimate_chat_message_tokens(messages: list[list[Any]]) -> int:
+    chunks: list[str] = []
+    for thread in messages:
+        for message in thread:
+            content = (
+                message.get("content")
+                if isinstance(message, Mapping)
+                else getattr(message, "content", None)
+            )
+            chunks.extend(_content_text_chunks(content))
+    return token_count("\n".join(chunks)) if chunks else 0
 
 
 def _usage_mapping(value: Any) -> Mapping[str, Any]:
@@ -259,7 +297,7 @@ class TokenUsageCallback(AsyncCallbackHandler):
     ) -> None:
         run_key = str(run_id)
         self._started_at[run_key] = time.perf_counter()
-        self._input_estimates[run_key] = token_count(str(messages))
+        self._input_estimates[run_key] = estimate_chat_message_tokens(messages)
 
     async def on_llm_start(
         self,

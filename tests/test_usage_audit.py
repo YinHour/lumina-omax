@@ -15,10 +15,12 @@ from open_notebook.ai.usage_audit import (
     UsageAuditContext,
     attach_usage_callback,
     command_audit_fields,
+    estimate_chat_message_tokens,
     resolve_token_usage,
     usage_surface_for_path,
 )
 from open_notebook.domain.credential import Credential
+from open_notebook.utils import token_count
 
 
 def _llm_result(message: AIMessage) -> LLMResult:
@@ -134,6 +136,26 @@ def test_usage_surface_mapping():
 
 def test_default_context_does_not_change_background_command_payload():
     assert command_audit_fields() == {}
+
+
+def test_chat_estimate_counts_visible_text_without_image_payload():
+    messages = [[
+        {"role": "system", "content": "Follow the evidence."},
+        AIMessage(
+            content=[
+                {"type": "text", "text": "Summarize this figure."},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+            ]
+        ),
+    ]]
+
+    assert estimate_chat_message_tokens(messages) == token_count(
+        "Follow the evidence.\nSummarize this figure."
+    )
+
+
+def test_malformed_usage_date_is_skipped_from_daily_aggregation():
+    assert usage_router._row_date("not-a-date") is None
 
 
 @pytest.mark.asyncio

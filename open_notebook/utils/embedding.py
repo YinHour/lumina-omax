@@ -115,7 +115,7 @@ async def generate_embeddings(
         get_model_audit_metadata,
         persist_estimated_embedding_usage,
     )
-    from open_notebook.utils.token_utils import token_count
+    from open_notebook.utils import token_count
 
     embedding_model = await model_manager.get_embedding_model()
     if not embedding_model:

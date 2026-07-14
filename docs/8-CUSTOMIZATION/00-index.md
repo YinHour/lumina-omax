@@ -3477,7 +3477,7 @@ HTTP 200；`deepseek-v4-pro` 返回 `context_window_tokens=1000000`、`context_w
 ### 44.1 问题与决策
 
 - 新增不可变 `ai_token_usage` 审计账本，记录用户、凭据名称快照、服务商、模型、工作流、成功/失败、耗时和输入/输出/总词元；不记录提示词、回答、来源内容、Authorization、原始 API Key 或异常正文。
-- 语言模型调用统一在 `provision_langchain_model()` 返回的每次调用副本上附加 LangChain callback。优先采用服务商返回的 usage metadata；缺失时使用现有 tokenizer 估算并标记为 `estimated`，避免把估算值冒充账单精确值。
+- 语言模型调用统一在 `provision_langchain_model()` 返回的每次调用副本上附加 LangChain callback。优先采用服务商返回的 usage metadata；缺失时只提取消息中的可见文本并使用现有 tokenizer 估算，结果标记为 `estimated`，避免把 Python 结构表示或图片 data URL 计入，也不把估算值冒充账单精确值。
 - Embedding 接口当前不返回 usage metadata，因此按成功批次记录估算输入词元。TTS/STT 的计费单位并非本系统定义的 token，本轮明确不纳入，避免生成错误账单口径。
 - 同步 HTTP/SSE 请求由认证中间件写入用户与请求上下文；来源处理、Transformation、Knowledge Graph 和 Embedding 后台命令显式传递发起用户。没有真实请求上下文时不向旧命令 payload 注入空字段，保持现有命令契约。
 - `GET /api/usage` 只允许普通用户查询本人；管理员可查询全部用户或筛选单个用户。返回汇总、每日序列、按 Key、按用户和最近 50 条安全元数据，不返回密钥值。
@@ -3506,7 +3506,7 @@ uv run ruff check <本轮变更的 Python 文件>
 All checks passed
 
 uv run pytest tests/ -m 'not e2e' -q
-344 passed, 33 deselected, 6 warnings
+346 passed, 33 deselected, 6 warnings
 
 cd frontend && npm test
 189 passed | 9 skipped
