@@ -8,6 +8,7 @@ from esperanto import (
     TextToSpeechModel,
 )
 from loguru import logger
+from pydantic import Field
 
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.base import ObjectModel, RecordModel
@@ -18,11 +19,21 @@ ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeech
 
 class Model(ObjectModel):
     table_name: ClassVar[str] = "model"
-    nullable_fields: ClassVar[set[str]] = {"credential"}
+    nullable_fields: ClassVar[set[str]] = {"credential", "context_window_tokens"}
     name: str
     provider: str
     type: str
     credential: Optional[str] = None
+    context_window_tokens: Optional[int] = Field(default=None, gt=0)
+
+    def get_effective_context_window(self):
+        from open_notebook.ai.model_context import get_effective_context_window
+
+        return get_effective_context_window(
+            self.provider,
+            self.name,
+            self.context_window_tokens,
+        )
 
     @classmethod
     async def get_models_by_type(cls, model_type):

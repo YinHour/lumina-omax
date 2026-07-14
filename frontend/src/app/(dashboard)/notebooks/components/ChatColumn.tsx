@@ -11,6 +11,7 @@ import { AlertCircle } from 'lucide-react'
 import { ContextSelections } from '../[id]/page'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceListResponse } from '@/lib/types/api'
+import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 
 interface ChatColumnProps {
   notebookId: string
@@ -26,6 +27,8 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
   const { data: notes = [], isLoading: notesLoading } = useNotes(notebookId)
   const { data: notebookGuide, isLoading: guideLoading, isFetching: guideFetching } = useNotebookGuide(notebookId, sources.length > 0)
   const regenerateGuide = useRegenerateNotebookGuide()
+  const { data: models = [] } = useModels()
+  const { data: modelDefaults } = useModelDefaults()
 
   // Initialize notebook chat hook
   const chat = useNotebookChat({
@@ -67,6 +70,18 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       charCount: chat.charCount
     }
   }, [sources, notes, contextSelections, chat.tokenCount, chat.charCount])
+
+  const selectedModelId = chat.contextWindowUsage?.model_id
+    ?? chat.currentSession?.model_override
+    ?? chat.pendingModelOverride
+    ?? modelDefaults?.default_chat_model
+  const selectedModel = models.find(model => model.id === selectedModelId)
+  const contextWindowStats = {
+    modelName: chat.contextWindowUsage?.model_name ?? selectedModel?.name,
+    usedTokens: chat.chatMode === 'quick' ? chat.contextWindowUsage?.input_tokens : undefined,
+    contextWindowTokens: chat.contextWindowUsage?.context_window_tokens ?? selectedModel?.context_window_tokens ?? undefined,
+    estimated: chat.contextWindowUsage?.estimated ?? true,
+  }
 
   // Show loading state while sources/notes are being fetched
   if (sourcesLoading || notesLoading) {
@@ -121,6 +136,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       onDeleteSession={chat.deleteSession}
       loadingSessions={chat.loadingSessions}
       notebookContextStats={chat.chatMode === 'quick' ? contextStats : undefined}
+      contextWindowStats={contextWindowStats}
       notebookId={notebookId}
       onCancelStreaming={chat.cancelStreaming}
       onRegenerateGuide={() => regenerateGuide.mutate(notebookId)}

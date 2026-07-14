@@ -3,6 +3,7 @@ import os
 from typing import Annotated, Optional
 
 from ai_prompter import Prompter
+from langchain_core.callbacks.manager import adispatch_custom_event
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -10,7 +11,7 @@ from langgraph.graph.message import add_messages
 from loguru import logger
 from typing_extensions import TypedDict
 
-from open_notebook.ai.provision import provision_langchain_model
+from open_notebook.ai.provision import provision_langchain_model_with_info
 from open_notebook.domain.notebook import Notebook
 from open_notebook.exceptions import OpenNotebookError
 from open_notebook.graphs.message_history import select_history_window
@@ -106,7 +107,7 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
 
         try:
             # Get the model provisioned
-            model = await provision_langchain_model(
+            provisioned = await provision_langchain_model_with_info(
                 str(payload),
                 model_id,
                 "chat",
@@ -115,8 +116,8 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
             )
         except RuntimeError:
             # Fallback to run if not in a running loop
-            model = asyncio.run(
-                provision_langchain_model(
+            provisioned = asyncio.run(
+                provision_langchain_model_with_info(
                     str(payload),
                     model_id,
                     "chat",
@@ -124,6 +125,21 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
                     streaming=True, # Enable streaming explicitly
                 )
             )
+
+        model = provisioned.model
+        await adispatch_custom_event(
+            "context_usage",
+            {
+                "model_id": provisioned.model_id,
+                "model_name": provisioned.model_name,
+                "provider": provisioned.provider,
+                "input_tokens": provisioned.input_tokens,
+                "context_window_tokens": provisioned.context_window_tokens,
+                "context_window_source": provisioned.context_window_source,
+                "estimated": True,
+            },
+            config=config,
+        )
 
         if state.get("enable_web_search"):
             from open_notebook.graphs.tools import tavily_search

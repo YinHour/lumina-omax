@@ -3,7 +3,7 @@ import traceback
 from typing import Dict, List, Optional
 
 from esperanto import AIFactory
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel
 
@@ -11,8 +11,10 @@ from api.models import (
     DefaultModelsResponse,
     ModelCreate,
     ModelResponse,
+    ModelUpdate,
     ProviderAvailabilityResponse,
 )
+from api.routers.auth import require_admin
 from open_notebook.ai.connection_tester import test_individual_model
 from open_notebook.ai.key_provider import provision_provider_keys
 from open_notebook.ai.model_discovery import (
@@ -23,9 +25,24 @@ from open_notebook.ai.model_discovery import (
 )
 from open_notebook.ai.models import DefaultModels, Model
 from open_notebook.domain.credential import Credential
-from open_notebook.exceptions import InvalidInputError
+from open_notebook.exceptions import InvalidInputError, NotFoundError
 
 router = APIRouter()
+
+
+def model_to_response(model: Model) -> ModelResponse:
+    context_window_tokens, context_window_source = model.get_effective_context_window()
+    return ModelResponse(
+        id=model.id or "",
+        name=model.name,
+        provider=model.provider,
+        type=model.type,
+        credential=model.credential,
+        context_window_tokens=context_window_tokens,
+        context_window_source=context_window_source,
+        created=str(model.created),
+        updated=str(model.updated),
+    )
 
 
 # =============================================================================
@@ -177,18 +194,7 @@ async def get_models(
         else:
             models = await Model.get_all()
 
-        return [
-            ModelResponse(
-                id=model.id,
-                name=model.name,
-                provider=model.provider,
-                type=model.type,
-                credential=model.credential,
-                created=str(model.created),
-                updated=str(model.updated),
-            )
-            for model in models
-        ]
+        return [model_to_response(model) for model in models]
     except Exception as e:
         logger.error(f"Error fetching models: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching models: {str(e)}")
@@ -228,18 +234,11 @@ async def create_model(model_data: ModelCreate):
             provider=model_data.provider,
             type=model_data.type,
             credential=model_data.credential,
+            context_window_tokens=model_data.context_window_tokens,
         )
         await new_model.save()
 
-        return ModelResponse(
-            id=new_model.id or "",
-            name=new_model.name,
-            provider=new_model.provider,
-            type=new_model.type,
-            credential=new_model.credential,
-            created=str(new_model.created),
-            updated=str(new_model.updated),
-        )
+        return model_to_response(new_model)
     except HTTPException:
         raise
     except InvalidInputError as e:
@@ -265,6 +264,29 @@ async def delete_model(model_id: str):
     except Exception as e:
         logger.error(f"Error deleting model {model_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting model: {str(e)}")
+
+
+@router.patch("/models/{model_id}", response_model=ModelResponse)
+async def update_model(
+    model_id: str,
+    model_data: ModelUpdate,
+    _admin: dict = Depends(require_admin),
+):
+    """Update model metadata that is managed locally."""
+    try:
+        model = await Model.get(model_id)
+        update_data = model_data.model_dump(exclude_unset=True)
+        if "context_window_tokens" in update_data:
+            model.context_window_tokens = update_data["context_window_tokens"]
+        await model.save()
+        return model_to_response(model)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Model not found")
+    except Exception as e:
+        logger.error(f"Error updating model {model_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating model: {str(e)}")
 
 
 @router.post("/models/{model_id}/test", response_model=ModelTestResponse)
@@ -622,18 +644,7 @@ async def get_models_by_provider(provider: str):
             {"provider": provider},
         )
 
-        return [
-            ModelResponse(
-                id=model.get("id", ""),
-                name=model.get("name", ""),
-                provider=model.get("provider", ""),
-                type=model.get("type", ""),
-                credential=model.get("credential"),
-                created=str(model.get("created", "")),
-                updated=str(model.get("updated", "")),
-            )
-            for model in models
-        ]
+        return [model_to_response(Model(**model)) for model in models]
     except Exception as e:
         logger.error(f"Error fetching models for {provider}: {str(e)}")
         raise HTTPException(

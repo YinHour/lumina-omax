@@ -44,6 +44,35 @@ def test_chat_status_sse_event_shape():
     }
 
 
+def test_context_usage_sse_event_shape_and_field_filtering():
+    from api.routers import chat
+
+    event = chat.context_usage_sse_event(
+        {
+            "model_id": "model:test",
+            "model_name": "deepseek-v4-pro",
+            "provider": "deepseek",
+            "input_tokens": 93_400,
+            "context_window_tokens": 1_000_000,
+            "context_window_source": "builtin",
+            "estimated": True,
+            "private": "must-not-leak",
+        }
+    )
+
+    payload = json.loads(event.removeprefix("data: ").strip())
+    assert payload == {
+        "type": "context_usage",
+        "model_id": "model:test",
+        "model_name": "deepseek-v4-pro",
+        "provider": "deepseek",
+        "input_tokens": 93_400,
+        "context_window_tokens": 1_000_000,
+        "context_window_source": "builtin",
+        "estimated": True,
+    }
+
+
 def test_env_positive_float_falls_back_on_invalid(monkeypatch):
     from api.routers import chat
 

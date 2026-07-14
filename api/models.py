@@ -108,6 +108,15 @@ class ModelCreate(BaseModel):
     credential: Optional[str] = Field(
         None, description="Credential ID to link this model to"
     )
+    context_window_tokens: Optional[int] = Field(
+        None, gt=0, description="Optional model context window override in tokens"
+    )
+
+
+class ModelUpdate(BaseModel):
+    context_window_tokens: Optional[int] = Field(
+        None, gt=0, description="Optional model context window override in tokens"
+    )
 
 
 class ModelResponse(BaseModel):
@@ -116,6 +125,8 @@ class ModelResponse(BaseModel):
     provider: str
     type: str
     credential: Optional[str] = None
+    context_window_tokens: Optional[int] = None
+    context_window_source: Optional[str] = None
     created: str
     updated: str
 

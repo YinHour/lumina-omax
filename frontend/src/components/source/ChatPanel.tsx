@@ -19,6 +19,7 @@ import {
 } from '@/lib/types/api'
 import { ModelSelector } from './ModelSelector'
 import { ContextIndicator } from '@/components/common/ContextIndicator'
+import { ContextWindowMeter } from '@/components/common/ContextWindowMeter'
 import { SessionManager } from '@/components/source/SessionManager'
 import { MessageActions } from '@/components/source/MessageActions'
 import {
@@ -58,6 +59,13 @@ interface NotebookContextStats {
   charCount?: number
 }
 
+interface ContextWindowStats {
+  modelName?: string
+  usedTokens?: number
+  contextWindowTokens?: number
+  estimated?: boolean
+}
+
 interface ChatPanelProps {
   messages: SourceChatMessage[]
   isStreaming: boolean
@@ -79,6 +87,7 @@ interface ChatPanelProps {
   contextType?: 'source' | 'notebook'
   // Notebook context stats (for notebook chat)
   notebookContextStats?: NotebookContextStats
+  contextWindowStats?: ContextWindowStats
   // Notebook ID for saving notes
   notebookId?: string
   // Cancel streaming
@@ -122,6 +131,7 @@ export function ChatPanel({
   title,
   contextType = 'source',
   notebookContextStats,
+  contextWindowStats,
   notebookId,
   onCancelStreaming,
   notebookGuide,
@@ -637,6 +647,16 @@ export function ChatPanel({
             notesCount={notebookContextStats.notesCount}
             tokenCount={notebookContextStats.tokenCount}
             charCount={notebookContextStats.charCount}
+          />
+        )}
+
+        {contextWindowStats && (
+          <ContextWindowMeter
+            mode={chatMode}
+            modelName={contextWindowStats.modelName}
+            usedTokens={contextWindowStats.usedTokens}
+            contextWindowTokens={contextWindowStats.contextWindowTokens}
+            estimated={contextWindowStats.estimated}
           />
         )}
 

@@ -123,6 +123,25 @@ def chat_status_sse_event(
     return f"data: {json.dumps(event)}\n\n"
 
 
+def context_usage_sse_event(data: dict[str, Any]) -> str:
+    import json
+
+    allowed_fields = {
+        "model_id",
+        "model_name",
+        "provider",
+        "input_tokens",
+        "context_window_tokens",
+        "context_window_source",
+        "estimated",
+    }
+    event = {
+        "type": "context_usage",
+        **{key: value for key, value in data.items() if key in allowed_fields},
+    }
+    return f"data: {json.dumps(event)}\n\n"
+
+
 CHAT_TOOL_STAGE = {
     "list_notebook_sources": "inspecting_scope",
     "search_notebook_evidence": "searching_notebook",
@@ -912,6 +931,13 @@ async def stream_chat_response(
                             else "awaiting_model",
                             "active",
                         )
+
+                    elif (
+                        kind == "on_custom_event"
+                        and event.get("name") == "context_usage"
+                    ):
+                        usage_data = event.get("data") or {}
+                        await put_output(context_usage_sse_event(usage_data))
 
                     elif kind == "on_chat_model_end":
                         if "output" in event["data"] and "content" in event["data"]["output"]:
