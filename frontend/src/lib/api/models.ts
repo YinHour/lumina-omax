@@ -2,6 +2,7 @@ import apiClient from './client'
 import {
   Model,
   CreateModelRequest,
+  UpdateModelRequest,
   ModelDefaults,
   ProviderAvailability,
   DiscoveredModel,
@@ -25,6 +26,11 @@ export const modelsApi = {
 
   create: async (data: CreateModelRequest) => {
     const response = await apiClient.post<Model>('/models', data)
+    return response.data
+  },
+
+  update: async (id: string, data: UpdateModelRequest) => {
+    const response = await apiClient.patch<Model>(`/models/${id}`, data)
     return response.data
   },
 

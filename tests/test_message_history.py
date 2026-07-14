@@ -130,6 +130,7 @@ def _tool_call_ids_in_payload(messages) -> set[str]:
 
 @pytest.mark.asyncio
 async def test_quick_model_payload_repairs_orphan_tool_message(monkeypatch):
+    from open_notebook.ai.provision import ProvisionedModelInfo
     from open_notebook.graphs import chat
 
     captured_payload = []
@@ -142,7 +143,23 @@ async def test_quick_model_payload_repairs_orphan_tool_message(monkeypatch):
     model.ainvoke = AsyncMock(side_effect=invoke)
     model.bind_tools.return_value = model
     monkeypatch.setattr(chat.Prompter, "render", MagicMock(return_value="system"))
-    monkeypatch.setattr(chat, "provision_langchain_model", AsyncMock(return_value=model))
+    monkeypatch.setattr(
+        chat,
+        "provision_langchain_model_with_info",
+        AsyncMock(
+            return_value=ProvisionedModelInfo(
+                model=model,
+                model_id="model:test",
+                model_name="test-model",
+                provider="test-provider",
+                input_tokens=123,
+                context_window_tokens=1_000,
+                context_window_source="configured",
+            )
+        ),
+    )
+    dispatch_event = AsyncMock()
+    monkeypatch.setattr(chat, "adispatch_custom_event", dispatch_event)
 
     await chat.call_model_with_messages(
         {
@@ -157,6 +174,19 @@ async def test_quick_model_payload_repairs_orphan_tool_message(monkeypatch):
 
     assert not any(isinstance(message, ToolMessage) for message in captured_payload)
     assert any(isinstance(message, HumanMessage) for message in captured_payload)
+    dispatch_event.assert_awaited_once_with(
+        "context_usage",
+        {
+            "model_id": "model:test",
+            "model_name": "test-model",
+            "provider": "test-provider",
+            "input_tokens": 123,
+            "context_window_tokens": 1_000,
+            "context_window_source": "configured",
+            "estimated": True,
+        },
+        config={},
+    )
 
 
 @pytest.mark.asyncio

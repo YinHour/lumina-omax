@@ -15,6 +15,8 @@ import {
   NoteResponse,
   BuildContextResponse,
   NotebookChatMode,
+  NotebookContextWindowUsage,
+  NotebookChatStreamEvent,
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
 import { buildErrorBubbleBody } from '@/lib/chat/error-bubble'
@@ -82,6 +84,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const [activityTotalElapsedSeconds, setActivityTotalElapsedSeconds] = useState(0)
   const [tokenCount, setTokenCount] = useState<number>(0)
   const [charCount, setCharCount] = useState<number>(0)
+  const [contextWindowUsage, setContextWindowUsage] = useState<NotebookContextWindowUsage | null>(null)
   const isSendingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const activityStartedAtRef = useRef<number | null>(null)
@@ -589,7 +592,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         )
       }
 
-      const handleStreamEvent = (data: { type?: string; content?: string; message?: string; questions?: unknown; stage?: string; status?: string; elapsed_ms?: number; error_code?: string; timeout_seconds?: number }) => {
+      const handleStreamEvent = (data: NotebookChatStreamEvent) => {
         if (data.type === 'ai_message') {
           if (!aiMessage) {
             setActivityStatus('modelStreaming')
@@ -645,6 +648,22 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             setActivityElapsedSeconds(elapsedSeconds)
             setActivityTotalElapsedSeconds(previous => Math.max(previous, elapsedSeconds))
           }
+        } else if (
+          data.type === 'context_usage' &&
+          typeof data.model_id === 'string' &&
+          typeof data.model_name === 'string' &&
+          typeof data.provider === 'string' &&
+          typeof data.input_tokens === 'number'
+        ) {
+          setContextWindowUsage({
+            model_id: data.model_id,
+            model_name: data.model_name,
+            provider: data.provider,
+            input_tokens: data.input_tokens,
+            context_window_tokens: data.context_window_tokens,
+            context_window_source: data.context_window_source,
+            estimated: data.estimated !== false,
+          })
         } else if (data.type === 'suggested_questions') {
           const questions = Array.isArray(data.questions)
             ? data.questions.filter((question): question is string => typeof question === 'string' && question.trim().length > 0).slice(0, 3)
@@ -857,6 +876,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setNewSessionDrafts(previous => ({ ...previous, [chatMode]: false }))
     setSaveStatusForMode(chatMode, 'saved')
     setSuggestedQuestionsByMessageId({})
+    setContextWindowUsage(null)
     setSessionIdForMode(chatMode, sessionId)
   }, [resetActivity, chatMode, setSaveStatusForMode, setSessionIdForMode])
 
@@ -866,6 +886,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setNewSessionDrafts(previous => ({ ...previous, [chatMode]: true }))
     setSaveStatusForMode(chatMode, 'idle')
     setSuggestedQuestionsByMessageId({})
+    setContextWindowUsage(null)
     setSessionIdForMode(chatMode, null)
     setMessages([])
     messageSessionIdRef.current = null
@@ -894,6 +915,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       setAllowCrossNotebookDiscovery(false)
     }
     setSuggestedQuestionsByMessageId({})
+    setContextWindowUsage(null)
     setMessages([])
     messageSessionIdRef.current = null
     loadedEarlierRef.current = false
@@ -967,6 +989,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     loadingSessions,
     tokenCount,
     charCount,
+    contextWindowUsage,
     pendingModelOverride,
     saveStatus: saveStatuses[chatMode],
     chatMode,

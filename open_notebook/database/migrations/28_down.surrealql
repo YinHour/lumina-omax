@@ -1,0 +1,1 @@
+REMOVE FIELD IF EXISTS context_window_tokens ON TABLE model;

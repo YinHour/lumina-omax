@@ -16,6 +16,16 @@ export interface NotebookResponse {
 
 export type NotebookGuideStatus = 'empty' | 'ready' | 'error'
 
+export interface NotebookContextWindowUsage {
+  model_id: string
+  model_name: string
+  provider: string
+  input_tokens: number
+  context_window_tokens?: number | null
+  context_window_source?: 'configured' | 'builtin' | null
+  estimated: boolean
+}
+
 export interface NotebookGuideResponse {
   notebook_id: string
   source_count: number
@@ -240,6 +250,25 @@ export interface SourceChatStreamEvent {
 
 // Notebook Chat Types
 export type NotebookChatMode = 'quick' | 'research'
+
+export interface NotebookChatStreamEvent {
+  type?: string
+  content?: string
+  message?: string
+  questions?: unknown
+  stage?: string
+  status?: string
+  elapsed_ms?: number
+  error_code?: string
+  timeout_seconds?: number
+  model_id?: string
+  model_name?: string
+  provider?: string
+  input_tokens?: number
+  context_window_tokens?: number | null
+  context_window_source?: 'configured' | 'builtin' | null
+  estimated?: boolean
+}
 
 export interface NotebookChatSession extends BaseChatSession {
   notebook_id: string

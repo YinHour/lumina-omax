@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -35,9 +36,10 @@ import {
   Mic,
   Volume2,
   Bot,
+  Gauge,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { useModels, useDeleteModel, useModelDefaults, useUpdateModelDefaults, useAutoAssignDefaults, useTestModel } from '@/lib/hooks/use-models'
+import { useModels, useDeleteModel, useModelDefaults, useUpdateModelDefaults, useAutoAssignDefaults, useTestModel, useUpdateModel } from '@/lib/hooks/use-models'
 import {
   useCredentials,
   useCredential,
@@ -739,6 +741,83 @@ function DeleteCredentialDialog({
 // Credential Card (shows credential + its models)
 // =============================================================================
 
+function ModelContextWindowDialog({
+  model,
+  open,
+  onOpenChange,
+}: {
+  model: Model | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const updateModel = useUpdateModel()
+  const [value, setValue] = useState('')
+
+  useEffect(() => {
+    setValue(model?.context_window_tokens ? String(model.context_window_tokens) : '')
+  }, [model])
+
+  if (!model) return null
+
+  const trimmedValue = value.trim()
+  const parsedValue = trimmedValue ? Number(trimmedValue) : null
+  const isValidValue = parsedValue === null || (
+    Number.isInteger(parsedValue) && parsedValue > 0
+  )
+
+  const handleSave = () => {
+    if (!isValidValue) return
+
+    updateModel.mutate(
+      { id: model.id, data: { context_window_tokens: parsedValue } },
+      { onSuccess: () => onOpenChange(false) }
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t.models.contextWindowDialogTitle}</DialogTitle>
+          <DialogDescription>
+            {t.models.contextWindowDialogDesc.replace('{model}', model.name)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          <Label htmlFor="model-context-window">{t.models.contextWindowTokensLabel}</Label>
+          <Input
+            id="model-context-window"
+            type="number"
+            min={1}
+            step={1000}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder={t.models.contextWindowPlaceholder}
+          />
+          <p className="text-xs text-muted-foreground">
+            {model.context_window_source === 'builtin'
+              ? t.models.contextWindowBuiltinHint.replace(
+                  '{count}',
+                  String(model.context_window_tokens ?? '')
+                )
+              : t.models.contextWindowOverrideHint}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t.common.cancel}
+          </Button>
+          <Button onClick={handleSave} disabled={updateModel.isPending || !isValidValue}>
+            {updateModel.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {t.common.save}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CredentialItem({
   credential,
   models,
@@ -757,6 +836,7 @@ function CredentialItem({
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [discoverOpen, setDiscoverOpen] = useState(false)
+  const [contextWindowModel, setContextWindowModel] = useState<Model | null>(null)
   // Full credential data needed for edit form
   const { data: fullCredential } = useCredential(editOpen ? credential.id : '')
 
@@ -870,6 +950,17 @@ function CredentialItem({
                         >
                           {model.name}
                           {defaultSlot && <span className="ml-0.5 opacity-75">({defaultSlot})</span>}
+                          {model.type === 'language' && (
+                            <button
+                              type="button"
+                              className="ml-0.5 opacity-0 transition-opacity group-hover/model:opacity-60 hover:!opacity-100 focus-visible:opacity-100"
+                              onClick={() => setContextWindowModel(model)}
+                              title={t.models.editContextWindow}
+                              aria-label={`${t.models.editContextWindow}: ${model.name}`}
+                            >
+                              <Gauge className="h-3 w-3" />
+                            </button>
+                          )}
                           <button
                             className="ml-0.5 opacity-0 group-hover/model:opacity-60 hover:!opacity-100 transition-opacity"
                             onClick={() => testModel(model.id, model.name)}
@@ -928,6 +1019,14 @@ function CredentialItem({
           credential={credential}
         />
       )}
+
+      <ModelContextWindowDialog
+        model={contextWindowModel}
+        open={contextWindowModel !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setContextWindowModel(null)
+        }}
+      />
 
       {/* Model test result dialog */}
       <ModelTestResultDialog

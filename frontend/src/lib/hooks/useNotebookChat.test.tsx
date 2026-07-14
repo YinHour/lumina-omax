@@ -1052,6 +1052,50 @@ describe('useNotebookChat', () => {
     expect(result.current.activityTotalElapsedSeconds).toBeGreaterThanOrEqual(5)
   })
 
+  it('stores the model context usage emitted before the answer', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:1',
+      title: 'Context usage test',
+      notebook_id: 'notebook:1',
+      created: '2026-06-12T00:00:00Z',
+      updated: '2026-06-12T00:00:00Z',
+    })
+    chatApiMock.sendMessage.mockResolvedValue(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(
+          'data: {"type":"context_usage","model_id":"model:deepseek","model_name":"deepseek-v4-pro","provider":"deepseek","input_tokens":93400,"context_window_tokens":1000000,"context_window_source":"builtin","estimated":true}\n\n' +
+          'data: {"type":"answer_complete"}\n\n' +
+          'data: {"type":"complete"}\n\n',
+        ))
+        controller.close()
+      },
+    }))
+
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('Measure this prompt')
+    })
+
+    expect(result.current.contextWindowUsage).toEqual({
+      model_id: 'model:deepseek',
+      model_name: 'deepseek-v4-pro',
+      provider: 'deepseek',
+      input_tokens: 93_400,
+      context_window_tokens: 1_000_000,
+      context_window_source: 'builtin',
+      estimated: true,
+    })
+  })
+
   it('renders llm_timeout as an inline AI bubble instead of a toast (scenario A: no prior AI chunks)', async () => {
     const { toast } = await import('@/lib/hooks/use-toast')
     chatApiMock.createSession.mockResolvedValue({

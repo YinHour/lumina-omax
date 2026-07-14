@@ -4,6 +4,8 @@ export interface Model {
   provider: string
   type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
   credential?: string | null
+  context_window_tokens?: number | null
+  context_window_source?: 'configured' | 'builtin' | null
   created: string
   updated: string
 }
@@ -13,6 +15,11 @@ export interface CreateModelRequest {
   provider: string
   type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
   credential?: string
+  context_window_tokens?: number | null
+}
+
+export interface UpdateModelRequest {
+  context_window_tokens?: number | null
 }
 
 export interface ModelDefaults {

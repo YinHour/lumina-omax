@@ -3419,3 +3419,53 @@ exit 0
 ```
 
 未验证项：尚未在真实登录态笔记本中使用客户原始回答进行浏览器视觉验收；自动测试已验证 KaTeX DOM、块级公式、Insight 点击和原始 HTML 表格。`npm install` 报告当前依赖树存在 15 个 audit findings，本轮未执行自动升级，避免引入无关依赖变更。
+
+---
+
+## 43. 笔记本对话上下文窗口用量（2026-07-14）
+
+### 43.1 问题与决策
+
+- 原有笔记本快速对话只统计用户勾选的来源/笔记字符与词元，不能回答“本轮实际发送给模型的上下文占模型窗口多少”。该来源统计继续保留；新增的上下文窗口条带是独立指标，不改变上下文选择或截断策略。
+- Quick 模式在模型调用前，对最终模型 payload（系统提示、压缩后的历史消息、当前问题和已选择上下文）进行词元估算，并通过 `context_usage` SSE 返回实际选中的模型、估算输入词元和窗口上限。该值明确标为估算值，不冒充供应商账单中的精确 token usage。
+- Research Agent 采用按需工具检索，没有一个可在提交时稳定定义的固定上下文分母，因此只显示模型和“按需检索上下文”，不显示虚假的百分比。
+- 模型窗口上限优先使用管理员在 API Keys 模型列表中维护的正整数覆盖值；仅内置已确认的 `deepseek/deepseek-v4-pro = 1,000,000`。未知模型不猜测上限，界面显示“上限未知”。
+- 模型窗口覆盖使用既有相对 `/api/models/{id}` PATCH 链路且仅管理员可调用；不新增生产依赖或部署服务。数据库迁移 28 为 `model` 增加可空的 `context_window_tokens` 字段。
+
+### 43.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/database/migrations/28*.surrealql` | 模型上下文窗口覆盖字段及回滚迁移 |
+| `open_notebook/ai/model_context.py`、`models.py`、`provision.py` | 解析内置/管理员窗口上限，并让实际模型选择与统计元数据使用同一次解析结果 |
+| `open_notebook/graphs/chat.py`、`api/routers/chat.py` | 模型调用前发出经过白名单过滤的 `context_usage` 自定义事件/SSE |
+| `api/models.py`、`api/routers/models.py` | 模型 API 返回有效窗口与来源；新增管理员专用 PATCH 更新入口 |
+| `frontend/src/lib/hooks/useNotebookChat.ts`、`use-models.ts`、`api/models.ts` | 消费上下文 SSE，并通过相对 API 更新模型窗口配置 |
+| `frontend/src/components/common/ContextWindowMeter.tsx`、`ChatPanel.tsx`、`ChatColumn.tsx` | Quick 展示估算用量/窗口/百分比，Research 展示按需检索语义 |
+| `frontend/src/app/(dashboard)/settings/api-keys/page.tsx` | 管理员在语言模型徽标旁维护上下文窗口覆盖值 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包新增上下文窗口和配置文案 |
+| `tests/test_model_context.py`、`test_message_history.py`、`test_chat_heartbeat_sse.py` 及对应前端测试 | 覆盖模型选择、窗口来源、SSE 白名单、Hook 状态和界面语义 |
+
+### 43.3 验证
+
+```text
+uv run pytest tests/test_model_context.py tests/test_model_provision_logging.py tests/test_models_api.py tests/test_message_history.py tests/test_chat_context_budget.py tests/test_chat_heartbeat_sse.py -q
+44 passed, 6 warnings
+
+uv run ruff check api/models.py api/routers/chat.py api/routers/models.py open_notebook/ai/model_context.py open_notebook/ai/models.py open_notebook/ai/provision.py open_notebook/graphs/chat.py tests/test_model_context.py tests/test_message_history.py tests/test_chat_heartbeat_sse.py
+All checks passed
+
+cd frontend && npm test
+187 passed | 9 skipped
+
+cd frontend && npm run build
+exit 0
+
+make start-all
+API initialization completed successfully；Current database version: 28；Next.js `/api/*` 代理到 `http://127.0.0.1:5056/api/*`
+
+curl -sS -i --max-time 5 http://127.0.0.1:3001/api/models
+HTTP 200；`deepseek-v4-pro` 返回 `context_window_tokens=1000000`、`context_window_source=builtin`；未知模型返回 null
+```
+
+未验证项：浏览器控制连接初始化失败，因此未自动操作登录页面，也未发送真实模型请求核对 SSE 百分比或修改管理员配置；供应商返回的精确输入 token 不属于本轮数据源，界面展示的是项目现有 tokenizer 对最终 payload 的估算。为避免改变用户现有模型记录，运行时验证只读取 `/api/models`，未调用 PATCH。
