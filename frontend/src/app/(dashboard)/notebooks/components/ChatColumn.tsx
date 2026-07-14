@@ -66,10 +66,9 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       sourcesInsights,
       sourcesFull,
       notesCount,
-      tokenCount: chat.tokenCount,
-      charCount: chat.charCount
+      tokenCount: chat.tokenCount
     }
-  }, [sources, notes, contextSelections, chat.tokenCount, chat.charCount])
+  }, [sources, notes, contextSelections, chat.tokenCount])
 
   const selectedModelId = chat.contextWindowUsage?.model_id
     ?? chat.currentSession?.model_override
