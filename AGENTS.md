@@ -10,37 +10,42 @@ This file provides architectural guidance for contributors working on Lumiton·O
 
 ---
 
-## Three-Tier Architecture
+## Runtime Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │              Frontend (React/Next.js)                    │
-│              frontend/ @ port 3000                       │
+│     local source :3001 / standard container :3000       │
 ├─────────────────────────────────────────────────────────┤
 │ - Notebooks, sources, notes, chat, podcasts, search UI  │
 │ - Zustand state management, TanStack Query (React Query)│
 │ - Shadcn/ui component library with Tailwind CSS         │
 └────────────────────────┬────────────────────────────────┘
-                         │ HTTP REST
+                         │ relative /api via Next.js rewrite
 ┌────────────────────────▼────────────────────────────────┐
 │              API (FastAPI)                              │
-│              api/ @ port 5055                           │
+│     local source :5056 / standard container :5055       │
 ├─────────────────────────────────────────────────────────┤
-│ - REST endpoints for notebooks, sources, notes, chat    │
-│ - LangGraph workflow orchestration                      │
-│ - Job queue for async operations (podcasts)             │
+│ - JWT authentication, REST endpoints and SSE streams    │
+│ - LangGraph Quick/Research/Source Chat/Ask workflows    │
+│ - Automatic SurrealDB migrations on API startup         │
 │ - Multi-provider AI provisioning via Esperanto          │
 └────────────────────────┬────────────────────────────────┘
-                         │ SurrealQL
+                         │ SurrealQL + background commands
 ┌────────────────────────▼────────────────────────────────┐
-│         Database (SurrealDB)                            │
-│         Graph database @ port 8000                      │
+│       Surreal-Commands Worker + SurrealDB               │
+│   DB host 127.0.0.1:8001 -> container port 8000         │
 ├─────────────────────────────────────────────────────────┤
-│ - Records: Notebook, Source, Note, ChatSession, Credential│
-│ - Relationships: source-to-notebook, note-to-source     │
-│ - Vector embeddings for semantic search                 │
+│ - Source processing, embeddings, KG and transformations │
+│ - Business records, vectors, KG, transcripts and usage  │
+│ - Separate SQLite checkpoints for chat execution memory │
 └─────────────────────────────────────────────────────────┘
 ```
+
+Local source development uses `make start-all`: Next.js listens on
+`0.0.0.0:3001`, the API listens on `5056`, and SurrealDB is exposed only on
+`127.0.0.1:8001`. Standard containers may continue to use ports `3000`, `5055`,
+and `8000` internally.
 
 ---
 
@@ -99,10 +104,11 @@ User documentation is at @docs/
 - FastAPI handles concurrent requests efficiently
 
 ### 2. LangGraph Workflows
-- **source.py**: Content ingestion (extract → embed → save)
-- **chat.py**: Conversational agent with message history
-- **ask.py**: Search + synthesis (retrieve relevant sources → LLM)
-- **transformation.py**: Custom transformations on sources
+- **source.py**: Worker-side extraction and Vision processing → save parsed content → submit embedding/KG/transformation jobs
+- **chat.py**: Quick Chat with protocol-safe history compression and persisted transcripts
+- **research_agent.py**: Notebook-scoped, tool-driven Research Agent with explicit cross-notebook authorization
+- **source_chat.py**: Per-source conversational workflow
+- **ask.py**: Global strategy → vector/KG retrieval → per-query answers → final synthesis
 - All use `provision_langchain_model()` for smart model selection
 
 ### 3. Multi-Provider AI
@@ -119,8 +125,9 @@ User documentation is at @docs/
 - **Transactions**: Repo functions handle ACID operations
 
 ### 5. Authentication
-- **Current**: Simple password middleware (insecure, dev-only)
-- **Production**: Replace with OAuth/JWT (see CONFIGURATION.md)
+- **Current**: JWT account authentication with registration approval, roles, and active/pending/rejected status checks
+- **Compatibility path**: `OPEN_NOTEBOOK_PASSWORD` remains a master-password super-admin path
+- **Authorization**: Sensitive notebook, settings, model, usage, and user-management operations apply route-level role/ownership checks
 
 ---
 
@@ -132,14 +139,16 @@ User documentation is at @docs/
 - **SurrealDB must be running**: API fails without database connection
 
 ### Frontend-Backend Communication
-- **Base API URL**: Configured in `.env.local` (default: http://localhost:5055)
+- **Browser default**: Relative `/api`; `frontend/next.config.ts` proxies requests to `INTERNAL_API_URL`
+- **Runtime override**: `API_URL` is only for an explicit externally reachable browser API endpoint; do not set it to server-local `localhost` for LAN clients
 - **CORS enabled**: Configured in `api/main.py` (allow all origins in dev)
-- **Rate limiting**: Not built-in; add at proxy layer for production
+- **Rate limiting**: Authentication endpoints have an application-level limiter; broader traffic shaping still belongs at the proxy layer
 
 ### LangGraph Workflows
-- **Blocking operations**: Chat/podcast workflows may take minutes; no timeout
-- **State persistence**: Uses SQLite checkpoint storage in `/data/sqlite-db/`
-- **Model fallback**: If primary model fails, falls back to cheaper/smaller model
+- **Streaming safeguards**: Notebook Chat, Source Chat, and global Ask use SSE heartbeat, structured errors, and configurable overall timeouts
+- **Execution memory**: Quick Chat, Source Chat, and Research Agent use separate SQLite checkpoint files under `data/sqlite-db/`
+- **Visible transcript**: Notebook human/final-AI messages are persisted in SurrealDB `chat_message` records and paginated independently of checkpoints
+- **Model selection**: Explicit overrides and configured defaults are supported; very large inputs can select the configured large-context model
 
 ### Podcast Generation
 - **Async job queue**: `podcast_service.py` submits jobs but doesn't wait
@@ -149,7 +158,7 @@ User documentation is at @docs/
 ### Content Processing
 - **File extraction**: Uses content-core library; supports 50+ file types
 - **URL handling**: Extracts text + metadata from web pages
-- **Large files**: Content processing is sync; may block API briefly
+- **Large files**: The API creates the source record and queues processing; extraction, Vision, embedding, KG, and transformations run through worker-side jobs
 
 ---
 
@@ -174,7 +183,8 @@ This checkout currently uses the root `AGENTS.md` as the durable project-level g
 - **Unit tests**: `tests/test_domain.py`, `test_models_api.py`
 - **Graph tests**: `tests/test_graphs.py` (workflow integration)
 - **Utils tests**: `tests/test_utils.py`, `tests/test_chunking.py`, `tests/test_embedding.py`
-- **Run all**: `uv run pytest tests/`
+- **Default non-E2E suite**: `uv run pytest tests/ -m "not e2e" -q`
+- **E2E suite**: Run separately only with the required API, authentication, model configuration, and disposable test data
 - **Coverage**: Check with `pytest --cov`
 
 ---
@@ -186,7 +196,7 @@ This checkout currently uses the root `AGENTS.md` as the durable project-level g
 2. Create service in `api/feature_service.py`
 3. Define schemas in `api/models.py`
 4. Register router in `api/main.py`
-5. Test via http://localhost:5055/docs
+5. For local source mode, test via `http://127.0.0.1:5056/docs` (standard container API remains `5055`)
 
 ### Add a New LangGraph Workflow
 1. Create `open_notebook/graphs/workflow_name.py`
@@ -196,9 +206,9 @@ This checkout currently uses the root `AGENTS.md` as the durable project-level g
 5. Test with sample data in `tests/`
 
 ### Add Database Migration
-1. Create `migrations/XXX_description.surql`
+1. Create `open_notebook/database/migrations/XXX.surrealql`
 2. Write SurrealQL schema changes
-3. Create `migrations/XXX_description_down.surql` (optional rollback)
+3. Create `open_notebook/database/migrations/XXX_down.surrealql` for rollback
 4. API auto-detects on startup; migration runs if newer than recorded version
 
 ### Deploy to Production

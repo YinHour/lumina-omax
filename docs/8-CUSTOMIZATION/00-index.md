@@ -2,6 +2,8 @@
 
 本文档记录在 [lfnovo/open-notebook](https://github.com/lfnovo/open-notebook) 基础上进行的二次开发变更，包括功能增强、Bug 修复、架构决策等。按主题分类，每个条目标注涉及文件和关键决策。
 
+> **阅读规则**：本文档是累积历史总账，早期章节保留当时实现和决策，不保证代表当前最终状态。同一主题出现冲突时，以更新章节和当前代码为准；实施前仍需核对 Git 现场、真实运行路径和相关测试。
+
 ---
 
 ## 1. 品牌与国际化
@@ -3580,3 +3582,34 @@ exit 0
 ```
 
 未验证项：应用内浏览器控制运行时初始化失败，尚未完成真实登录态笔记本的桌面端和移动端截图验收；本地 Next.js `3001` 与 API `5056` 服务均可访问。未发送新的真实模型请求，右侧数据链路沿用第 43 节已验证的 `context_usage` SSE。
+
+---
+
+## 46. 项目指引与当前运行架构校准（2026-07-15）
+
+### 46.1 问题与决策
+
+- 根 `AGENTS.md` 的架构、鉴权、API 路由、长任务和迁移示例仍保留部分上游或早期默认，已与当前 `make start-all`、JWT 多用户、SSE 心跳/超时、长期 transcript 和真实 migration 目录产生偏差。
+- 根指引现明确区分本机源码端口（Next.js `3001`、API `5056`、SurrealDB 宿主机 `127.0.0.1:8001`）和标准容器端口（`3000/5055/8000`）。
+- 浏览器默认只使用相对 `/api`，由 Next.js 将请求代理到 `INTERNAL_API_URL`；除非部署拓扑明确改变，不向局域网浏览器下发服务器本机 `localhost` API 地址。
+- 鉴权说明校准为 JWT 账号体系、注册审批、角色/状态校验，并保留 `OPEN_NOTEBOOK_PASSWORD` 超级管理员兼容通道。
+- 来源入库说明校准为“API 建立记录并关联笔记本 → worker 抽取/Vision 处理并保存正文 → 再提交 embedding、KG 和 Transformation 后台任务”，避免继续用“同步 extract → embed → save”概括当前链路。
+- 对话持久化说明区分 SurrealDB `chat_message` 长期可见 transcript 与 Quick/Source/Research 独立 SQLite checkpoint 执行记忆，不再笼统描述为“所有会话只保存在 SQLite”。
+- 数据库迁移示例改为真实目录 `open_notebook/database/migrations/`；默认后端回归范围明确排除需要真实 API、鉴权、模型和可抛弃数据的 E2E 用例。
+- 本总账顶部新增阅读规则：早期条目是历史快照，冲突时以后续章节与当前代码为准。例如 §17 文件格式限制已被 §27 覆盖，§29 的单 Chat 心跳已被 §32 扩展到三条 SSE 流，§33 的早期模式控件已被 §34 Tabs 取代，§43 的 Quick 独立窗口条已被 §45 单行摘要取代。
+
+### 46.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `AGENTS.md` | 校准端口、代理、worker、鉴权、SSE、transcript、来源处理、测试和 migration 指引 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 新增历史总账阅读规则并记录本轮文档校准 |
+
+### 46.3 验证
+
+```text
+git diff --check
+make codex-quick-check
+```
+
+未验证项：本轮仅修改项目维护文档，未启动或重启服务，未运行前后端业务测试，也未读取 `.env`、真实数据库或供应商凭据。
