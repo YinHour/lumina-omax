@@ -318,6 +318,7 @@ export interface SendNotebookResearchMessageRequest {
   model_override?: string
   enable_web_search?: boolean
   allow_cross_notebook_discovery?: boolean
+  enable_scientific_databases?: boolean
 }
 
 export interface BuildContextRequest {

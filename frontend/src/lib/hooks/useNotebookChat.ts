@@ -55,6 +55,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const queryClient = useQueryClient()
   const [chatMode, setChatModeState] = useState<NotebookChatMode>('quick')
   const [allowCrossNotebookDiscovery, setAllowCrossNotebookDiscovery] = useState(false)
+  const [scientificDatabasesEnabled, setScientificDatabasesEnabled] = useState(false)
   const [currentSessionIds, setCurrentSessionIds] = useState<ModeState<string | null>>({
     quick: null,
     research: null,
@@ -558,6 +559,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
             enable_web_search: enableWebSearch,
             allow_cross_notebook_discovery: allowCrossNotebookDiscovery,
+            enable_scientific_databases: scientificDatabasesEnabled,
           }, abortController.signal)
         : await chatApi.sendMessage({
             session_id: sessionId,
@@ -627,6 +629,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             'reading_evidence',
             'searching_cross_notebook',
             'searching_web',
+            'inspecting_scientific_databases',
+            'searching_scientific_databases',
+            'reading_scientific_record',
             'using_research_tool',
             'awaiting_model',
             'synthesizing',
@@ -836,6 +841,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     notebookId,
     chatMode,
     allowCrossNotebookDiscovery,
+    scientificDatabasesEnabled,
     currentSessionId,
     currentSession,
     pendingModelOverride,
@@ -895,6 +901,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setNextMessageCursor(null)
     if (chatMode === 'research') {
       setAllowCrossNotebookDiscovery(false)
+      setScientificDatabasesEnabled(false)
     }
   }, [resetActivity, chatMode, setSaveStatusForMode, setSessionIdForMode])
 
@@ -913,6 +920,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setChatModeState(mode)
     if (mode === 'research') {
       setAllowCrossNotebookDiscovery(false)
+      setScientificDatabasesEnabled(false)
     }
     setSuggestedQuestionsByMessageId({})
     setContextWindowUsage(null)
@@ -994,6 +1002,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     saveStatus: saveStatuses[chatMode],
     chatMode,
     allowCrossNotebookDiscovery,
+    scientificDatabasesEnabled,
 
     // Actions
     createSession,
@@ -1007,6 +1016,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setModelOverride,
     setChatMode,
     setAllowCrossNotebookDiscovery,
+    setScientificDatabasesEnabled,
     loadEarlierMessages,
     loadExportMessages,
     refetchSessions

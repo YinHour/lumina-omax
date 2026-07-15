@@ -84,9 +84,7 @@ async def test_notebook_vector_search_passes_only_visible_ids(monkeypatch):
 
     current = SimpleNamespace(
         id="notebook:current",
-        get_sources=AsyncMock(
-            return_value=[SimpleNamespace(id="source:inside")]
-        ),
+        get_sources=AsyncMock(return_value=[SimpleNamespace(id="source:inside")]),
         get_notes=AsyncMock(return_value=[SimpleNamespace(id="note:inside")]),
     )
     repo_query = AsyncMock(return_value=[])
@@ -382,6 +380,57 @@ async def test_research_final_synthesis_flattens_tool_history(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_research_model_binds_scientific_tools_only_when_enabled(monkeypatch):
+    from open_notebook.graphs import research_agent
+
+    bound_model = MagicMock()
+    bound_model.ainvoke = AsyncMock(return_value=AIMessage(content="answer"))
+    model = MagicMock()
+    model.bind_tools.return_value = bound_model
+    monkeypatch.setattr(
+        research_agent.Prompter, "render", MagicMock(return_value="system")
+    )
+    monkeypatch.setattr(
+        research_agent,
+        "provision_langchain_model",
+        AsyncMock(return_value=model),
+    )
+
+    await research_agent.call_research_model(
+        {
+            "messages": [HumanMessage(content="question")],
+            "notebook_id": "notebook:1",
+            "enable_web_search": False,
+            "enable_scientific_databases": True,
+            "allow_cross_notebook_discovery": False,
+        },
+        {},
+    )
+
+    bound_names = {tool.name for tool in model.bind_tools.call_args.args[0]}
+    assert {
+        "list_scientific_databases",
+        "search_scientific_database",
+        "fetch_scientific_record",
+    }.issubset(bound_names)
+
+
+def test_research_request_scientific_databases_default_off_and_stage_mapping():
+    from api.routers import chat
+
+    request = chat.ExecuteResearchChatRequest(
+        session_id="chat_session:research",
+        message="Question",
+    )
+
+    assert request.enable_scientific_databases is False
+    assert (
+        chat.CHAT_TOOL_STAGE["search_scientific_database"]
+        == "searching_scientific_databases"
+    )
+
+
+@pytest.mark.asyncio
 async def test_quick_endpoint_rejects_research_session(monkeypatch):
     from api.routers import chat
     from open_notebook.domain.notebook import ChatSession
@@ -497,6 +546,7 @@ async def test_research_endpoint_injects_authenticated_user_scope(monkeypatch):
             session_id="chat_session:research",
             message="Question",
             allow_cross_notebook_discovery=True,
+            enable_scientific_databases=True,
         ),
         current_user={"id": "user:alice", "role": "user"},
     )
@@ -505,6 +555,7 @@ async def test_research_endpoint_injects_authenticated_user_scope(monkeypatch):
     assert stream_response.call_args.kwargs["extra_state"] == {
         "notebook_id": "notebook:current",
         "allow_cross_notebook_discovery": True,
+        "enable_scientific_databases": True,
         "user_id": "user:alice",
         "user_role": "user",
     }

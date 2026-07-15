@@ -174,6 +174,8 @@ async def test_quick_model_payload_repairs_orphan_tool_message(monkeypatch):
 
     assert not any(isinstance(message, ToolMessage) for message in captured_payload)
     assert any(isinstance(message, HumanMessage) for message in captured_payload)
+    bound_names = {tool.name for tool in model.bind_tools.call_args.args[0]}
+    assert "search_scientific_database" not in bound_names
     dispatch_event.assert_awaited_once_with(
         "context_usage",
         {
