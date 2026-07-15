@@ -149,6 +149,9 @@ CHAT_TOOL_STAGE = {
     "read_note": "reading_evidence",
     "discover_across_notebooks": "searching_cross_notebook",
     "tavily_search": "searching_web",
+    "list_scientific_databases": "inspecting_scientific_databases",
+    "search_scientific_database": "searching_scientific_databases",
+    "fetch_scientific_record": "reading_scientific_record",
 }
 
 
@@ -287,6 +290,10 @@ class ExecuteResearchChatRequest(BaseModel):
     allow_cross_notebook_discovery: bool = Field(
         False,
         description="Explicit per-request permission for cross-notebook discovery",
+    )
+    enable_scientific_databases: bool = Field(
+        False,
+        description="Explicit per-request permission for scientific database access",
     )
 
 
@@ -1244,6 +1251,7 @@ async def execute_research_chat(
             message_chars=len(request.message),
             allow_cross_notebook_discovery=request.allow_cross_notebook_discovery,
             enable_web_search=request.enable_web_search,
+            enable_scientific_databases=request.enable_scientific_databases,
         )
         return StreamingResponse(
             stream_chat_response(
@@ -1258,6 +1266,7 @@ async def execute_research_chat(
                 extra_state={
                     "notebook_id": notebook_id,
                     "allow_cross_notebook_discovery": request.allow_cross_notebook_discovery,
+                    "enable_scientific_databases": request.enable_scientific_databases,
                     "user_id": current_user.get("id"),
                     "user_role": current_user.get("role"),
                 },

@@ -309,6 +309,7 @@ describe('useNotebookChat', () => {
       expect.objectContaining({
         session_id: 'session:research',
         allow_cross_notebook_discovery: false,
+        enable_scientific_databases: false,
       }),
       expect.any(AbortSignal),
     )
@@ -346,6 +347,42 @@ describe('useNotebookChat', () => {
       expect.objectContaining({ allow_cross_notebook_discovery: true }),
       expect.any(AbortSignal),
     )
+  })
+
+  it('passes scientific database access only after explicit enablement and resets it for a new research conversation', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:research-science',
+      title: 'Search scientific records',
+      notebook_id: 'notebook:1',
+      mode: 'research',
+      created: '2026-07-15T00:00:00Z',
+      updated: '2026-07-15T00:00:00Z',
+    })
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    act(() => {
+      result.current.setChatMode('research')
+      result.current.setScientificDatabasesEnabled(true)
+    })
+    await act(async () => {
+      await result.current.sendMessage('Search OpenAlex for polymer stability.')
+    })
+
+    expect(chatApiMock.sendResearchMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ enable_scientific_databases: true }),
+      expect.any(AbortSignal),
+    )
+
+    act(() => result.current.startNewSession())
+    expect(result.current.scientificDatabasesEnabled).toBe(false)
   })
 
   it('guards against duplicate sends while creating the first session', async () => {
@@ -469,6 +506,7 @@ describe('useNotebookChat', () => {
       'data: {"type":"chat_status","stage":"searching_notebook","status":"active"}\n\n',
       'data: {"type":"chat_status","stage":"searching_notebook","status":"complete"}\n\n',
       'data: {"type":"chat_status","stage":"reading_evidence","status":"active"}\n\n',
+      'data: {"type":"chat_status","stage":"searching_scientific_databases","status":"active"}\n\n',
       'data: {"type":"ai_message","content":"Evidence summary"}\n\n',
       'data: {"type":"answer_complete"}\n\n',
     ].join('')
@@ -499,6 +537,7 @@ describe('useNotebookChat', () => {
       { stage: 'context_ready', status: 'complete' },
       { stage: 'searching_notebook', status: 'complete' },
       { stage: 'reading_evidence', status: 'complete' },
+      { stage: 'searching_scientific_databases', status: 'complete' },
       { stage: 'model_streaming', status: 'complete' },
     ]))
   })

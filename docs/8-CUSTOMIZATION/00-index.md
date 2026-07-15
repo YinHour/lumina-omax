@@ -3613,3 +3613,59 @@ make codex-quick-check
 ```
 
 未验证项：本轮仅修改项目维护文档，未启动或重启服务，未运行前后端业务测试，也未读取 `.env`、真实数据库或供应商凭据。
+
+---
+
+## 47. Research Agent 科研数据库连接器 P0（2026-07-15）
+
+### 47.1 问题与决策
+
+- Research Agent 原有外部能力只有 Tavily 联网搜索，无法以稳定记录 ID、结构化字段和数据库原生语义查询科研文献与化学数据库。P0 新增统一连接器注册表，首批接入 OpenAlex、Crossref、Semantic Scholar、arXiv 和 PubChem。
+- 模型只看到三个稳定工具：列出数据库、搜索指定数据库、按原生 ID 读取记录；新增数据库不需要扩张为一组新的模型工具。搜索与读取结果统一为 `external:<database>:<record_id>` 证据 ID，并携带标题、作者、摘要、规范链接、DOI、检索词、检索时间、数据条款和受限原始字段。
+- 科研数据库是与 Tavily、跨笔记本发现相互独立的外发能力。API 请求字段 `enable_scientific_databases` 默认 `false`；默认状态下模型不绑定三个工具，工具实现也检查 LangGraph 注入状态，避免旧 checkpoint 或伪造工具调用绕过授权。
+- Research 输入区新增“科研数据库”开关，只在 Research Tab 可见，不写入 `localStorage`、会话或数据库。页面初始、创建新 Research 会话以及从其它模式重新进入 Research 时均恢复关闭；每次请求显式发送当前值。
+- 连接器使用项目已有 `httpx` 与 Python 标准库，不新增生产依赖或部署服务。共享 HTTP 层提供超时、重试/退避、`Retry-After`、响应体大小限制和服务端 User-Agent；arXiv 额外串行化请求并遵守至少 3 秒的礼貌间隔。
+- `OPENALEX_MAILTO`、`CROSSREF_MAILTO` 和 `SEMANTIC_SCHOLAR_API_KEY` 是可选的服务端环境配置；不会返回浏览器、模型工具输出或日志。上游数据许可和 API 条款保持数据库各自口径，不继承应用许可证。
+- SSE 新增“确认科研数据库 / 检索科研数据库 / 读取科研记录”三个语义阶段，9 个语言包均使用 i18n 文案。最终综合提示要求保留外部证据 ID，并明确数据库记录、预印本和化学属性不等同于实验验证。
+
+### 47.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/scientific_connectors/` | 统一类型、注册表、受控 HTTP 客户端及 OpenAlex/Crossref/Semantic Scholar/arXiv/PubChem 适配器 |
+| `open_notebook/graphs/scientific_database_tools.py`、`research_agent.py` | 三个归一化工具、双层授权、条件工具绑定和最终证据归并 |
+| `api/routers/chat.py`、`prompts/research_agent/system.jinja` | 默认关闭的逐请求字段、LangGraph 状态注入、SSE 阶段、权限与引用规则 |
+| `frontend/src/lib/hooks/useNotebookChat.ts`、`types/api.ts`、`chat/notebook-chat-activity.ts` | 非持久化授权状态、请求传播、重置逻辑和活动阶段类型 |
+| `frontend/src/components/source/ChatPanel.tsx`、`ChatActivityFeed.tsx`、`ChatColumn.tsx` | Research 专用开关、进度展示和页面接线 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包的科研数据库与进度文案 |
+| `tests/test_scientific_connectors.py`、`test_research_agent_scope.py` 及对应前端测试 | HTTP 重试、五个适配器、注册表、授权、API、Hook、SSE 和界面行为 |
+| `docs/superpowers/specs/2026-07-15-scientific-database-connectors-p0-design.md`、`plans/2026-07-15-scientific-database-connectors-p0-implementation.md` | P0 边界、证据契约、风险控制和实施记录 |
+
+### 47.3 验证
+
+```text
+uv run pytest tests/test_scientific_connectors.py tests/test_research_agent_scope.py tests/test_message_history.py -q
+36 passed, 1 warning
+
+uv run pytest tests/ -m 'not e2e' -q
+356 passed, 33 deselected, 6 warnings
+
+uv run ruff check open_notebook/scientific_connectors open_notebook/graphs/scientific_database_tools.py open_notebook/graphs/research_agent.py api/routers/chat.py tests/test_scientific_connectors.py tests/test_research_agent_scope.py
+All checks passed
+
+cd frontend && npm test
+192 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 生产构建与 TypeScript 检查通过
+
+git diff --check
+exit 0
+```
+
+登录态浏览器验证：Quick Tab 只显示联网搜索；Research Tab 显示联网搜索、跨笔记本发现、科研数据库三项，科研数据库默认关闭且可开启；切回 Quick 后不可见，再进入 Research 恢复关闭；桌面布局未挤压模型选择器和输入框。
+
+未验证项：自动测试未访问真实 OpenAlex、Crossref、Semantic Scholar、arXiv 或 PubChem 服务，尚未覆盖真实上游限流、地域网络差异和数据字段漂移；未使用真实模型发起一次带科研数据库工具调用的完整 Research 回答，因此外部证据引用质量仍需运行时验收。P0 不包含 UniProt/PDB/Ensembl/ChEMBL、技能运行时、云计算、训练/评估或把外部记录自动保存进笔记本。

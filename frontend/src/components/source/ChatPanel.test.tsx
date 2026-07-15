@@ -39,6 +39,7 @@ describe('ChatPanel stop button', () => {
   it('renders notebook modes as tabs with mode-specific bottom controls', () => {
     const onModeChange = vi.fn()
     const onCrossChange = vi.fn()
+    const onScientificDatabasesChange = vi.fn()
     const onStartNewSession = vi.fn()
     const onSelectSession = vi.fn()
     const { rerender } = render(
@@ -48,6 +49,7 @@ describe('ChatPanel stop button', () => {
         chatMode="quick"
         onChatModeChange={onModeChange}
         onAllowCrossNotebookDiscoveryChange={onCrossChange}
+        onScientificDatabasesEnabledChange={onScientificDatabasesChange}
         onStartNewSession={onStartNewSession}
         onSelectSession={onSelectSession}
       />
@@ -73,14 +75,18 @@ describe('ChatPanel stop button', () => {
         chatMode="research"
         onChatModeChange={onModeChange}
         onAllowCrossNotebookDiscoveryChange={onCrossChange}
+        onScientificDatabasesEnabledChange={onScientificDatabasesChange}
         onStartNewSession={onStartNewSession}
         onSelectSession={onSelectSession}
       />
     )
-    expect(within(optionsRow).getAllByRole('checkbox')).toHaveLength(2)
+    expect(within(optionsRow).getAllByRole('checkbox')).toHaveLength(3)
     expect(within(optionsRow).getByRole('checkbox', { name: 'Cross-notebook discovery' })).not.toBeChecked()
+    expect(within(optionsRow).getByRole('checkbox', { name: 'Scientific databases' })).not.toBeChecked()
     fireEvent.click(within(optionsRow).getByText('Cross-notebook discovery'))
     expect(onCrossChange).toHaveBeenCalledWith(true)
+    fireEvent.click(within(optionsRow).getByText('Scientific databases'))
+    expect(onScientificDatabasesChange).toHaveBeenCalledWith(true)
   })
 
   it('toggles web search by clicking its text label', () => {

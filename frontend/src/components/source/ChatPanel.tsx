@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine } from 'lucide-react'
+import { Bot, User, Send, Loader2, Square, FileText, Lightbulb, StickyNote, Clock, Globe, PencilLine, Database } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import {
   SourceChatMessage,
@@ -105,6 +105,8 @@ interface ChatPanelProps {
   onChatModeChange?: (mode: NotebookChatMode) => void
   allowCrossNotebookDiscovery?: boolean
   onAllowCrossNotebookDiscoveryChange?: (enabled: boolean) => void
+  scientificDatabasesEnabled?: boolean
+  onScientificDatabasesEnabledChange?: (enabled: boolean) => void
   saveStatus?: NotebookChatSaveStatus
   hasMoreMessages?: boolean
   isLoadingEarlier?: boolean
@@ -147,6 +149,8 @@ export function ChatPanel({
   onChatModeChange,
   allowCrossNotebookDiscovery = false,
   onAllowCrossNotebookDiscoveryChange,
+  scientificDatabasesEnabled = false,
+  onScientificDatabasesEnabledChange,
   saveStatus = 'idle',
   hasMoreMessages = false,
   isLoadingEarlier = false,
@@ -690,6 +694,22 @@ export function ChatPanel({
                       />
                       {t.chat.crossNotebookDiscovery}
                     </label>
+              )}
+
+              {contextType === 'notebook' && chatMode === 'research' && onScientificDatabasesEnabledChange && (
+                <label
+                  htmlFor={`${chatInputId}-scientific-databases`}
+                  className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                >
+                  <Checkbox
+                    id={`${chatInputId}-scientific-databases`}
+                    checked={scientificDatabasesEnabled}
+                    onCheckedChange={(checked) => onScientificDatabasesEnabledChange(checked === true)}
+                    disabled={isStreaming}
+                  />
+                  <Database className="h-3.5 w-3.5" />
+                  {t.chat.scientificDatabases}
+                </label>
               )}
             </div>
 

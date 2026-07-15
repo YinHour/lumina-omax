@@ -24,6 +24,7 @@ from open_notebook.domain.notebook import (
 )
 from open_notebook.exceptions import OpenNotebookError
 from open_notebook.graphs.message_history import select_history_window
+from open_notebook.graphs.scientific_database_tools import SCIENTIFIC_DATABASE_TOOLS
 from open_notebook.graphs.tools import tavily_search
 from open_notebook.utils import clean_thinking_content
 from open_notebook.utils.error_classifier import classify_error
@@ -46,6 +47,7 @@ class ResearchState(TypedDict):
     notebook_id: str
     model_override: Optional[str]
     enable_web_search: bool
+    enable_scientific_databases: NotRequired[bool]
     allow_cross_notebook_discovery: bool
     user_id: Optional[str]
     user_role: Optional[str]
@@ -322,6 +324,8 @@ async def _call_research_model(
         tools = list(PRIVATE_TOOLS)
         if state.get("enable_web_search"):
             tools.append(tavily_search)
+        if state.get("enable_scientific_databases"):
+            tools.extend(SCIENTIFIC_DATABASE_TOOLS)
         runnable = model.bind_tools(tools) if allow_tools else model
         ai_message = await runnable.ainvoke(payload, config=config)
         content = extract_text_content(ai_message.content)
@@ -373,7 +377,8 @@ def _final_synthesis_payload(
         f"# Research question\n{question}\n\n"
         f"# Evidence returned by completed tools\n{evidence}\n\n"
         "# Task\nWrite the final answer now. Use only the evidence above, preserve exact "
-        "source/note IDs for citations, and state evidence gaps explicitly."
+        "source/note IDs and external evidence IDs for citations, and state "
+        "evidence gaps explicitly."
     )
     return [
         SystemMessage(content=system_prompt),
@@ -381,7 +386,7 @@ def _final_synthesis_payload(
     ]
 
 
-tool_node = ToolNode([*PRIVATE_TOOLS, tavily_search])
+tool_node = ToolNode([*PRIVATE_TOOLS, tavily_search, *SCIENTIFIC_DATABASE_TOOLS])
 
 
 def route_after_tools(state: ResearchState) -> str:
