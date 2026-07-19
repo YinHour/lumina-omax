@@ -65,8 +65,11 @@ export default function UsagePage() {
     () => new Intl.DateTimeFormat(language, { dateStyle: 'short', timeStyle: 'short' }),
     [language]
   )
+  const usage = useMemo(
+    () => t('usage', { returnObjects: true }) as Record<string, string>,
+    [t]
+  )
   const { surfaceLabels, unknownSurfaceLabel } = useMemo(() => {
-    const usage = t.usage
     return {
       surfaceLabels: {
         notebook_quick: usage.surfaceNotebookQuick,
@@ -86,15 +89,15 @@ export default function UsagePage() {
       } as Record<string, string>,
       unknownSurfaceLabel: usage.surfaceUnknown,
     }
-  }, [t])
+  }, [usage])
   const maxDaily = Math.max(...(data?.series.map(point => point.total_tokens) ?? [0]), 1)
   const maxCredential = Math.max(...(data?.by_credential.map(item => item.total_tokens) ?? [0]), 1)
   const maxUser = Math.max(...(data?.by_user.map(item => item.total_tokens) ?? [0]), 1)
 
   const periodLabel = (period: UsageDays) => {
-    if (period === 7) return t.usage.period7
-    if (period === 90) return t.usage.period90
-    return t.usage.period30
+    if (period === 7) return usage.period7
+    if (period === 90) return usage.period90
+    return usage.period30
   }
 
   const surfaceLabel = (surface: string) => {
@@ -104,12 +107,12 @@ export default function UsagePage() {
   return (
     <AppShell>
       <PageContainer width="wide" className="space-y-6">
-        <PageHeader title={t.usage.title} description={t.usage.description} />
+        <PageHeader title={usage.title} description={usage.description} />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t.usage.period}</span>
-            <div className="flex rounded-lg border border-border bg-muted/35 p-1" aria-label={t.usage.period}>
+            <span className="text-xs font-medium text-muted-foreground">{usage.period}</span>
+            <div className="flex rounded-lg border border-border bg-muted/35 p-1" aria-label={usage.period}>
               {periods.map(period => (
                 <Button
                   key={period}
@@ -128,8 +131,8 @@ export default function UsagePage() {
           {isAdmin && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">{t.usage.scope}</span>
-                <div className="flex rounded-lg border border-border bg-muted/35 p-1" aria-label={t.usage.scope}>
+                <span className="text-xs font-medium text-muted-foreground">{usage.scope}</span>
+                <div className="flex rounded-lg border border-border bg-muted/35 p-1" aria-label={usage.scope}>
                   {(['mine', 'all'] as UsageScope[]).map(value => (
                     <Button
                       key={value}
@@ -139,7 +142,7 @@ export default function UsagePage() {
                       aria-pressed={scope === value}
                       onClick={() => setScope(value)}
                     >
-                      {value === 'mine' ? t.usage.mine : t.usage.allUsers}
+                      {value === 'mine' ? usage.mine : usage.allUsers}
                     </Button>
                   ))}
                 </div>
@@ -147,14 +150,14 @@ export default function UsagePage() {
               {scope === 'all' && (
                 <div className="space-y-1.5">
                   <label className="block text-xs font-medium text-muted-foreground" htmlFor="usage-user-filter">
-                    {t.usage.userFilter}
+                    {usage.userFilter}
                   </label>
                   <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                     <SelectTrigger id="usage-user-filter" className="w-full min-w-48 sm:w-56">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{t.usage.allUsersOption}</SelectItem>
+                      <SelectItem value="all">{usage.allUsersOption}</SelectItem>
                       {data?.users.map(option => (
                         <SelectItem key={option.id} value={option.id}>
                           {option.display_name || option.username}
@@ -171,35 +174,35 @@ export default function UsagePage() {
         {isLoading && (
           <div className="flex min-h-64 items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 size-4 animate-spin" />
-            {t.usage.loading}
+            {usage.loading}
           </div>
         )}
 
         {isError && (
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-destructive">
             <AlertCircle className="mr-2 size-4" />
-            {t.usage.loadError}
+            {usage.loadError}
           </div>
         )}
 
         {data && !isLoading && !isError && (
           <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Metric label={t.usage.totalTokens} value={fullNumber.format(data.totals.total_tokens)} />
-              <Metric label={t.usage.inputTokens} value={fullNumber.format(data.totals.input_tokens)} />
-              <Metric label={t.usage.outputTokens} value={fullNumber.format(data.totals.output_tokens)} />
+              <Metric label={usage.totalTokens} value={fullNumber.format(data.totals.total_tokens)} />
+              <Metric label={usage.inputTokens} value={fullNumber.format(data.totals.input_tokens)} />
+              <Metric label={usage.outputTokens} value={fullNumber.format(data.totals.output_tokens)} />
               <Metric
-                label={t.usage.calls}
+                label={usage.calls}
                 value={fullNumber.format(data.totals.calls)}
-                detail={t.usage.failedCalls.replace('{count}', fullNumber.format(data.totals.failed_calls))}
+                detail={usage.failedCalls.replace('{count}', fullNumber.format(data.totals.failed_calls))}
               />
             </div>
 
-            <Section title={t.usage.dailyUsage} description={t.usage.dailyUsageDesc}>
-              <div className="flex h-56 items-end gap-1 overflow-hidden border-b border-border/80 px-1 pt-4" role="img" aria-label={t.usage.dailyUsage}>
+            <Section title={usage.dailyUsage} description={usage.dailyUsageDesc}>
+              <div className="flex h-56 items-end gap-1 overflow-hidden border-b border-border/80 px-1 pt-4" role="img" aria-label={usage.dailyUsage}>
                 {data.series.map(point => {
                   const height = point.total_tokens === 0 ? 2 : Math.max((point.total_tokens / maxDaily) * 100, 5)
-                  const title = `${point.date}: ${fullNumber.format(point.total_tokens)} ${t.usage.tokens}`
+                  const title = `${point.date}: ${fullNumber.format(point.total_tokens)} ${usage.tokens}`
                   return (
                     <div key={point.date} className="group flex h-full min-w-0 flex-1 items-end" title={title}>
                       <div
@@ -217,9 +220,9 @@ export default function UsagePage() {
               </div>
             </Section>
 
-            <Section title={t.usage.byCredential} description={t.usage.byCredentialDesc}>
+            <Section title={usage.byCredential} description={usage.byCredentialDesc}>
               {data.by_credential.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">{t.usage.noUsage}</p>
+                <p className="py-8 text-center text-sm text-muted-foreground">{usage.noUsage}</p>
               ) : (
                 <div className="space-y-4">
                   {data.by_credential.map(item => (
@@ -233,7 +236,7 @@ export default function UsagePage() {
                       </div>
                       <div className="text-right text-sm tabular-nums">
                         <span className="font-medium">{number.format(item.total_tokens)}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{t.usage.callsCount.replace('{count}', fullNumber.format(item.calls))}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{usage.callsCount.replace('{count}', fullNumber.format(item.calls))}</span>
                       </div>
                     </div>
                   ))}
@@ -242,7 +245,7 @@ export default function UsagePage() {
             </Section>
 
             {isAdmin && scope === 'all' && (
-              <Section title={t.usage.byUser} description={t.usage.byUserDesc}>
+              <Section title={usage.byUser} description={usage.byUserDesc}>
                 <div className="space-y-4">
                   {data.by_user.map(item => (
                     <div key={item.user_id ?? item.username} className="grid gap-2 sm:grid-cols-[minmax(10rem,16rem)_1fr_auto] sm:items-center">
@@ -257,19 +260,19 @@ export default function UsagePage() {
               </Section>
             )}
 
-            <Section title={t.usage.recentUsage} description={t.usage.recentUsageDesc}>
+            <Section title={usage.recentUsage} description={usage.recentUsageDesc}>
               <div className="overflow-x-auto rounded-lg border border-border/75">
                 <table className="w-full min-w-[860px] text-left text-sm">
                   <thead className="bg-muted/55 text-xs text-muted-foreground">
                     <tr>
-                      {isAdmin && scope === 'all' && <th className="px-3 py-2.5 font-medium">{t.usage.user}</th>}
-                      <th className="px-3 py-2.5 font-medium">{t.usage.time}</th>
-                      <th className="px-3 py-2.5 font-medium">{t.usage.key}</th>
-                      <th className="px-3 py-2.5 font-medium">{t.usage.model}</th>
-                      <th className="px-3 py-2.5 font-medium">{t.usage.surface}</th>
-                      <th className="px-3 py-2.5 text-right font-medium">{t.usage.tokens}</th>
-                      <th className="px-3 py-2.5 font-medium">{t.usage.source}</th>
-                      <th className="px-3 py-2.5 font-medium">{t.usage.status}</th>
+                      {isAdmin && scope === 'all' && <th className="px-3 py-2.5 font-medium">{usage.user}</th>}
+                      <th className="px-3 py-2.5 font-medium">{usage.time}</th>
+                      <th className="px-3 py-2.5 font-medium">{usage.key}</th>
+                      <th className="px-3 py-2.5 font-medium">{usage.model}</th>
+                      <th className="px-3 py-2.5 font-medium">{usage.surface}</th>
+                      <th className="px-3 py-2.5 text-right font-medium">{usage.tokens}</th>
+                      <th className="px-3 py-2.5 font-medium">{usage.source}</th>
+                      <th className="px-3 py-2.5 font-medium">{usage.status}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/65">
@@ -281,19 +284,19 @@ export default function UsagePage() {
                         <td className="px-3 py-3">{item.model_name}</td>
                         <td className="px-3 py-3">{surfaceLabel(item.surface)}</td>
                         <td className="px-3 py-3 text-right font-medium tabular-nums">{fullNumber.format(item.total_tokens)}</td>
-                        <td className="px-3 py-3"><Badge variant="outline">{item.token_source === 'provider' ? t.usage.providerReported : t.usage.estimated}</Badge></td>
-                        <td className="px-3 py-3"><Badge variant={item.status === 'success' ? 'success' : 'destructive'}>{item.status === 'success' ? t.usage.success : t.usage.failed}</Badge></td>
+                        <td className="px-3 py-3"><Badge variant="outline">{item.token_source === 'provider' ? usage.providerReported : usage.estimated}</Badge></td>
+                        <td className="px-3 py-3"><Badge variant={item.status === 'success' ? 'success' : 'destructive'}>{item.status === 'success' ? usage.success : usage.failed}</Badge></td>
                       </tr>
                     ))}
                     {data.recent.length === 0 && (
-                      <tr><td colSpan={isAdmin && scope === 'all' ? 8 : 7} className="px-3 py-10 text-center text-muted-foreground">{t.usage.noUsage}</td></tr>
+                      <tr><td colSpan={isAdmin && scope === 'all' ? 8 : 7} className="px-3 py-10 text-center text-muted-foreground">{usage.noUsage}</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
               <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5"><BarChart3 className="size-3.5" />{t.usage.providerReportedHint}</span>
-                {isAdmin && <span className="flex items-center gap-1.5"><Users className="size-3.5" />{t.usage.adminHint}</span>}
+                <span className="flex items-center gap-1.5"><BarChart3 className="size-3.5" />{usage.providerReportedHint}</span>
+                {isAdmin && <span className="flex items-center gap-1.5"><Users className="size-3.5" />{usage.adminHint}</span>}
               </div>
             </Section>
           </>

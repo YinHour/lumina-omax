@@ -6,9 +6,15 @@ import UsagePage from './page'
 
 const state = vi.hoisted(() => ({
   role: 'user',
-  usageAccessCount: 0,
+  translate: vi.fn(),
+  usageBundleCallCount: 0,
+  usagePropertyAccessCount: 0,
   useUsage: vi.fn(),
 }))
+
+const usageTranslations = {
+  title: 'AI token usage', description: 'Description', period: 'Period', period7: '7 days', period30: '30 days', period90: '90 days', scope: 'Scope', mine: 'My usage', allUsers: 'All users', userFilter: 'User', allUsersOption: 'All users', totalTokens: 'Total tokens', inputTokens: 'Input tokens', outputTokens: 'Output tokens', calls: 'Calls', failedCalls: '{count} failed', tokens: 'tokens', dailyUsage: 'Daily usage', dailyUsageDesc: 'Daily description', byCredential: 'Usage by key', byCredentialDesc: 'Key description', byUser: 'Usage by user', byUserDesc: 'User description', recentUsage: 'Recent activity', recentUsageDesc: 'Recent description', noUsage: 'No usage', loading: 'Loading', loadError: 'Error', model: 'Model', key: 'Key', user: 'User', surface: 'Workflow', time: 'Time', status: 'Status', source: 'Count source', providerReported: 'Provider', estimated: 'Estimated', success: 'Success', failed: 'Failed', callsCount: '{count} calls', providerReportedHint: 'Provider hint', adminHint: 'Admin hint', surfaceNotebookQuick: 'Quick chat', surfaceNotebookResearch: 'Research chat', surfaceSourceChat: 'Source chat', surfaceGlobalAsk: 'Global Ask', surfaceTransformation: 'Transformation', surfaceNoteGeneration: 'Note generation', surfaceNotebookGuide: 'Guide', surfaceModelTest: 'Model test', surfaceCredentialManagement: 'Credential', surfaceSourceProcessing: 'Source processing', surfaceKnowledgeGraph: 'Knowledge graph', surfaceEmbedding: 'Embedding', surfaceEmbeddingRebuild: 'Embedding rebuild', surfaceApi: 'API', surfaceUnknown: 'Other',
+}
 
 const dashboard = {
   scope: 'mine' as const,
@@ -53,21 +59,30 @@ vi.mock('@/lib/hooks/use-usage', () => ({
 vi.mock('@/lib/hooks/use-translation', () => ({
   useTranslation: () => ({
     language: 'en-US',
-    t: {
-      get usage() {
-        state.usageAccessCount += 1
-        return {
-          title: 'AI token usage', description: 'Description', period: 'Period', period7: '7 days', period30: '30 days', period90: '90 days', scope: 'Scope', mine: 'My usage', allUsers: 'All users', userFilter: 'User', allUsersOption: 'All users', totalTokens: 'Total tokens', inputTokens: 'Input tokens', outputTokens: 'Output tokens', calls: 'Calls', failedCalls: '{count} failed', tokens: 'tokens', dailyUsage: 'Daily usage', dailyUsageDesc: 'Daily description', byCredential: 'Usage by key', byCredentialDesc: 'Key description', byUser: 'Usage by user', byUserDesc: 'User description', recentUsage: 'Recent activity', recentUsageDesc: 'Recent description', noUsage: 'No usage', loading: 'Loading', loadError: 'Error', model: 'Model', key: 'Key', user: 'User', surface: 'Workflow', time: 'Time', status: 'Status', source: 'Count source', providerReported: 'Provider', estimated: 'Estimated', success: 'Success', failed: 'Failed', callsCount: '{count} calls', providerReportedHint: 'Provider hint', adminHint: 'Admin hint', surfaceNotebookQuick: 'Quick chat', surfaceNotebookResearch: 'Research chat', surfaceSourceChat: 'Source chat', surfaceGlobalAsk: 'Global Ask', surfaceTransformation: 'Transformation', surfaceNoteGeneration: 'Note generation', surfaceNotebookGuide: 'Guide', surfaceModelTest: 'Model test', surfaceCredentialManagement: 'Credential', surfaceSourceProcessing: 'Source processing', surfaceKnowledgeGraph: 'Knowledge graph', surfaceEmbedding: 'Embedding', surfaceEmbeddingRebuild: 'Embedding rebuild', surfaceApi: 'API', surfaceUnknown: 'Other',
-        }
-      },
-    },
+    t: state.translate,
   }),
 }))
 
 describe('UsagePage', () => {
   beforeEach(() => {
     state.role = 'user'
-    state.usageAccessCount = 0
+    state.translate.mockReset()
+    state.usageBundleCallCount = 0
+    state.usagePropertyAccessCount = 0
+    state.translate.mockImplementation((key: string, options?: { returnObjects?: boolean }) => {
+      if (key === 'usage' && options?.returnObjects) {
+        state.usageBundleCallCount += 1
+        return usageTranslations
+      }
+      return key
+    })
+    Object.defineProperty(state.translate, 'usage', {
+      configurable: true,
+      get: () => {
+        state.usagePropertyAccessCount += 1
+        return usageTranslations
+      },
+    })
     state.useUsage.mockReset()
     state.useUsage.mockReturnValue({ data: dashboard, isLoading: false, isError: false })
   })
@@ -94,7 +109,7 @@ describe('UsagePage', () => {
     expect(screen.getAllByText('researcher').length).toBeGreaterThan(0)
   })
 
-  it('does not repeatedly resolve the usage namespace for every recent workflow label', () => {
+  it('resolves the usage translation bundle once across repeated full-page renders', () => {
     const recent = Array.from({ length: 50 }, (_, index) => ({
       ...dashboard.recent[0],
       id: `ai_token_usage:${index + 1}`,
@@ -105,9 +120,13 @@ describe('UsagePage', () => {
       isError: false,
     })
 
-    render(<UsagePage />)
+    const view = render(<UsagePage />)
+    for (let index = 0; index < 10; index += 1) {
+      view.rerender(<UsagePage />)
+    }
 
     expect(screen.getAllByText('Global Ask')).toHaveLength(50)
-    expect(state.usageAccessCount).toBeLessThan(250)
+    expect(state.usagePropertyAccessCount).toBe(0)
+    expect(state.usageBundleCallCount).toBe(1)
   })
 })
