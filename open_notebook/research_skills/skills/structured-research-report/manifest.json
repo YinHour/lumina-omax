@@ -1,0 +1,13 @@
+{
+  "id": "structured-research-report",
+  "name": "科研报告结构化写作",
+  "version": "1.0.0",
+  "category": "reporting",
+  "description": "把研究目标、方法、证据、结果、不确定性、结论和后续验证组织为可追溯的科研报告。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "search_scientific_database", "fetch_scientific_record"],
+  "order": 9,
+  "content_sha256": "7475963ce3453df4646c914265b0bb942e39c23150d0ce5b8abfeeba5cdde956"
+}

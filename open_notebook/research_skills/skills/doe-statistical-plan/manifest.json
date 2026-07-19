@@ -1,0 +1,13 @@
+{
+  "id": "doe-statistical-plan",
+  "name": "DOE 与统计分析计划",
+  "version": "1.0.0",
+  "category": "experimental-design",
+  "description": "把研发目标转换为因子、响应、对照、随机化、重复、功效、模型和预设判定标准。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note"],
+  "order": 4,
+  "content_sha256": "94bd7b89bd6bdd79f99235d58881e61d04b49d1c899b9e1ea719fdec4c66c977"
+}

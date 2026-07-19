@@ -16,6 +16,8 @@ import {
   BaseChatSession,
   NotebookGuideResponse,
   NotebookChatMode,
+  ResearchSkillMode,
+  ResearchSkillSummary,
 } from '@/lib/types/api'
 import { ModelSelector } from './ModelSelector'
 import { ContextIndicator } from '@/components/common/ContextIndicator'
@@ -43,6 +45,7 @@ import { NotebookChatToolbar } from './NotebookChatToolbar'
 import type { NotebookChatSaveStatus } from '@/lib/hooks/useNotebookChat'
 import { markdownRehypePlugins, markdownRemarkPlugins } from '@/lib/markdown/plugins'
 import { normalizeMathMarkdown } from '@/lib/markdown/normalize-math'
+import { ResearchSkillSelector } from './ResearchSkillSelector'
 
 type ChatActivityStatus =
   | 'gettingContext'
@@ -107,6 +110,10 @@ interface ChatPanelProps {
   onAllowCrossNotebookDiscoveryChange?: (enabled: boolean) => void
   scientificDatabasesEnabled?: boolean
   onScientificDatabasesEnabledChange?: (enabled: boolean) => void
+  researchSkills?: ResearchSkillSummary[]
+  researchSkillMode?: ResearchSkillMode
+  selectedResearchSkillIds?: string[]
+  onResearchSkillSelectionChange?: (mode: ResearchSkillMode, selectedIds: string[]) => void
   saveStatus?: NotebookChatSaveStatus
   hasMoreMessages?: boolean
   isLoadingEarlier?: boolean
@@ -151,6 +158,10 @@ export function ChatPanel({
   onAllowCrossNotebookDiscoveryChange,
   scientificDatabasesEnabled = false,
   onScientificDatabasesEnabledChange,
+  researchSkills = [],
+  researchSkillMode = 'auto',
+  selectedResearchSkillIds = [],
+  onResearchSkillSelectionChange,
   saveStatus = 'idle',
   hasMoreMessages = false,
   isLoadingEarlier = false,
@@ -710,6 +721,16 @@ export function ChatPanel({
                   <Database className="h-3.5 w-3.5" />
                   {t.chat.scientificDatabases}
                 </label>
+              )}
+
+              {contextType === 'notebook' && chatMode === 'research' && onResearchSkillSelectionChange && (
+                <ResearchSkillSelector
+                  skills={researchSkills}
+                  mode={researchSkillMode}
+                  selectedIds={selectedResearchSkillIds}
+                  onChange={onResearchSkillSelectionChange}
+                  disabled={isStreaming}
+                />
               )}
             </div>
 

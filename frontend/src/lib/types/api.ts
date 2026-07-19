@@ -250,6 +250,20 @@ export interface SourceChatStreamEvent {
 
 // Notebook Chat Types
 export type NotebookChatMode = 'quick' | 'research'
+export type ResearchSkillMode = 'auto' | 'off' | 'selected'
+
+export interface ResearchSkillSummary {
+  id: string
+  name: string
+  version: string
+  category: string
+  description: string
+  source: string
+  license: string
+  review_status: 'approved'
+  allowed_tools: string[]
+  order: number
+}
 
 export interface NotebookChatStreamEvent {
   type?: string
@@ -319,6 +333,8 @@ export interface SendNotebookResearchMessageRequest {
   enable_web_search?: boolean
   allow_cross_notebook_discovery?: boolean
   enable_scientific_databases?: boolean
+  research_skill_mode?: ResearchSkillMode
+  research_skill_ids?: string[]
 }
 
 export interface BuildContextRequest {

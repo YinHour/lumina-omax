@@ -54,6 +54,12 @@ dependencies = [
 [tool.setuptools]
 package-dir = {"open_notebook" = "open_notebook"}
 
+[tool.setuptools.package-data]
+open_notebook = [
+    "research_skills/skills/*/manifest.json",
+    "research_skills/skills/*/SKILL.md",
+]
+
 
 [project.optional-dependencies]
 dev = [

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { useNotebookChat } from './useNotebookChat'
 
 const chatApiMock = vi.hoisted(() => ({
+  listResearchSkills: vi.fn(),
   listSessions: vi.fn(),
   createSession: vi.fn(),
   getSession: vi.fn(),
@@ -158,6 +159,32 @@ describe('useNotebookChat', () => {
     vi.clearAllMocks()
     localStorage.clear()
     chatApiMock.listSessions.mockResolvedValue([])
+    chatApiMock.listResearchSkills.mockResolvedValue([
+      {
+        id: 'doe-statistical-plan',
+        name: 'DOE',
+        version: '1.0.0',
+        category: 'experimental-design',
+        description: 'Design experiments',
+        source: 'Lumiton Omax curated methodology',
+        license: 'MIT',
+        review_status: 'approved',
+        allowed_tools: [],
+        order: 4,
+      },
+      {
+        id: 'hthp-brine-validation',
+        name: 'HTHP',
+        version: '1.0.0',
+        category: 'oilfield-validation',
+        description: 'Validate HTHP',
+        source: 'Lumiton Omax curated methodology',
+        license: 'MIT',
+        review_status: 'approved',
+        allowed_tools: [],
+        order: 7,
+      },
+    ])
     chatApiMock.getSession.mockResolvedValue({
       id: 'session:1',
       title: 'Session',
@@ -310,10 +337,58 @@ describe('useNotebookChat', () => {
         session_id: 'session:research',
         allow_cross_notebook_discovery: false,
         enable_scientific_databases: false,
+        research_skill_mode: 'auto',
+        research_skill_ids: [],
       }),
       expect.any(AbortSignal),
     )
     expect(chatApiMock.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('sends explicit research methods once and then restores auto mode', async () => {
+    chatApiMock.createSession.mockResolvedValue({
+      id: 'session:research-skills',
+      title: 'Design validation',
+      notebook_id: 'notebook:1',
+      mode: 'research',
+      created: '2026-07-19T00:00:00Z',
+      updated: '2026-07-19T00:00:00Z',
+    })
+    const { result } = renderHook(
+      () => useNotebookChat({
+        notebookId: 'notebook:1',
+        sources: [],
+        notes: [],
+        contextSelections: { sources: {}, notes: {} },
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    act(() => result.current.setChatMode('research'))
+    await waitFor(() => expect(result.current.researchSkills).toHaveLength(2))
+    act(() => {
+      result.current.setResearchSkillSelection(
+        'selected',
+        ['doe-statistical-plan', 'hthp-brine-validation'],
+      )
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('Design an HTHP experiment.')
+    })
+
+    expect(chatApiMock.sendResearchMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        research_skill_mode: 'selected',
+        research_skill_ids: [
+          'doe-statistical-plan',
+          'hthp-brine-validation',
+        ],
+      }),
+      expect.any(AbortSignal),
+    )
+    expect(result.current.researchSkillMode).toBe('auto')
+    expect(result.current.selectedResearchSkillIds).toEqual([])
   })
 
   it('passes cross-notebook discovery only after the user explicitly enables it', async () => {

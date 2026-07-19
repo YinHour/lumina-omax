@@ -50,6 +50,7 @@ export function ChatActivityFeed({
     inspecting_scientific_databases: t.chat.progressInspectingScientificDatabases,
     searching_scientific_databases: t.chat.progressSearchingScientificDatabases,
     reading_scientific_record: t.chat.progressReadingScientificRecord,
+    loading_research_skills: t.chat.progressLoadingResearchSkills,
     using_research_tool: t.chat.progressUsingResearchTool,
     awaiting_model: t.chat.progressAwaitingModel,
     synthesizing: t.chat.progressSynthesizing,

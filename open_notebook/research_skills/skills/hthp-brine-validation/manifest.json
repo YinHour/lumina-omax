@@ -1,0 +1,13 @@
+{
+  "id": "hthp-brine-validation",
+  "name": "高温高压与盐水验证设计",
+  "version": "1.0.0",
+  "category": "oilfield-validation",
+  "description": "设计覆盖温压轨迹、盐水离子、老化、批次、对照和判定标准的高温高压验证方案。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "search_scientific_database", "fetch_scientific_record"],
+  "order": 7,
+  "content_sha256": "5bffce5e45af05aad207627f4bc6964be2b1c534b0f15b1c056cd09ab1d70b1e"
+}

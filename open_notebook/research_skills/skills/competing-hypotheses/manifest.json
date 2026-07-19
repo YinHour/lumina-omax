@@ -1,0 +1,13 @@
+{
+  "id": "competing-hypotheses",
+  "name": "假设生成与竞争性假设",
+  "version": "1.0.0",
+  "category": "reasoning",
+  "description": "从观察事实生成可证伪的竞争性解释，推导差异化预测并设计高信息量判别实验。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "search_scientific_database", "fetch_scientific_record"],
+  "order": 3,
+  "content_sha256": "0273a7ab26d59d23b3bcee6bab8712360de95448d4df1e5d1546b0f22425fc5e"
+}

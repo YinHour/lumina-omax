@@ -14,6 +14,19 @@ describe('chatApi transcript pagination', () => {
     vi.clearAllMocks()
   })
 
+  it('loads Research Skill metadata through the relative API client', async () => {
+    apiClientMock.get.mockResolvedValueOnce({
+      data: [{ id: 'doe-statistical-plan', version: '1.0.0' }],
+    })
+
+    const skills = await chatApi.listResearchSkills()
+
+    expect(skills).toEqual([
+      { id: 'doe-statistical-plan', version: '1.0.0' },
+    ])
+    expect(apiClientMock.get).toHaveBeenCalledWith('/chat/research/skills')
+  })
+
   it('fetches and orders every transcript page for Markdown export', async () => {
     apiClientMock.get
       .mockResolvedValueOnce({

@@ -1,0 +1,13 @@
+{
+  "id": "literature-doi-verification",
+  "name": "文献检索与 DOI 核验",
+  "version": "1.0.0",
+  "category": "literature",
+  "description": "构建可复现的文献检索式，去重候选记录，并交叉核验 DOI、题名、作者、期刊和年份。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "list_scientific_databases", "search_scientific_database", "fetch_scientific_record"],
+  "order": 1,
+  "content_sha256": "3e45c0b9110bf9e4d0a96b792728fbe4ec2bb6975daaaadd2d8370fda1dd0acb"
+}

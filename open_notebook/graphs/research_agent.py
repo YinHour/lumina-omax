@@ -24,6 +24,10 @@ from open_notebook.domain.notebook import (
 )
 from open_notebook.exceptions import OpenNotebookError
 from open_notebook.graphs.message_history import select_history_window
+from open_notebook.graphs.research_skill_tools import (
+    load_research_skills,
+    research_skill_prompt_data,
+)
 from open_notebook.graphs.scientific_database_tools import SCIENTIFIC_DATABASE_TOOLS
 from open_notebook.graphs.tools import tavily_search
 from open_notebook.utils import clean_thinking_content
@@ -48,6 +52,8 @@ class ResearchState(TypedDict):
     model_override: Optional[str]
     enable_web_search: bool
     enable_scientific_databases: NotRequired[bool]
+    research_skill_mode: NotRequired[str]
+    research_skill_ids: NotRequired[list[str]]
     allow_cross_notebook_discovery: bool
     user_id: Optional[str]
     user_role: Optional[str]
@@ -256,8 +262,9 @@ async def _call_research_model(
     allow_tools: bool,
 ) -> dict:
     try:
+        prompt_data = {**state, **research_skill_prompt_data(state)}
         system_prompt = Prompter(prompt_template="research_agent/system").render(
-            data=state
+            data=prompt_data
         )
         if not allow_tools:
             system_prompt = (
@@ -326,6 +333,8 @@ async def _call_research_model(
             tools.append(tavily_search)
         if state.get("enable_scientific_databases"):
             tools.extend(SCIENTIFIC_DATABASE_TOOLS)
+        if state.get("research_skill_mode", "auto") == "auto":
+            tools.append(load_research_skills)
         runnable = model.bind_tools(tools) if allow_tools else model
         ai_message = await runnable.ainvoke(payload, config=config)
         content = extract_text_content(ai_message.content)
@@ -357,6 +366,7 @@ def _final_synthesis_payload(
     )
     max_chars = _env_positive_int("RESEARCH_AGENT_FINAL_EVIDENCE_MAX_CHARS", 60000)
     evidence_parts: list[str] = []
+    method_parts: list[str] = []
     seen: set[str] = set()
     remaining = max_chars
     for message in history[latest_human_index + 1 :]:
@@ -366,6 +376,19 @@ def _final_synthesis_payload(
         if not content or content == "null" or content in seen:
             continue
         seen.add(content)
+        is_method_guidance = message.name == "load_research_skills"
+        if not is_method_guidance:
+            try:
+                parsed_content = json.loads(content)
+            except json.JSONDecodeError:
+                parsed_content = None
+            is_method_guidance = (
+                isinstance(parsed_content, dict)
+                and parsed_content.get("kind") == "research_method_guidance"
+            )
+        if is_method_guidance:
+            method_parts.append(content)
+            continue
         excerpt = content[:remaining]
         evidence_parts.append(excerpt)
         remaining -= len(excerpt)
@@ -373,10 +396,17 @@ def _final_synthesis_payload(
             break
 
     evidence = "\n\n---\n\n".join(evidence_parts) or "No usable evidence was returned."
+    method_guidance = (
+        "\n\n---\n\n".join(method_parts)
+        or "No research-method Skill was loaded through a tool."
+    )
     synthesis_request = (
         f"# Research question\n{question}\n\n"
+        f"# Method guidance returned by the Skill loader\n{method_guidance}\n\n"
         f"# Evidence returned by completed tools\n{evidence}\n\n"
-        "# Task\nWrite the final answer now. Use only the evidence above, preserve exact "
+        "# Task\nWrite the final answer now. Method guidance determines process and "
+        "structure but is not factual evidence. Use only the evidence section for "
+        "factual claims, preserve exact "
         "source/note IDs and external evidence IDs for citations, and state "
         "evidence gaps explicitly."
     )
@@ -386,7 +416,9 @@ def _final_synthesis_payload(
     ]
 
 
-tool_node = ToolNode([*PRIVATE_TOOLS, tavily_search, *SCIENTIFIC_DATABASE_TOOLS])
+tool_node = ToolNode(
+    [*PRIVATE_TOOLS, tavily_search, *SCIENTIFIC_DATABASE_TOOLS, load_research_skills]
+)
 
 
 def route_after_tools(state: ResearchState) -> str:

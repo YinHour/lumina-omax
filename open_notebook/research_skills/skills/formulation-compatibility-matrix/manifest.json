@@ -1,0 +1,13 @@
+{
+  "id": "formulation-compatibility-matrix",
+  "name": "配方相容性风险矩阵",
+  "version": "1.0.0",
+  "category": "oilfield-chemistry",
+  "description": "系统识别组分、盐水、水泥与工艺之间的相互作用，按风险排序并配置验证与缓解措施。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "search_scientific_database", "fetch_scientific_record"],
+  "order": 6,
+  "content_sha256": "ab26cd7540dc330af731dfbd84fda7572ff20abf51c96f56dd61304d5bc536ff"
+}

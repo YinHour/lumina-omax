@@ -413,6 +413,39 @@ async def test_research_model_binds_scientific_tools_only_when_enabled(monkeypat
         "search_scientific_database",
         "fetch_scientific_record",
     }.issubset(bound_names)
+    assert "load_research_skills" in bound_names
+
+
+@pytest.mark.asyncio
+async def test_research_model_does_not_bind_skill_loader_when_off(monkeypatch):
+    from open_notebook.graphs import research_agent
+
+    bound_model = MagicMock()
+    bound_model.ainvoke = AsyncMock(return_value=AIMessage(content="answer"))
+    model = MagicMock()
+    model.bind_tools.return_value = bound_model
+    monkeypatch.setattr(
+        research_agent.Prompter, "render", MagicMock(return_value="system")
+    )
+    monkeypatch.setattr(
+        research_agent,
+        "provision_langchain_model",
+        AsyncMock(return_value=model),
+    )
+
+    await research_agent.call_research_model(
+        {
+            "messages": [HumanMessage(content="question")],
+            "notebook_id": "notebook:1",
+            "enable_web_search": False,
+            "allow_cross_notebook_discovery": False,
+            "research_skill_mode": "off",
+        },
+        {},
+    )
+
+    bound_names = {tool.name for tool in model.bind_tools.call_args.args[0]}
+    assert "load_research_skills" not in bound_names
 
 
 def test_research_request_scientific_databases_default_off_and_stage_mapping():
@@ -424,10 +457,63 @@ def test_research_request_scientific_databases_default_off_and_stage_mapping():
     )
 
     assert request.enable_scientific_databases is False
+    assert request.research_skill_mode == "auto"
+    assert request.research_skill_ids == []
     assert (
         chat.CHAT_TOOL_STAGE["search_scientific_database"]
         == "searching_scientific_databases"
     )
+    assert chat.CHAT_TOOL_STAGE["load_research_skills"] == "loading_research_skills"
+
+
+def test_research_request_validates_explicit_skill_selection():
+    from pydantic import ValidationError
+
+    from api.routers import chat
+
+    request = chat.ExecuteResearchChatRequest(
+        session_id="chat_session:research",
+        message="Question",
+        research_skill_mode="selected",
+        research_skill_ids=["doe-statistical-plan", "hthp-brine-validation"],
+    )
+
+    assert request.research_skill_ids == [
+        "doe-statistical-plan",
+        "hthp-brine-validation",
+    ]
+    with pytest.raises(ValidationError):
+        chat.ExecuteResearchChatRequest(
+            session_id="chat_session:research",
+            message="Question",
+            research_skill_mode="selected",
+            research_skill_ids=[],
+        )
+    with pytest.raises(ValidationError):
+        chat.ExecuteResearchChatRequest(
+            session_id="chat_session:research",
+            message="Question",
+            research_skill_mode="auto",
+            research_skill_ids=["doe-statistical-plan"],
+        )
+    with pytest.raises(ValidationError):
+        chat.ExecuteResearchChatRequest(
+            session_id="chat_session:research",
+            message="Question",
+            research_skill_mode="selected",
+            research_skill_ids=["not-a-real-skill"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_research_skill_catalog_excludes_method_body():
+    from api.routers import chat
+
+    catalog = await chat.list_research_skills({"id": "user:alice"})
+
+    assert len(catalog) == 10
+    assert catalog[0].review_status == "approved"
+    assert "content" not in catalog[0].model_dump()
 
 
 @pytest.mark.asyncio
@@ -556,6 +642,8 @@ async def test_research_endpoint_injects_authenticated_user_scope(monkeypatch):
         "notebook_id": "notebook:current",
         "allow_cross_notebook_discovery": True,
         "enable_scientific_databases": True,
+        "research_skill_mode": "auto",
+        "research_skill_ids": [],
         "user_id": "user:alice",
         "user_role": "user",
     }

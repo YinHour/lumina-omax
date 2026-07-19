@@ -145,6 +145,10 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       onAllowCrossNotebookDiscoveryChange={chat.setAllowCrossNotebookDiscovery}
       scientificDatabasesEnabled={chat.scientificDatabasesEnabled}
       onScientificDatabasesEnabledChange={chat.setScientificDatabasesEnabled}
+      researchSkills={chat.researchSkills}
+      researchSkillMode={chat.researchSkillMode}
+      selectedResearchSkillIds={chat.selectedResearchSkillIds}
+      onResearchSkillSelectionChange={chat.setResearchSkillSelection}
       saveStatus={chat.saveStatus}
       hasMoreMessages={chat.hasMoreMessages}
       isLoadingEarlier={chat.isLoadingEarlier}

@@ -17,6 +17,7 @@ import {
   NotebookChatMode,
   NotebookContextWindowUsage,
   NotebookChatStreamEvent,
+  ResearchSkillMode,
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
 import { buildErrorBubbleBody } from '@/lib/chat/error-bubble'
@@ -56,6 +57,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const [chatMode, setChatModeState] = useState<NotebookChatMode>('quick')
   const [allowCrossNotebookDiscovery, setAllowCrossNotebookDiscovery] = useState(false)
   const [scientificDatabasesEnabled, setScientificDatabasesEnabled] = useState(false)
+  const [researchSkillMode, setResearchSkillMode] = useState<ResearchSkillMode>('auto')
+  const [selectedResearchSkillIds, setSelectedResearchSkillIds] = useState<string[]>([])
   const [currentSessionIds, setCurrentSessionIds] = useState<ModeState<string | null>>({
     quick: null,
     research: null,
@@ -196,6 +199,24 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const sessions = allSessions.filter(
     session => (session.mode ?? 'quick') === chatMode
   )
+
+  const { data: researchSkills = [] } = useQuery({
+    queryKey: QUERY_KEYS.researchSkills,
+    queryFn: chatApi.listResearchSkills,
+    enabled: !!notebookId && chatMode === 'research',
+  })
+
+  const setResearchSkillSelection = useCallback((
+    mode: ResearchSkillMode,
+    selectedIds: string[]
+  ) => {
+    const knownIds = new Set(researchSkills.map(skill => skill.id))
+    const safeIds = Array.from(new Set(selectedIds))
+      .filter(id => knownIds.has(id))
+      .slice(0, 3)
+    setResearchSkillMode(mode === 'selected' && safeIds.length === 0 ? 'auto' : mode)
+    setSelectedResearchSkillIds(mode === 'selected' ? safeIds : [])
+  }, [researchSkills])
 
   // Fetch current session with messages
   const {
@@ -462,6 +483,12 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     if (!trimmedMessage || isSendingRef.current) {
       return
     }
+    const requestResearchSkillMode = chatMode === 'research'
+      ? researchSkillMode
+      : 'off'
+    const requestResearchSkillIds = requestResearchSkillMode === 'selected'
+      ? selectedResearchSkillIds
+      : []
 
     isSendingRef.current = true
     setIsSending(true)
@@ -560,6 +587,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             enable_web_search: enableWebSearch,
             allow_cross_notebook_discovery: allowCrossNotebookDiscovery,
             enable_scientific_databases: scientificDatabasesEnabled,
+            research_skill_mode: requestResearchSkillMode,
+            research_skill_ids: requestResearchSkillIds,
           }, abortController.signal)
         : await chatApi.sendMessage({
             session_id: sessionId,
@@ -632,6 +661,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
             'inspecting_scientific_databases',
             'searching_scientific_databases',
             'reading_scientific_record',
+            'loading_research_skills',
             'using_research_tool',
             'awaiting_model',
             'synthesizing',
@@ -836,12 +866,18 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null
       }
+      if (requestResearchSkillMode === 'selected') {
+        setResearchSkillMode('auto')
+        setSelectedResearchSkillIds([])
+      }
     }
   }, [
     notebookId,
     chatMode,
     allowCrossNotebookDiscovery,
     scientificDatabasesEnabled,
+    researchSkillMode,
+    selectedResearchSkillIds,
     currentSessionId,
     currentSession,
     pendingModelOverride,
@@ -902,6 +938,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     if (chatMode === 'research') {
       setAllowCrossNotebookDiscovery(false)
       setScientificDatabasesEnabled(false)
+      setResearchSkillMode('auto')
+      setSelectedResearchSkillIds([])
     }
   }, [resetActivity, chatMode, setSaveStatusForMode, setSessionIdForMode])
 
@@ -921,6 +959,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     if (mode === 'research') {
       setAllowCrossNotebookDiscovery(false)
       setScientificDatabasesEnabled(false)
+      setResearchSkillMode('auto')
+      setSelectedResearchSkillIds([])
     }
     setSuggestedQuestionsByMessageId({})
     setContextWindowUsage(null)
@@ -1003,6 +1043,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     chatMode,
     allowCrossNotebookDiscovery,
     scientificDatabasesEnabled,
+    researchSkills,
+    researchSkillMode,
+    selectedResearchSkillIds,
 
     // Actions
     createSession,
@@ -1017,6 +1060,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setChatMode,
     setAllowCrossNotebookDiscovery,
     setScientificDatabasesEnabled,
+    setResearchSkillSelection,
     loadEarlierMessages,
     loadExportMessages,
     refetchSessions

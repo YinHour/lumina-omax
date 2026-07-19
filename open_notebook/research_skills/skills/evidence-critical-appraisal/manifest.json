@@ -1,0 +1,13 @@
+{
+  "id": "evidence-critical-appraisal",
+  "name": "证据分级与论文批判",
+  "version": "1.0.0",
+  "category": "evidence",
+  "description": "评估研究设计、偏倚、统计充分性、条件适用性与结论强度，形成透明的证据判断。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "search_scientific_database", "fetch_scientific_record"],
+  "order": 2,
+  "content_sha256": "8733b19717cba10a0c0186cfc697353537cc83f77a67a05d6c0e48a6fcdb4b8d"
+}
