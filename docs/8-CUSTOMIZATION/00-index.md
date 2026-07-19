@@ -3738,3 +3738,45 @@ exit 0
 ```
 
 未验证项：尚未在真实登录态浏览器中完成选择器的桌面端/窄屏视觉和键盘操作验收；尚未使用真实模型分别完成一次 `auto` 自动加载和 `selected` 显式方法的完整 Research 回答，因此真实模型的选法准确性、最终“本轮科研方法”披露质量及方法对回答质量的提升仍需手工验证。Skill 本身不访问外部数据库，本轮未重复 P0 的真实上游联网测试。
+
+---
+
+## 49. Token 用量页翻译访问保护误报修复（2026-07-19）
+
+### 49.1 问题与决策
+
+- Token 用量页会展示最多 50 条近期调用记录。旧实现每渲染一行都会重新构造包含 14 个工作流名称的翻译映射，因此单次满页渲染会重复读取 `t.usage` 数百次；Next.js 开发环境在一秒窗口内重复渲染时，可能超过 `useTranslation` 的 1,000 次访问保护阈值并报告 `INFINITE LOOP DETECTED on key: "usage"`。
+- 该现象是页面侧重复解析翻译命名空间造成的保护误报，不是真实递归，也不是语言包缺少 `usage` 字段。保留全局保护器及其阈值，避免用放宽保护掩盖页面热点。
+- 用量页现在按翻译对象缓存一次工作流标签映射，表格行仅做字符串查表；未知工作流继续使用既有 `surfaceUnknown` i18n 文案，没有新增硬编码可见文本。
+- 回归测试使用 API 真实上限的 50 条近期记录，并统计 `usage` 命名空间读取次数。旧实现在该用例中读取 830 次，修复后必须低于 250 次，防止逐行重建映射回归。
+
+### 49.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/app/(dashboard)/usage/page.tsx` | 缓存工作流名称翻译映射，移除逐行重复构造 |
+| `frontend/src/app/(dashboard)/usage/page.test.tsx` | 增加 50 条近期记录与翻译命名空间访问次数回归测试 |
+
+### 49.3 验证
+
+```text
+cd frontend && npm test -- --run 'src/app/(dashboard)/usage/page.test.tsx'
+3 passed
+
+cd frontend && npx eslint 'src/app/(dashboard)/usage/page.tsx' 'src/app/(dashboard)/usage/page.test.tsx'
+exit 0
+
+cd frontend && npm test
+197 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 生产构建与 TypeScript 检查通过
+
+git diff --check
+exit 0
+```
+
+未验证项：尚未在连接真实用量数据的登录态浏览器中重新打开 Token 用量页并观察一秒以上，控制台无该保护误报仍需手工确认。
