@@ -65,6 +65,28 @@ export default function UsagePage() {
     () => new Intl.DateTimeFormat(language, { dateStyle: 'short', timeStyle: 'short' }),
     [language]
   )
+  const { surfaceLabels, unknownSurfaceLabel } = useMemo(() => {
+    const usage = t.usage
+    return {
+      surfaceLabels: {
+        notebook_quick: usage.surfaceNotebookQuick,
+        notebook_research: usage.surfaceNotebookResearch,
+        source_chat: usage.surfaceSourceChat,
+        global_ask: usage.surfaceGlobalAsk,
+        transformation: usage.surfaceTransformation,
+        note_generation: usage.surfaceNoteGeneration,
+        notebook_guide: usage.surfaceNotebookGuide,
+        model_test: usage.surfaceModelTest,
+        credential_management: usage.surfaceCredentialManagement,
+        source_processing: usage.surfaceSourceProcessing,
+        knowledge_graph: usage.surfaceKnowledgeGraph,
+        embedding: usage.surfaceEmbedding,
+        embedding_rebuild: usage.surfaceEmbeddingRebuild,
+        api: usage.surfaceApi,
+      } as Record<string, string>,
+      unknownSurfaceLabel: usage.surfaceUnknown,
+    }
+  }, [t])
   const maxDaily = Math.max(...(data?.series.map(point => point.total_tokens) ?? [0]), 1)
   const maxCredential = Math.max(...(data?.by_credential.map(item => item.total_tokens) ?? [0]), 1)
   const maxUser = Math.max(...(data?.by_user.map(item => item.total_tokens) ?? [0]), 1)
@@ -76,23 +98,7 @@ export default function UsagePage() {
   }
 
   const surfaceLabel = (surface: string) => {
-    const labels: Record<string, string> = {
-      notebook_quick: t.usage.surfaceNotebookQuick,
-      notebook_research: t.usage.surfaceNotebookResearch,
-      source_chat: t.usage.surfaceSourceChat,
-      global_ask: t.usage.surfaceGlobalAsk,
-      transformation: t.usage.surfaceTransformation,
-      note_generation: t.usage.surfaceNoteGeneration,
-      notebook_guide: t.usage.surfaceNotebookGuide,
-      model_test: t.usage.surfaceModelTest,
-      credential_management: t.usage.surfaceCredentialManagement,
-      source_processing: t.usage.surfaceSourceProcessing,
-      knowledge_graph: t.usage.surfaceKnowledgeGraph,
-      embedding: t.usage.surfaceEmbedding,
-      embedding_rebuild: t.usage.surfaceEmbeddingRebuild,
-      api: t.usage.surfaceApi,
-    }
-    return labels[surface] ?? t.usage.surfaceUnknown
+    return surfaceLabels[surface] ?? unknownSurfaceLabel
   }
 
   return (

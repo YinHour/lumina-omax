@@ -6,6 +6,7 @@ import UsagePage from './page'
 
 const state = vi.hoisted(() => ({
   role: 'user',
+  usageAccessCount: 0,
   useUsage: vi.fn(),
 }))
 
@@ -53,8 +54,11 @@ vi.mock('@/lib/hooks/use-translation', () => ({
   useTranslation: () => ({
     language: 'en-US',
     t: {
-      usage: {
-        title: 'AI token usage', description: 'Description', period: 'Period', period7: '7 days', period30: '30 days', period90: '90 days', scope: 'Scope', mine: 'My usage', allUsers: 'All users', userFilter: 'User', allUsersOption: 'All users', totalTokens: 'Total tokens', inputTokens: 'Input tokens', outputTokens: 'Output tokens', calls: 'Calls', failedCalls: '{count} failed', tokens: 'tokens', dailyUsage: 'Daily usage', dailyUsageDesc: 'Daily description', byCredential: 'Usage by key', byCredentialDesc: 'Key description', byUser: 'Usage by user', byUserDesc: 'User description', recentUsage: 'Recent activity', recentUsageDesc: 'Recent description', noUsage: 'No usage', loading: 'Loading', loadError: 'Error', model: 'Model', key: 'Key', user: 'User', surface: 'Workflow', time: 'Time', status: 'Status', source: 'Count source', providerReported: 'Provider', estimated: 'Estimated', success: 'Success', failed: 'Failed', callsCount: '{count} calls', providerReportedHint: 'Provider hint', adminHint: 'Admin hint', surfaceNotebookQuick: 'Quick chat', surfaceNotebookResearch: 'Research chat', surfaceSourceChat: 'Source chat', surfaceGlobalAsk: 'Global Ask', surfaceTransformation: 'Transformation', surfaceNoteGeneration: 'Note generation', surfaceNotebookGuide: 'Guide', surfaceModelTest: 'Model test', surfaceCredentialManagement: 'Credential', surfaceSourceProcessing: 'Source processing', surfaceKnowledgeGraph: 'Knowledge graph', surfaceEmbedding: 'Embedding', surfaceEmbeddingRebuild: 'Embedding rebuild', surfaceApi: 'API', surfaceUnknown: 'Other',
+      get usage() {
+        state.usageAccessCount += 1
+        return {
+          title: 'AI token usage', description: 'Description', period: 'Period', period7: '7 days', period30: '30 days', period90: '90 days', scope: 'Scope', mine: 'My usage', allUsers: 'All users', userFilter: 'User', allUsersOption: 'All users', totalTokens: 'Total tokens', inputTokens: 'Input tokens', outputTokens: 'Output tokens', calls: 'Calls', failedCalls: '{count} failed', tokens: 'tokens', dailyUsage: 'Daily usage', dailyUsageDesc: 'Daily description', byCredential: 'Usage by key', byCredentialDesc: 'Key description', byUser: 'Usage by user', byUserDesc: 'User description', recentUsage: 'Recent activity', recentUsageDesc: 'Recent description', noUsage: 'No usage', loading: 'Loading', loadError: 'Error', model: 'Model', key: 'Key', user: 'User', surface: 'Workflow', time: 'Time', status: 'Status', source: 'Count source', providerReported: 'Provider', estimated: 'Estimated', success: 'Success', failed: 'Failed', callsCount: '{count} calls', providerReportedHint: 'Provider hint', adminHint: 'Admin hint', surfaceNotebookQuick: 'Quick chat', surfaceNotebookResearch: 'Research chat', surfaceSourceChat: 'Source chat', surfaceGlobalAsk: 'Global Ask', surfaceTransformation: 'Transformation', surfaceNoteGeneration: 'Note generation', surfaceNotebookGuide: 'Guide', surfaceModelTest: 'Model test', surfaceCredentialManagement: 'Credential', surfaceSourceProcessing: 'Source processing', surfaceKnowledgeGraph: 'Knowledge graph', surfaceEmbedding: 'Embedding', surfaceEmbeddingRebuild: 'Embedding rebuild', surfaceApi: 'API', surfaceUnknown: 'Other',
+        }
       },
     },
   }),
@@ -63,6 +67,7 @@ vi.mock('@/lib/hooks/use-translation', () => ({
 describe('UsagePage', () => {
   beforeEach(() => {
     state.role = 'user'
+    state.usageAccessCount = 0
     state.useUsage.mockReset()
     state.useUsage.mockReturnValue({ data: dashboard, isLoading: false, isError: false })
   })
@@ -87,5 +92,22 @@ describe('UsagePage', () => {
     expect(state.useUsage).toHaveBeenLastCalledWith(30, 'all', undefined)
     expect(screen.getByText('Usage by user')).toBeInTheDocument()
     expect(screen.getAllByText('researcher').length).toBeGreaterThan(0)
+  })
+
+  it('does not repeatedly resolve the usage namespace for every recent workflow label', () => {
+    const recent = Array.from({ length: 50 }, (_, index) => ({
+      ...dashboard.recent[0],
+      id: `ai_token_usage:${index + 1}`,
+    }))
+    state.useUsage.mockReturnValue({
+      data: { ...dashboard, recent },
+      isLoading: false,
+      isError: false,
+    })
+
+    render(<UsagePage />)
+
+    expect(screen.getAllByText('Global Ask')).toHaveLength(50)
+    expect(state.usageAccessCount).toBeLessThan(250)
   })
 })
