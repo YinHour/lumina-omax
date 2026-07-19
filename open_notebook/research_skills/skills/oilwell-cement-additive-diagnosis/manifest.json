@@ -1,0 +1,13 @@
+{
+  "id": "oilwell-cement-additive-diagnosis",
+  "name": "油井水泥外加剂异常诊断",
+  "version": "1.0.0",
+  "category": "oilwell-cement",
+  "description": "围绕水泥、外加剂、盐水、批次和工艺建立竞争性机理，定位流变、稠化、失水、沉降或强度异常。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "search_scientific_database", "fetch_scientific_record"],
+  "order": 10,
+  "content_sha256": "6ca4a5e5560abbc40302a2a9ee927429f793696148655449f46cacaed34bce9b"
+}

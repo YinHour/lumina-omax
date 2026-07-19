@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.chat_transcript_service import (
     compact_chat_checkpoint,
@@ -36,6 +36,8 @@ from open_notebook.graphs.chat import agent_state
 from open_notebook.graphs.chat import graph as chat_graph
 from open_notebook.graphs.observability import chat_trace_id
 from open_notebook.graphs.research_agent import agent_state as research_agent_state
+from open_notebook.research_skills import get_research_skill_registry
+from open_notebook.research_skills.registry import ResearchSkillValidationError
 from open_notebook.utils import token_count
 from open_notebook.utils.graph_utils import get_session_message_count
 
@@ -152,6 +154,7 @@ CHAT_TOOL_STAGE = {
     "list_scientific_databases": "inspecting_scientific_databases",
     "search_scientific_database": "searching_scientific_databases",
     "fetch_scientific_record": "reading_scientific_record",
+    "load_research_skills": "loading_research_skills",
 }
 
 
@@ -295,6 +298,45 @@ class ExecuteResearchChatRequest(BaseModel):
         False,
         description="Explicit per-request permission for scientific database access",
     )
+    research_skill_mode: Literal["auto", "off", "selected"] = Field(
+        "auto",
+        description="Research-method Skill loading mode for this request",
+    )
+    research_skill_ids: List[str] = Field(
+        default_factory=list,
+        description="Explicit research-method Skill IDs for selected mode",
+    )
+
+    @model_validator(mode="after")
+    def validate_research_skills(self):
+        skill_ids = self.research_skill_ids
+        if len(skill_ids) != len(set(skill_ids)):
+            raise ValueError("research_skill_ids must be unique")
+        if self.research_skill_mode == "selected":
+            if not 1 <= len(skill_ids) <= 3:
+                raise ValueError("selected mode requires 1-3 research_skill_ids")
+        elif skill_ids:
+            raise ValueError(
+                "research_skill_ids are only allowed when mode is selected"
+            )
+        try:
+            get_research_skill_registry().validate_ids(skill_ids)
+        except ResearchSkillValidationError as exc:
+            raise ValueError(str(exc)) from exc
+        return self
+
+
+class ResearchSkillCatalogItem(BaseModel):
+    id: str
+    name: str
+    version: str
+    category: str
+    description: str
+    source: str
+    license: str
+    review_status: str
+    allowed_tools: List[str]
+    order: int
 
 
 class ExecuteChatResponse(BaseModel):
@@ -1209,6 +1251,20 @@ async def execute_chat(request: ExecuteChatRequest):
         raise HTTPException(status_code=500, detail=f"Error sending message: {str(e)}")
 
 
+@router.get(
+    "/chat/research/skills",
+    response_model=List[ResearchSkillCatalogItem],
+)
+async def list_research_skills(
+    _current_user: dict = Depends(get_current_user_from_state),
+):
+    """Return approved Research Agent Skill metadata without method bodies."""
+    return [
+        ResearchSkillCatalogItem(**item.as_dict())
+        for item in get_research_skill_registry().catalog()
+    ]
+
+
 @router.post("/chat/research/execute")
 async def execute_research_chat(
     request: ExecuteResearchChatRequest,
@@ -1252,6 +1308,8 @@ async def execute_research_chat(
             allow_cross_notebook_discovery=request.allow_cross_notebook_discovery,
             enable_web_search=request.enable_web_search,
             enable_scientific_databases=request.enable_scientific_databases,
+            research_skill_mode=request.research_skill_mode,
+            research_skill_count=len(request.research_skill_ids),
         )
         return StreamingResponse(
             stream_chat_response(
@@ -1267,6 +1325,8 @@ async def execute_research_chat(
                     "notebook_id": notebook_id,
                     "allow_cross_notebook_discovery": request.allow_cross_notebook_discovery,
                     "enable_scientific_databases": request.enable_scientific_databases,
+                    "research_skill_mode": request.research_skill_mode,
+                    "research_skill_ids": request.research_skill_ids,
                     "user_id": current_user.get("id"),
                     "user_role": current_user.get("role"),
                 },

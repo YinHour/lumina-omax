@@ -3669,3 +3669,72 @@ exit 0
 登录态浏览器验证：Quick Tab 只显示联网搜索；Research Tab 显示联网搜索、跨笔记本发现、科研数据库三项，科研数据库默认关闭且可开启；切回 Quick 后不可见，再进入 Research 恢复关闭；桌面布局未挤压模型选择器和输入框。
 
 未验证项：自动测试未访问真实 OpenAlex、Crossref、Semantic Scholar、arXiv 或 PubChem 服务，尚未覆盖真实上游限流、地域网络差异和数据字段漂移；未使用真实模型发起一次带科研数据库工具调用的完整 Research 回答，因此外部证据引用质量仍需运行时验收。P0 不包含 UniProt/PDB/Ensembl/ChEMBL、技能运行时、云计算、训练/评估或把外部记录自动保存进笔记本。
+
+---
+
+## 48. Research Agent 精选科研方法 Skills P1（2026-07-19）
+
+### 48.1 问题与决策
+
+- Research Agent 原系统提示只有通用研究步骤，缺少可选择、可版本化和可审阅的方法资产。P1 首批增加 10 个项目自编方法：文献检索与 DOI 核验、证据分级与论文批判、假设生成与竞争性假设、DOE 与统计分析计划、化学身份与性质核验、配方相容性风险矩阵、高温高压与盐水验证设计、放大风险与验证 Gate、科研报告结构化写作、油井水泥外加剂异常诊断。
+- Skill 是只读的方法说明，不是可执行插件或事实证据。每个目录只允许 `manifest.json` 与 `SKILL.md`，不运行脚本、不安装依赖、不修改笔记本或来源、不读取凭据、不发起费用操作，也不能启用 Web、科研数据库或跨笔记本权限。
+- 每个清单固定 ID、`1.0.0` 版本、分类、短描述、项目来源、MIT 许可证、`approved` 审阅状态、允许工具、顺序和正文 SHA-256。注册表要求恰好 10 个真实目录，并校验字段、重复项、正文 8,000 字符上限、哈希、未知工具、额外文件、符号链接和权限提升/提示注入/依赖安装/命令执行/费用/凭据/写入等危险语句。
+- Research 请求新增 `research_skill_mode=auto|off|selected` 与 `research_skill_ids`。`auto` 是默认值，模型常驻上下文只获得目录元数据，按需调用一个只读加载工具，整轮最多 2 个；`selected` 由用户显式选择 1–3 个并在本轮预加载正文；`off` 不暴露目录或正文。服务端拒绝未知、重复、越界以及模式与 ID 不一致的请求。
+- 自动限制同时检查单次参数、此前工具轮次和同一模型消息中的并行加载调用，避免用多个工具调用绕过整轮最多 2 个的约束。`allowed_tools` 只与请求实际启用工具取交集，不产生新授权。
+- 最终合成将 `load_research_skills` 的方法内容与真实证据工具输出分栏处理。方法只决定分析流程和报告结构，事实结论仍只能引用工具返回的 `[source:*]`、`[note:*]` 或 `[external:*]`；使用方法时回答列出精确 Skill ID、版本和用途。
+- Research 输入区新增“科研方法”下拉选择器，支持自动、关闭和显式多选，流式生成时禁用。显式选择只用于当前请求，请求结束后恢复自动；创建新 Research 会话或重新进入 Research 也恢复默认。目录通过相对 `/api/chat/research/skills` 获取，目录响应不含正文。
+- 自动加载新增“正在加载科研方法”SSE 活动阶段。选择器、10 个方法名、数量限制和活动文案已进入 9 个现有语言包；未新增生产依赖或部署服务。
+
+### 48.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/research_skills/` | 只读模型、注册表、安全校验和 10 个固定版本方法目录 |
+| `open_notebook/graphs/research_skill_tools.py` | 目录按需加载、整轮数量限制、实际权限交集和非证据输出 |
+| `open_notebook/graphs/research_agent.py`、`prompts/research_agent/system.jinja` | 模式化目录/正文注入、条件工具绑定、方法与证据分离及版本披露 |
+| `api/routers/chat.py` | 目录 GET 接口、Research 请求严格校验、state 传播、日志和 SSE 阶段 |
+| `pyproject.toml` | 将 Skill 清单与 Markdown 正文纳入 Python 包数据 |
+| `frontend/src/components/source/ResearchSkillSelector.tsx`、`ChatPanel.tsx`、`ChatActivityFeed.tsx` | Research 方法选择器、数量限制、生成期禁用和活动展示 |
+| `frontend/src/lib/hooks/useNotebookChat.ts`、`api/chat.ts`、`types/api.ts`、`chat/notebook-chat-activity.ts` | 相对 API 目录读取、一次性选择状态、请求传播、自动恢复和阶段类型 |
+| `frontend/src/lib/locales/*/index.ts` | 9 个语言包的模式、方法名、限制和进度文案 |
+| `tests/test_research_skills.py`、`test_research_agent_scope.py` 及对应前端测试 | 注册表篡改/危险内容/额外文件、自动与显式限制、权限交集、证据分离、API、Hook 和 UI 覆盖 |
+| `docs/superpowers/specs/2026-07-19-curated-research-method-skills-p1-design.md`、`plans/2026-07-19-curated-research-method-skills-p1-implementation.md` | 产品场景、安全边界、交互、架构、风险和实施记录 |
+
+### 48.3 验证
+
+```text
+uv run python -c "<加载注册表并打印 10 个 Skill 的顺序、ID 和正文长度>"
+10 个 Skill 全部加载；正文长度 638–839 字符
+
+uv run python -c "<渲染 selected 模式 Research Agent 系统提示>"
+exit 0；生成 3875 字符提示
+
+uv run pytest tests/test_research_skills.py tests/test_research_agent_scope.py -q
+33 passed, 1 warning
+
+uv run pytest tests/ -m 'not e2e' -q
+368 passed, 33 deselected, 6 warnings
+
+uv run ruff check open_notebook/research_skills open_notebook/graphs/research_skill_tools.py open_notebook/graphs/research_agent.py api/routers/chat.py tests/test_research_skills.py tests/test_research_agent_scope.py
+All checks passed
+
+cd frontend && npm test -- --run src/lib/api/chat.test.ts src/components/source/ResearchSkillSelector.test.tsx src/components/source/ChatPanel.test.tsx src/lib/hooks/useNotebookChat.test.tsx 'src/app/(dashboard)/notebooks/components/ChatColumn.test.tsx'
+60 passed
+
+cd frontend && npm test
+196 passed, 9 skipped
+
+cd frontend && npx eslint <本轮前端文件与 9 个 locale>
+exit 0
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 生产构建与 TypeScript 检查通过
+
+git diff --check
+exit 0
+```
+
+未验证项：尚未在真实登录态浏览器中完成选择器的桌面端/窄屏视觉和键盘操作验收；尚未使用真实模型分别完成一次 `auto` 自动加载和 `selected` 显式方法的完整 Research 回答，因此真实模型的选法准确性、最终“本轮科研方法”披露质量及方法对回答质量的提升仍需手工验证。Skill 本身不访问外部数据库，本轮未重复 P0 的真实上游联网测试。

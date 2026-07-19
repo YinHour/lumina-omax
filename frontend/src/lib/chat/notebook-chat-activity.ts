@@ -11,6 +11,7 @@ export type NotebookChatProgressStage =
   | 'inspecting_scientific_databases'
   | 'searching_scientific_databases'
   | 'reading_scientific_record'
+  | 'loading_research_skills'
   | 'using_research_tool'
   | 'awaiting_model'
   | 'synthesizing'

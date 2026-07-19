@@ -1,0 +1,13 @@
+{
+  "id": "chemical-identity-properties",
+  "name": "化学身份与性质核验",
+  "version": "1.0.0",
+  "category": "chemistry",
+  "description": "核对化学名称、结构、盐型、异构体、CAS/CID 与条件相关性质，区分实测和计算数据。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note", "tavily_search", "list_scientific_databases", "search_scientific_database", "fetch_scientific_record"],
+  "order": 5,
+  "content_sha256": "0254e6af8051a297c3f0ca06536ecbe1cebbac36ddc6c1ae2987abffaf267708"
+}

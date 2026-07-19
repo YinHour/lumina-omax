@@ -8,9 +8,17 @@ import {
   SendNotebookResearchMessageRequest,
   BuildContextRequest,
   BuildContextResponse,
+  ResearchSkillSummary,
 } from '@/lib/types/api'
 
 export const chatApi = {
+  listResearchSkills: async () => {
+    const response = await apiClient.get<ResearchSkillSummary[]>(
+      `/chat/research/skills`
+    )
+    return response.data
+  },
+
   // Session management
   listSessions: async (notebookId: string) => {
     const response = await apiClient.get<NotebookChatSession[]>(

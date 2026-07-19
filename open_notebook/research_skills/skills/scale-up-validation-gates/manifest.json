@@ -1,0 +1,13 @@
+{
+  "id": "scale-up-validation-gates",
+  "name": "放大风险与验证 Gate",
+  "version": "1.0.0",
+  "category": "scale-up",
+  "description": "识别从实验室到中试和现场的关键质量属性、过程参数、失效模式与分阶段放行条件。",
+  "source": "Lumiton Omax curated methodology",
+  "license": "MIT",
+  "review_status": "approved",
+  "allowed_tools": ["search_notebook_evidence", "read_source", "read_note"],
+  "order": 8,
+  "content_sha256": "c7e6fea0a90df83873102fc171935c0606fc132574cd3e580b0b3c860eaffc38"
+}
