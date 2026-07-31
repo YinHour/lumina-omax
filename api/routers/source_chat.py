@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import StreamingResponse
@@ -505,6 +505,34 @@ async def stream_source_chat_response(
 
         async def run_producer(out_queue: asyncio.Queue) -> None:
             yielded_ai_chunks = False
+            first_ai_output_logged = False
+
+            async def emit_ai_content(
+                content: str, *, stream_mode: Literal["delta", "buffered"] = "delta"
+            ) -> None:
+                nonlocal yielded_ai_chunks, first_ai_output_logged
+                if not content:
+                    return
+                if content.startswith("<web_search_results>") or content.endswith(
+                    "</web_search_results>"
+                ):
+                    return
+                yielded_ai_chunks = True
+                if not first_ai_output_logged:
+                    first_ai_output_logged = True
+                    logger.info(
+                        "source_chat_stream step=first_ai_output "
+                        f"session_id={session_id} source_id={source_id} "
+                        f"elapsed_ms={int((time.perf_counter() - started_at) * 1000)} "
+                        f"chunk_chars={len(content)} stream_mode={stream_mode}"
+                    )
+                ai_event = {
+                    "type": "ai_message",
+                    "content": content,
+                    "timestamp": None,
+                    "stream_mode": stream_mode,
+                }
+                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
 
             async with AsyncSqliteSaver.from_conn_string(LANGGRAPH_SOURCE_CHAT_CHECKPOINT_FILE) as saver:
                 async_graph = source_chat_state.compile(checkpointer=saver)
@@ -520,67 +548,28 @@ async def stream_source_chat_response(
 
                             if hasattr(chunk, "content") and chunk.content:
                                 content = chunk.content
-                                yielded_ai_chunks = True
                                 if isinstance(content, str):
-                                    ai_event = {
-                                        "type": "ai_message",
-                                        "content": content,
-                                        "timestamp": None,
-                                    }
-                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                    await emit_ai_content(content)
                                 elif isinstance(content, list):
                                     for c in content:
                                         if isinstance(c, dict) and "text" in c:
-                                            if not c["text"].startswith("<web_search_results>") and not c["text"].endswith("</web_search_results>"):
-                                                ai_event = {
-                                                    "type": "ai_message",
-                                                    "content": c["text"],
-                                                    "timestamp": None,
-                                                }
-                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                            await emit_ai_content(c["text"])
                                         elif isinstance(c, str):
-                                            if not c.startswith("<web_search_results>") and not c.endswith("</web_search_results>"):
-                                                ai_event = {
-                                                    "type": "ai_message",
-                                                    "content": c,
-                                                    "timestamp": None,
-                                                }
-                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                            await emit_ai_content(c)
 
                             elif isinstance(chunk, str) and chunk:
-                                if not chunk.startswith("<web_search_results>") and not chunk.endswith("</web_search_results>"):
-                                    yielded_ai_chunks = True
-                                    ai_event = {
-                                        "type": "ai_message",
-                                        "content": chunk,
-                                        "timestamp": None,
-                                    }
-                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                await emit_ai_content(chunk)
                             elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
-                                if not chunk["content"].startswith("<web_search_results>") and not chunk["content"].endswith("</web_search_results>"):
-                                    yielded_ai_chunks = True
-                                    ai_event = {
-                                        "type": "ai_message",
-                                        "content": chunk["content"],
-                                        "timestamp": None,
-                                    }
-                                    await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                await emit_ai_content(chunk["content"])
 
                     elif kind == "on_chat_model_end":
                         if "output" in event["data"] and "content" in event["data"]["output"]:
                             if not yielded_ai_chunks:
-                                yielded_ai_chunks = True
                                 content = event["data"]["output"]["content"]
                                 if isinstance(content, str):
-                                    if not content.startswith("<web_search_results>") and not content.endswith("</web_search_results>"):
-                                        chunk_size = 50
-                                        for i in range(0, len(content), chunk_size):
-                                            ai_event = {
-                                                "type": "ai_message",
-                                                "content": content[i:i+chunk_size],
-                                                "timestamp": None,
-                                            }
-                                            await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                    await emit_ai_content(
+                                        content, stream_mode="buffered"
+                                    )
 
                     elif kind == "on_chain_end" and event["name"] == "LangGraph":
                         final_state = event["data"]["output"]
@@ -592,14 +581,10 @@ async def stream_source_chat_response(
                                     if hasattr(msg, "content"):
                                         content_text = msg.content
                                         if content_text:
-                                            chunk_size = 50
-                                            for i in range(0, len(content_text), chunk_size):
-                                                ai_event = {
-                                                    "type": "ai_message",
-                                                    "content": content_text[i:i+chunk_size],
-                                                    "timestamp": None,
-                                                }
-                                                await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
+                                            await emit_ai_content(
+                                                content_text,
+                                                stream_mode="buffered",
+                                            )
 
                                 context_indicators = final_state["source_chat_agent"].get("context_indicators")
                             elif "context_indicators" in final_state:

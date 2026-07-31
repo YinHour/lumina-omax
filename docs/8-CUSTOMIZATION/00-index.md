@@ -3848,3 +3848,52 @@ exit 0
 当前机器使用 Node 26.5.0。直接执行 `npm test` 时，Node 实验性 Web Storage 全局会覆盖 jsdom 的 `localStorage`，导致依赖存储的既有测试在初始化阶段失败；仅对测试进程设置 `NODE_OPTIONS=--no-experimental-webstorage` 后全部通过。该环境兼容问题与本轮启动配置无关，没有借机扩展修复范围。
 
 未验证项：没有重新执行 `make start-all`，没有启动 Turbopack，也没有生成 `NEXT_TURBOPACK_TRACING` 复现 trace；这是防止主力机器再次失去响应的明确安全边界。受控烟测只验证 Webpack 前端启动、页面编译、HTTP 响应、单监听进程和停止清理，没有联动 API、worker、数据库或登录后的完整业务流程。
+
+---
+
+## 51. Chat 真实模型流与首个输出观测（2026-07-31）
+
+### 51.1 问题与实现边界
+
+- Quick Chat、Research Agent 和 Source Chat 已通过 `streaming=True` 配置模型，并由 LangGraph `astream_events(version="v2")` 转发 `on_chat_model_stream` / `on_llm_stream`；前端也已用 `ReadableStream` 和 `TextDecoder` 增量消费 SSE。三个接口均返回 `X-Accel-Buffering: no`，因此不需要改变浏览器 API 路由或部署拓扑。
+- 原后端在没有收到模型 chunk 时，会在 `on_chat_model_end` 或 LangGraph 最终状态中取得完整答案，再按每 50 字符拆分成多条 `ai_message`。这只能模拟视觉打字效果，不能改善真实首字时间，还会把不支持流式的供应商误报成流式。
+- 本轮保留 Lumiton 已验证的 `streaming=True`、`astream_events`、立即下发模型 chunk 和首 token 计时思路；不沿用其仍存在的 50 字符伪切片回退。
+
+### 51.2 协议与可观测性
+
+- 模型实时 chunk 立即发送为 `ai_message`，并标记 `stream_mode="delta"`。
+- 如果供应商或适配器没有产生任何 stream event，只在模型结束时发送一次完整 `ai_message`，并标记 `stream_mode="buffered"`；不再人为切片或插入延迟。
+- 前端继续按既有 `ai_message.content` 拼接，不新增文案、状态或持久化字段；`stream_mode` 是向后兼容的诊断字段。
+- Quick Chat / Research Agent 的 `first_ai_chunk` 日志增加 `stream_mode`；Source Chat 增加不记录回答正文的 `first_ai_output` 日志，包含 session/source、耗时、首块字符数和 stream mode。远程验收可据此区分真实 TTFT 与整段回退。
+
+### 51.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `api/routers/chat.py` | 真实 delta 与单次 buffered 回退；首块日志增加 stream mode |
+| `api/routers/source_chat.py` | 统一内容过滤与 SSE 输出；删除伪切片；增加首输出耗时日志 |
+| `tests/test_real_streaming_sse.py` | 覆盖 Chat/Source Chat 的真实 delta 和完整 buffered 回退 |
+
+### 51.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_real_streaming_sse.py tests/test_chat_heartbeat_sse.py tests/test_source_chat_heartbeat_sse.py -q
+16 passed
+
+.venv/bin/python -m ruff check api/routers/chat.py api/routers/source_chat.py tests/test_real_streaming_sse.py
+All checks passed
+
+.venv/bin/python -m pytest tests/test_real_streaming_sse.py tests/test_chat_heartbeat_sse.py tests/test_source_chat_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py tests/test_research_agent_scope.py tests/test_message_history.py tests/test_graphs.py -q
+70 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+371 passed, 33 deselected
+
+.venv/bin/python -m ruff format --check tests/test_real_streaming_sse.py
+1 file already formatted
+
+git diff --check
+exit 0
+```
+
+未验证项：开发机没有发送新的真实供应商模型请求。真实 provider 首字时间、`stream_mode` 和代理分流将在用户 Mac Studio 上结合服务端日志与浏览器逐项验收；若某个 provider 始终为 `buffered`，再以该 provider 的实测证据检查 Esperanto/LangChain 适配层，不在本轮预先修改所有供应商。
