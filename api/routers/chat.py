@@ -877,7 +877,9 @@ async def stream_chat_response(
         current_status_stage = initial_stage
         last_output_at = time.perf_counter()
 
-        def observe_ai_chunk(content: str) -> bool:
+        def observe_ai_chunk(
+            content: str, stream_mode: Literal["delta", "buffered"]
+        ) -> bool:
             nonlocal yielded_ai_chunks, first_ai_chunk_logged, model_first_byte_ms
             is_first_chunk = not first_ai_chunk_logged
             yielded_ai_chunks = True
@@ -892,6 +894,7 @@ async def stream_chat_response(
                     elapsed_ms=model_first_byte_ms,
                     model_first_byte_ms=model_first_byte_ms,
                     heartbeats_sent=heartbeat_count,
+                    stream_mode=stream_mode,
                 )
             return is_first_chunk
 
@@ -909,19 +912,22 @@ async def stream_chat_response(
                 chat_status_sse_event(stage, status, elapsed_ms(started_at))
             )
 
-        async def emit_ai_content(content: str) -> None:
+        async def emit_ai_content(
+            content: str, *, stream_mode: Literal["delta", "buffered"] = "delta"
+        ) -> None:
             if not content:
                 return
             if content.startswith("<web_search_results>") or content.endswith(
                 "</web_search_results>"
             ):
                 return
-            if observe_ai_chunk(content):
+            if observe_ai_chunk(content, stream_mode):
                 await emit_status("model_streaming", "active")
             ai_event = {
                 "type": "ai_message",
                 "content": content,
                 "timestamp": None,
+                "stream_mode": stream_mode,
             }
             await put_output(f"data: {json.dumps(ai_event)}\n\n")
 
@@ -993,9 +999,9 @@ async def stream_chat_response(
                             if not yielded_ai_chunks:
                                 content = event["data"]["output"]["content"]
                                 if isinstance(content, str):
-                                    chunk_size = 50
-                                    for i in range(0, len(content), chunk_size):
-                                        await emit_ai_content(content[i:i+chunk_size])
+                                    await emit_ai_content(
+                                        content, stream_mode="buffered"
+                                    )
 
                     elif kind == "on_chain_end" and event["name"] == "LangGraph":
                         final_state = event["data"]["output"]
@@ -1005,9 +1011,9 @@ async def stream_chat_response(
                                 if hasattr(msg, "content"):
                                     content_text = msg.content
                                     if content_text:
-                                        chunk_size = 50
-                                        for i in range(0, len(content_text), chunk_size):
-                                            await emit_ai_content(content_text[i:i+chunk_size])
+                                        await emit_ai_content(
+                                            content_text, stream_mode="buffered"
+                                        )
 
         async def run_heartbeat_emitter() -> None:
             # Emit heartbeats whenever the active phase is silent. This remains
