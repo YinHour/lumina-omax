@@ -119,6 +119,11 @@ export function useAsk() {
               } else if (data.type === 'answer') {
                 setAskStage('searching')
                 useAskStore.getState().addAnswer(data.content || '')
+              } else if (data.type === 'final_answer_delta') {
+                setAskStage('writing')
+                useAskStore.getState().setFinalAnswer(
+                  (useAskStore.getState().finalAnswer || '') + (data.content || ''),
+                )
               } else if (data.type === 'final_answer') {
                 setAskStage('writing')
                 useAskStore.getState().setFinalAnswer(data.content || '')

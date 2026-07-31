@@ -124,7 +124,7 @@ async def stream_ask_response(
     """
     started_at = time.perf_counter()
     try:
-        final_answer: dict | None = None
+        final_answer: str | None = None
         retrieved_source_ids: list[str] = []
 
         yield ask_status_sse_event("received", started_at)
@@ -139,6 +139,35 @@ async def stream_ask_response(
 
         async def run_producer(out_queue: asyncio.Queue) -> None:
             nonlocal final_answer
+            yielded_final_answer_chunks = False
+            writing_status_sent = False
+
+            async def emit_writing_status() -> None:
+                nonlocal writing_status_sent
+                if writing_status_sent:
+                    return
+                writing_status_sent = True
+                await out_queue.put(ask_status_sse_event("writing", started_at))
+
+            async def emit_final_answer_delta(content: str) -> None:
+                nonlocal yielded_final_answer_chunks
+                if not content:
+                    return
+                await emit_writing_status()
+                if not yielded_final_answer_chunks:
+                    logger.info(
+                        "ask_stream step=first_final_answer_output "
+                        f"elapsed_ms={int((time.perf_counter() - started_at) * 1000)} "
+                        f"chunk_chars={len(content)} stream_mode=delta"
+                    )
+                yielded_final_answer_chunks = True
+                event_data = {
+                    "type": "final_answer_delta",
+                    "content": content,
+                    "stream_mode": "delta",
+                }
+                await out_queue.put(f"data: {json.dumps(event_data)}\n\n")
+
             await out_queue.put(ask_status_sse_event("planning", started_at))
             async for event in ask_graph.astream_events(
                 input=dict(question=question, corpus_stats=corpus_stats),  # type: ignore[arg-type]
@@ -153,14 +182,27 @@ async def stream_ask_response(
             ):
                 kind = event["event"]
                 if kind == "on_chat_model_stream" or kind == "on_llm_stream":
-                    if event.get("metadata", {}).get("langgraph_node") == "agent":
-                        if "chunk" in event["data"]:
-                            chunk = event["data"]["chunk"]
+                    node = event.get("metadata", {}).get("langgraph_node")
+                    if "chunk" in event["data"]:
+                        chunk = event["data"]["chunk"]
+                        if node == "agent":
                             if hasattr(chunk, "content") and chunk.content:
                                 if isinstance(chunk.content, str):
                                     await out_queue.put(
                                         f"data: {json.dumps({'type': 'strategy_reasoning_chunk', 'chunk': chunk.content})}\n\n"
                                     )
+                        elif node == "write_final_answer":
+                            content = getattr(chunk, "content", chunk)
+                            if isinstance(content, str):
+                                await emit_final_answer_delta(content)
+                            elif isinstance(content, list):
+                                for item in content:
+                                    if isinstance(item, dict) and isinstance(
+                                        item.get("text"), str
+                                    ):
+                                        await emit_final_answer_delta(item["text"])
+                                    elif isinstance(item, str):
+                                        await emit_final_answer_delta(item)
 
                 elif kind == "on_chain_end":
                     if event["name"] == "agent" and "output" in event["data"] and event["data"]["output"] and "strategy" in event["data"]["output"]:
@@ -188,10 +230,21 @@ async def stream_ask_response(
 
                     elif event["name"] == "write_final_answer" and "output" in event["data"] and event["data"]["output"] and "final_answer" in event["data"]["output"]:
                         final_answer = event["data"]["output"]["final_answer"]
-                        await out_queue.put(
-                            ask_status_sse_event("writing", started_at)
+                        await emit_writing_status()
+                        stream_mode = (
+                            "delta" if yielded_final_answer_chunks else "buffered"
                         )
-                        final_data = {"type": "final_answer", "content": final_answer}
+                        if stream_mode == "buffered":
+                            logger.info(
+                                "ask_stream step=first_final_answer_output "
+                                f"elapsed_ms={int((time.perf_counter() - started_at) * 1000)} "
+                                f"chunk_chars={len(final_answer)} stream_mode=buffered"
+                            )
+                        final_data = {
+                            "type": "final_answer",
+                            "content": final_answer,
+                            "stream_mode": stream_mode,
+                        }
                         await out_queue.put(f"data: {json.dumps(final_data)}\n\n")
 
         try:

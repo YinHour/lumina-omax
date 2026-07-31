@@ -150,6 +150,8 @@ async def test_stream_ask_response_emits_silence_heartbeats(monkeypatch):
     )
     assert "final_answer" in types
     assert "complete" in types
+    final_event = next(event for event in events if event.get("type") == "final_answer")
+    assert final_event.get("stream_mode") == "buffered"
 
 
 @pytest.mark.asyncio
@@ -184,6 +186,16 @@ async def test_stream_ask_response_emits_user_visible_status_events(monkeypatch)
                     "answers": ["evidence"],
                 }
             },
+        }
+        yield {
+            "event": "on_chat_model_stream",
+            "metadata": {"langgraph_node": "write_final_answer"},
+            "data": {"chunk": MagicMock(content="fi")},
+        }
+        yield {
+            "event": "on_chat_model_stream",
+            "metadata": {"langgraph_node": "write_final_answer"},
+            "data": {"chunk": MagicMock(content="nal")},
         }
         yield {
             "event": "on_chain_end",
@@ -221,3 +233,16 @@ async def test_stream_ask_response_emits_user_visible_status_events(monkeypatch)
         for event in events
         if event.get("type") == "status"
     )
+    deltas = [
+        event for event in events if event.get("type") == "final_answer_delta"
+    ]
+    assert [(event.get("content"), event.get("stream_mode")) for event in deltas] == [
+        ("fi", "delta"),
+        ("nal", "delta"),
+    ]
+    final_event = next(event for event in events if event.get("type") == "final_answer")
+    assert final_event == {
+        "type": "final_answer",
+        "content": "final",
+        "stream_mode": "delta",
+    }
