@@ -1,8 +1,19 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   // Enable standalone output for optimized Docker deployment
   output: "standalone",
+
+  // Keep future explicit Turbopack runs scoped to this frontend package.
+  // The default development path uses Webpack because Turbopack previously
+  // inferred a home-directory lockfile as the workspace root.
+  turbopack: {
+    root: frontendRoot,
+  },
 
   // Experimental features
   // Type assertion needed: proxyClientMaxBodySize is valid in Next.js 15 but types lag behind

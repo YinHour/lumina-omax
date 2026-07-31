@@ -3783,3 +3783,68 @@ exit 0
 登录态浏览器验证：真实 `/usage` 30 天页面成功展示汇总卡、按密钥统计和最近 50 条记录；依次切换 7 天、90 天、30 天均正常完成重渲染，期间没有新增控制台错误，也未重新出现 Next.js 错误弹层。
 
 未验证项：本轮保留了全局 `useTranslation` Proxy 及其 1,000 次保护阈值，没有扩展审计其它页面是否存在相同的高频属性访问；如后续在其它路由出现相同 key 的保护误报，应单独评估全局翻译访问接口，而不是继续提高阈值。
+
+---
+
+## 50. Next.js 开发进程风暴防复发（2026-07-30）
+
+### 50.1 事故与根因边界
+
+- 本机执行 `make start-all` 后，`frontend/package.json` 的 `next dev` 在 Next.js 16.1.7 下默认启用 Turbopack。Turbopack 检测到多个 lockfile，并错误选择 `/Users/leiwng/package-lock.json` 所在的家目录作为工作区根，而不是项目的 `frontend` 目录。
+- `logs/frontend.log` 随后从错误根目录解析 `tailwindcss`，在 15:05:45–15:18:05 之间重复报告 1,177 次模块解析失败。WindowServer stackshot 在 15:18:38 记录到 6,458 个 Node 进程，累计 RSS 约 305.10 GiB；其中 6,456 个与 cmux 同属一个 Jetsam/resource coalition。`cmux` 自身约 229.6 MiB，`make` 自身约 1.4 MiB，系统弹窗中的 cmux 304 GB 是子进程资源归集，不是 cmux 单进程占用。
+- 15:18:57 的 Jetsam 报告只剩约 247.5 MiB 可用内存，总进程数为 13,053；WindowServer 主线程同时已 40 秒没有响应。现有证据足以确认 Next/Turbopack Node 进程风暴是系统失去响应的直接资源原因，不支持 Docker、API、worker、过热或硬件故障作为主因。
+- 累计 RSS 会重复计算共享页面，不等于真实独占物理内存。系统诊断没有保留完整父 PID/argv/Turbopack trace，因此“错误解析如何被放大为数千 worker”的内部重试或重生机制仍未百分之百确认。本轮明确不在主力机器上复现 Turbopack 故障。
+
+### 50.2 修复决策
+
+- 默认开发命令从 `next dev` 改为 `next dev --webpack`。`make run`、`make frontend` 和 `make start-all` 都通过该 npm script 启动，因此三个入口统一退出 Next 16 默认 Turbopack。
+- `next.config.ts` 同时把 `turbopack.root` 固定为配置文件所在的绝对 `frontend` 目录。该设置在默认 Webpack 开发路径中不参与执行，只保护未来显式启用 Turbopack 的场景不再受家目录 lockfile 影响。
+- 新增配置回归测试，分别锁定默认开发 bundler 和 Turbopack 根目录。没有新增依赖、可见前端文案、API、数据库 migration 或部署服务。
+- 家目录的 `package.json`、`package-lock.json` 和 `node_modules` 属于独立的 `docx` 工具环境，本轮不移动或删除；项目修复不再依赖机器级清理。
+
+### 50.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/package.json` | 默认开发服务器固定使用 `next dev --webpack` |
+| `frontend/next.config.ts` | 显式 Turbopack 运行固定使用绝对 `frontend` 根目录 |
+| `frontend/next.config.test.ts` | 覆盖 Webpack 默认值与 Turbopack 根目录 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 记录事故证据、根因边界、修复、验证与未尽事项 |
+
+### 50.4 验证
+
+```text
+cd frontend && npm test -- --run next.config.test.ts
+4 passed
+
+cd frontend && npx eslint next.config.ts next.config.test.ts
+exit 0
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test
+199 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+Next.js 16.1.7 (webpack)；生产构建与 TypeScript 检查通过
+
+cd frontend && INTERNAL_API_URL=http://127.0.0.1:5056 npm run dev -- -H 127.0.0.1 -p 3101
+Next.js 16.1.7 (webpack)；1.188 秒 Ready
+
+curl --max-time 10 http://127.0.0.1:3101/login
+HTTP 200
+
+lsof -nP -iTCP:3101 -sTCP:LISTEN
+仅 1 个 Node 监听进程；烟测后 Ctrl+C 正常停止且端口释放
+
+memory_pressure -Q
+System-wide memory free percentage: 95%
+
+git diff --check
+exit 0
+```
+
+当前机器使用 Node 26.5.0。直接执行 `npm test` 时，Node 实验性 Web Storage 全局会覆盖 jsdom 的 `localStorage`，导致依赖存储的既有测试在初始化阶段失败；仅对测试进程设置 `NODE_OPTIONS=--no-experimental-webstorage` 后全部通过。该环境兼容问题与本轮启动配置无关，没有借机扩展修复范围。
+
+未验证项：没有重新执行 `make start-all`，没有启动 Turbopack，也没有生成 `NEXT_TURBOPACK_TRACING` 复现 trace；这是防止主力机器再次失去响应的明确安全边界。受控烟测只验证 Webpack 前端启动、页面编译、HTTP 响应、单监听进程和停止清理，没有联动 API、worker、数据库或登录后的完整业务流程。
