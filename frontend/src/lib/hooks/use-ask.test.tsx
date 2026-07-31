@@ -76,6 +76,8 @@ describe('useAsk', () => {
                   'data: {"type":"status","stage":"planning","elapsed_ms":1200}\n\n' +
                   'data: {"type":"heartbeat","stage":"planning","elapsed_ms":5000}\n\n' +
                   'data: {"type":"status","stage":"searching","elapsed_ms":6000}\n\n' +
+                  'data: {"type":"final_answer_delta","content":"dra"}\n\n' +
+                  'data: {"type":"final_answer_delta","content":"ft"}\n\n' +
                   'data: {"type":"final_answer","content":"final"}\n\n' +
                   'data: {"type":"complete","final_answer":"final"}\n\n',
                 ),

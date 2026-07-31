@@ -194,6 +194,7 @@ async def write_final_answer(state: ThreadState, config: RunnableConfig) -> dict
             config.get("configurable", {}).get("final_answer_model"),
             "tools",
             max_tokens=2000,
+            streaming=True,
         )
         ai_message = await model.ainvoke(system_prompt)
         final_content = extract_text_content(ai_message.content)

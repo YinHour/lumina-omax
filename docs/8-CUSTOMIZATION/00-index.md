@@ -3897,3 +3897,58 @@ exit 0
 ```
 
 未验证项：开发机没有发送新的真实供应商模型请求。真实 provider 首字时间、`stream_mode` 和代理分流将在用户 Mac Studio 上结合服务端日志与浏览器逐项验收；若某个 provider 始终为 `buffered`，再以该 provider 的实测证据检查 Esperanto/LangChain 适配层，不在本轮预先修改所有供应商。
+
+---
+
+## 52. Ask 最终综合答案真实流式（2026-07-31）
+
+### 52.1 实现
+
+- Ask 的策略 reasoning 原已转发模型 chunk，但 `write_final_answer` 只在节点结束后发送完整 `final_answer`，所以最终综合阶段虽然显示“正在撰写”，正文没有真实增量。
+- 最终答案模型显式启用 `streaming=True`。`write_final_answer` 的真实模型 chunk 立即发送为 `final_answer_delta`，前端逐块追加；首块到达时立即进入 writing 阶段。
+- 节点完成后继续发送既有 `final_answer`，用清理后的完整结果覆盖增量草稿。旧客户端仍可只消费 `final_answer`，新客户端不会因最终事件重复追加内容。
+- 没有模型 chunk 时不伪造流式，只发送一次 `final_answer` 并标记 `stream_mode="buffered"`；有真实 chunk 时 delta 与最终规范事件均标记 `stream_mode="delta"`。
+- 服务端记录 `first_final_answer_output` 的耗时、首块字符数和 stream mode，不记录问题、检索证据或答案正文。检索策略、逐查询答案、覆盖率、心跳、超时、历史记录与最终 complete 契约保持不变。
+
+### 52.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/ask.py` | 最终综合模型显式启用 streaming |
+| `api/routers/search.py` | 转发最终答案 delta、规范最终值与首输出日志 |
+| `frontend/src/lib/hooks/use-ask.ts` | 增量追加 `final_answer_delta`，最终值仍覆盖 |
+| `frontend/src/lib/types/search.ts` | Ask SSE 类型增加 delta 与 stream mode |
+| `tests/test_ask_heartbeat_sse.py`、`frontend/src/lib/hooks/use-ask.test.tsx` | 覆盖真实 delta、buffered 回退和最终覆盖不重复 |
+
+### 52.3 验证
+
+```text
+.venv/bin/python -m pytest tests/test_ask_heartbeat_sse.py -q
+4 passed
+
+.venv/bin/python -m ruff check api/routers/search.py open_notebook/graphs/ask.py tests/test_ask_heartbeat_sse.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run src/lib/hooks/use-ask.test.tsx
+5 passed
+
+cd frontend && npx eslint src/lib/hooks/use-ask.ts src/lib/hooks/use-ask.test.tsx src/lib/types/search.ts
+exit 0
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+371 passed, 33 deselected
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test
+199 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 16.1.7 Webpack 生产构建与 TypeScript 检查通过
+
+git diff --check
+exit 0
+```
+
+未验证项：开发机未发送真实 Ask 模型请求。用户 Mac Studio 验收需同时观察页面逐字出现、SSE `final_answer_delta`、服务端 `stream_mode=delta` 与首输出耗时；特定供应商若只返回 buffered，再单独检查 provider 适配层。

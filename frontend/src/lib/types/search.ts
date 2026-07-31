@@ -64,6 +64,7 @@ export interface AskStreamEvent {
     | 'strategy'
     | 'strategy_reasoning_chunk'
     | 'answer'
+    | 'final_answer_delta'
     | 'final_answer'
     | 'coverage'
     | 'complete'
@@ -86,4 +87,5 @@ export interface AskStreamEvent {
   // Error fields (§31/§32: stable wire identifier + timeout details).
   error_code?: string
   timeout_seconds?: number
+  stream_mode?: 'delta' | 'buffered'
 }
