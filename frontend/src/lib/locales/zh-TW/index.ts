@@ -996,6 +996,7 @@ export const zhTW = {
     contextWindowPlaceholder: "例如 1000000",
     contextWindowBuiltinHint: "內建值：{count} 詞元。輸入新值可覆寫；清空後繼續使用內建值。",
     contextWindowOverrideHint: "請輸入模型服務商公布的上限；若未知，請清空此欄位。",
+    contextWindowTestSaved: "本次測試已自動取得並儲存。",
   },
   apiKeys: {
     title: "使用您自己的 API 金鑰設定 AI",

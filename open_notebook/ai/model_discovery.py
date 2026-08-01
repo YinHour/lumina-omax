@@ -13,6 +13,10 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from loguru import logger
 
+from open_notebook.ai.model_context import (
+    extract_provider_context_window,
+    get_builtin_context_window,
+)
 from open_notebook.ai.models import Model
 from open_notebook.database.repository import repo_query
 from open_notebook.domain.credential import Credential
@@ -26,6 +30,7 @@ class DiscoveredModel:
     provider: str
     model_type: str  # language, embedding, speech_to_text, text_to_speech
     description: Optional[str] = None
+    context_window_tokens: Optional[int] = None
 
 
 # =============================================================================
@@ -267,6 +272,7 @@ async def discover_google_models() -> List[DiscoveredModel]:
                             provider="google",
                             model_type=model_type,
                             description=model.get("displayName"),
+                            context_window_tokens=extract_provider_context_window(model),
                         )
                     )
     except Exception as e:
@@ -374,6 +380,7 @@ async def discover_mistral_models() -> List[DiscoveredModel]:
                             name=model_id,
                             provider="mistral",
                             model_type=model_type,
+                            context_window_tokens=extract_provider_context_window(model),
                         )
                     )
     except Exception as e:
@@ -477,6 +484,7 @@ async def discover_openrouter_models() -> List[DiscoveredModel]:
                             provider="openrouter",
                             model_type="language",
                             description=model.get("name"),
+                            context_window_tokens=extract_provider_context_window(model),
                         )
                     )
     except Exception as e:
@@ -650,6 +658,7 @@ async def discover_openai_compatible_models() -> List[DiscoveredModel]:
                             name=model_id,
                             provider="openai_compatible",
                             model_type=model_type,
+                            context_window_tokens=extract_provider_context_window(model),
                         )
                     )
     except httpx.HTTPStatusError as e:
@@ -758,10 +767,25 @@ async def sync_provider_models(
 
         # Create new model
         try:
+            context_window_tokens = model.context_window_tokens
+            context_window_source = (
+                "provider" if context_window_tokens is not None else None
+            )
+            if context_window_tokens is None:
+                context_window_tokens = get_builtin_context_window(
+                    model.provider,
+                    model.name,
+                    model.model_type,
+                )
+                if context_window_tokens is not None:
+                    context_window_source = "builtin"
+
             new_model = Model(
                 name=model.name,
                 provider=model.provider,
                 type=model.model_type,
+                context_window_tokens=context_window_tokens,
+                context_window_source=context_window_source,
             )
             await new_model.save()
             new_count += 1

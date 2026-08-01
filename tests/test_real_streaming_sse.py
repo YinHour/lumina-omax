@@ -115,6 +115,36 @@ async def test_chat_emits_non_streaming_provider_result_once(monkeypatch):
     ]
 
 
+@pytest.mark.asyncio
+async def test_chat_separates_reasoning_without_exposing_raw_content(monkeypatch):
+    async def _events(*, input, config=None, version=None):  # noqa: A002
+        yield {
+            "event": "on_chat_model_stream",
+            "data": {
+                "chunk": MagicMock(
+                    content="",
+                    additional_kwargs={"reasoning_content": "private reasoning"},
+                )
+            },
+        }
+        for content in ("<think>hidden", " analysis</think>Vis", "ible answer"):
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": MagicMock(content=content)},
+            }
+
+    events = await _collect_chat(monkeypatch, _events)
+    reasoning_events = [
+        event for event in events if event.get("type") == "reasoning_status"
+    ]
+    ai_events = [event for event in events if event.get("type") == "ai_message"]
+
+    assert reasoning_events == [{"type": "reasoning_status", "status": "active"}]
+    assert [event["content"] for event in ai_events] == ["Vis", "ible answer"]
+    assert "private reasoning" not in json.dumps(events)
+    assert "hidden analysis" not in json.dumps(events)
+
+
 async def _collect_source_chat(monkeypatch, event_stream) -> list[dict]:
     from api.routers import source_chat
 
@@ -166,3 +196,32 @@ async def test_source_chat_distinguishes_deltas_from_buffered_fallback(monkeypat
     assert [(event["content"], event["stream_mode"]) for event in buffered_ai] == [
         (content, "buffered")
     ]
+
+
+@pytest.mark.asyncio
+async def test_source_chat_emits_safe_reasoning_status_before_visible_answer(
+    monkeypatch,
+):
+    async def _events(*, input, config=None, version=None):  # noqa: A002
+        yield {
+            "event": "on_chat_model_stream",
+            "data": {
+                "chunk": MagicMock(
+                    content="",
+                    additional_kwargs={"reasoning_content": "do not expose"},
+                )
+            },
+        }
+        yield {
+            "event": "on_chat_model_stream",
+            "data": {"chunk": MagicMock(content="Public answer")},
+        }
+
+    events = await _collect_source_chat(monkeypatch, _events)
+
+    assert [
+        event["type"]
+        for event in events
+        if event.get("type") in {"reasoning_status", "ai_message"}
+    ] == ["reasoning_status", "ai_message"]
+    assert "do not expose" not in json.dumps(events)

@@ -18,6 +18,10 @@ from loguru import logger
 from pydantic import SecretStr
 
 from api.models import CredentialResponse
+from open_notebook.ai.model_context import (
+    extract_provider_context_window,
+    get_builtin_context_window,
+)
 from open_notebook.domain.credential import Credential
 from open_notebook.utils.encryption import get_secret_from_env
 
@@ -504,7 +508,11 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
         if not api_key and provider != "ollama":
             return []
         return [
-            {"name": m, "provider": provider}
+            {
+                "name": m,
+                "provider": provider,
+                "context_window_tokens": get_builtin_context_window(provider, m),
+            }
             for m in STATIC_MODELS[provider]
         ]
 
@@ -550,7 +558,11 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 response.raise_for_status()
                 data = response.json()
                 return [
-                    {"name": m.get("id", ""), "provider": "openai_compatible"}
+                    {
+                        "name": m.get("id", ""),
+                        "provider": "openai_compatible",
+                        "context_window_tokens": extract_provider_context_window(m),
+                    }
                     for m in data.get("data", [])
                     if m.get("id")
                 ]
@@ -571,7 +583,11 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                 response.raise_for_status()
                 data = response.json()
                 return [
-                    {"name": m.get("id", ""), "provider": "azure"}
+                    {
+                        "name": m.get("id", ""),
+                        "provider": "azure",
+                        "context_window_tokens": extract_provider_context_window(m),
+                    }
                     for m in data.get("data", [])
                     if m.get("id")
                 ]
@@ -607,6 +623,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                         "name": model.get("name", "").replace("models/", ""),
                         "provider": "google",
                         "description": model.get("displayName"),
+                        "context_window_tokens": extract_provider_context_window(model),
                     }
                     for model in data.get("models", [])
                     if model.get("name")
@@ -635,6 +652,7 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
                     "name": m.get("id", ""),
                     "provider": provider,
                     "description": m.get("name"),
+                    "context_window_tokens": extract_provider_context_window(m),
                 }
                 for m in data.get("data", [])
                 if m.get("id")
@@ -642,6 +660,106 @@ async def discover_with_config(provider: str, config: dict) -> List[dict]:
     except Exception as e:
         logger.warning(f"Failed to discover {provider} models: {e}")
         return []
+
+
+async def discover_model_context_window(model) -> tuple[Optional[int], Optional[str]]:
+    """Resolve a model context limit without probing with oversized prompts."""
+    if model.type != "language":
+        return None, None
+
+    provider = model.provider.lower()
+    config: dict = {}
+    credential = await model.get_credential_obj() if model.credential else None
+    if not credential:
+        credentials = await Credential.get_by_provider(provider)
+        credential = credentials[0] if credentials else None
+    if credential:
+        config = credential.to_esperanto_config()
+
+    try:
+        if provider == "ollama":
+            base_url = (
+                config.get("base_url")
+                or os.environ.get("OLLAMA_API_BASE")
+                or "http://localhost:11434"
+            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{base_url.rstrip('/')}/api/show",
+                    json={"model": model.name, "verbose": False},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                provider_tokens = extract_provider_context_window(response.json())
+        elif config:
+            discovered = await discover_with_config(provider, config)
+            match = next(
+                (
+                    item
+                    for item in discovered
+                    if item.get("name", "").strip().lower()
+                    == model.name.strip().lower()
+                ),
+                None,
+            )
+            provider_tokens = (
+                extract_provider_context_window(match) if match is not None else None
+            )
+        else:
+            from open_notebook.ai.key_provider import provision_provider_keys
+            from open_notebook.ai.model_discovery import discover_provider_models
+
+            await provision_provider_keys(provider)
+            discovered = await discover_provider_models(provider)
+            match = next(
+                (
+                    item
+                    for item in discovered
+                    if item.name.strip().lower() == model.name.strip().lower()
+                ),
+                None,
+            )
+            provider_tokens = match.context_window_tokens if match else None
+
+        if provider_tokens is not None:
+            return provider_tokens, "provider"
+    except Exception as exc:
+        logger.warning(
+            "Could not read context metadata for {}/{}: {}",
+            provider,
+            model.name,
+            type(exc).__name__,
+        )
+
+    builtin_tokens = get_builtin_context_window(provider, model.name)
+    if builtin_tokens is not None:
+        return builtin_tokens, "builtin"
+    return None, None
+
+
+async def refresh_model_context_window(
+    model,
+) -> tuple[Optional[int], Optional[str], bool]:
+    """Refresh automatic metadata while preserving an administrator override."""
+    discovered_tokens, discovered_source = await discover_model_context_window(model)
+    can_refresh_automatic_value = model.context_window_source in {
+        "provider",
+        "builtin",
+    }
+    saved = False
+    if discovered_tokens is not None and (
+        model.context_window_tokens is None or can_refresh_automatic_value
+    ) and (
+        model.context_window_tokens != discovered_tokens
+        or model.context_window_source != discovered_source
+    ):
+        model.context_window_tokens = discovered_tokens
+        model.context_window_source = discovered_source
+        await model.save()
+        saved = True
+
+    effective_tokens, effective_source = model.get_effective_context_window()
+    return effective_tokens, effective_source, saved
 
 
 async def register_models(credential_id: str, models_data: list) -> dict:
@@ -677,11 +795,27 @@ async def register_models(credential_id: str, models_data: list) -> dict:
             existing += 1
             continue
 
+        provider = model_data.provider or cred.provider
+        context_window_tokens = model_data.context_window_tokens
+        context_window_source = (
+            "provider" if context_window_tokens is not None else None
+        )
+        if context_window_tokens is None:
+            context_window_tokens = get_builtin_context_window(
+                provider,
+                model_data.name,
+                model_data.model_type,
+            )
+            if context_window_tokens is not None:
+                context_window_source = "builtin"
+
         new_model = Model(
             name=model_data.name,
-            provider=model_data.provider or cred.provider,
+            provider=provider,
             type=model_data.model_type,
             credential=cred.id,
+            context_window_tokens=context_window_tokens,
+            context_window_source=context_window_source,
         )
         await new_model.save()
         created += 1

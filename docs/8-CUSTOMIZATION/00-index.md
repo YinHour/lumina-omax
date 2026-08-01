@@ -3952,3 +3952,259 @@ exit 0
 ```
 
 未验证项：开发机未发送真实 Ask 模型请求。用户 Mac Studio 验收需同时观察页面逐字出现、SSE `final_answer_delta`、服务端 `stream_mode=delta` 与首输出耗时；特定供应商若只返回 buffered，再单独检查 provider 适配层。
+
+---
+
+## 53. 有效 Chat 流式透传与安全推理状态（2026-07-31）
+
+### 53.1 二次定位与根因修正
+
+- §51–52 已确认后端能够产生真实模型 delta，但开发机录屏仍表现为长时间等待后整段出现。对同一请求的服务端日志显示，首个 `ai_message` 在约 13.5 秒产生、模型约 65.7 秒结束、请求约 73.7 秒完成；页面却直到接近请求结束才显示正文，说明剩余阻塞位于 API 到浏览器之间，而不是模型或 LangGraph 内部。
+- 使用一个每 500 ms 发送一次、共 4 次事件的无模型 SSE 探针复核：直接请求 FastAPI 时到达时间约为 523 / 1017 / 1518 / 2019 ms；经过 Next.js 16 通用 `rewrites()` 的 `/api` 代理时，4 个事件同时在约 2023 ms 到达。由此确认通用 rewrite 在当前运行时组合中缓冲了 SSE 响应。
+- §51 中“已有 `X-Accel-Buffering: no`，因此不需要改变浏览器 API 路由”的判断不完整：该响应头无法阻止 Next.js 通用 rewrite 自身的缓冲。本轮不改变浏览器相对 `/api` 契约，也不改变部署拓扑；仅由四个精确 Route Handler 接管流式 POST，其它 `/api/*` 继续使用既有 rewrite。
+- 相同探针经过定向 Route Handler 后，到达时间约为 1235 / 1724 / 2224 / 2728 ms；首块包含开发环境约 685 ms 的路由编译时间，之后三个间隔为 489 / 500 / 504 ms，证明数据在上游连接尚未结束时已逐块抵达浏览器侧代理。
+
+### 53.2 安全推理与答案边界
+
+- 部分推理模型通过 `reasoning_content` 等 provider metadata 返回推理过程，另一些模型把推理包在正文 `<think>...</think>` 中。二者均不得作为 `ai_message` 暴露、拼入最终回答、计入首个可见答案、写入聊天 transcript 或记录到日志。
+- 首次检测到推理时，后端只发送不含正文的 `reasoning_status`：`{"type":"reasoning_status","status":"active"}`。前端复用现有 i18n 活动文案与 `synthesizing` 阶段展示“正在组织回答”，不新增或硬编码可见文案。
+- `SafeModelContentStream` 在服务端累计 provider 内容并只发出新增的安全可见部分。过滤器会保留可能尚未完成的 `<think>` / `</think>` 标签前缀，因此标签即使跨多个 chunk 拆分，也不会提前泄漏；无真实 stream event 的 buffered 回退同样先进行规范过滤。
+- `first_ai_chunk` / `first_ai_output`、`stream_mode`、前端首个 AI 气泡和 transcript 持久化现在都以首个公开答案 delta 为准，而不是 provider 推理 token。Source Chat 与 Notebook Quick/Research Chat 使用同一安全边界。
+
+### 53.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/lib/server/sse-proxy.ts` | 流式 POST 透传、认证/追踪头转发、禁用缓存和代理缓冲 |
+| `frontend/src/app/api/chat/execute/route.ts`、`chat/research/execute/route.ts` | Quick Chat / Research Agent 定向 SSE Route Handler |
+| `frontend/src/app/api/search/ask/route.ts` | Ask 定向 SSE Route Handler |
+| `frontend/src/app/api/sources/[sourceId]/chat/sessions/[sessionId]/messages/route.ts` | Source Chat 动态路径定向 SSE Route Handler |
+| `api/sse_helpers.py` | 安全推理状态、provider metadata 识别和跨 chunk `<think>` 过滤 |
+| `api/routers/chat.py`、`api/routers/source_chat.py` | 推理/答案分流，只传输和持久化公开答案 |
+| `frontend/src/lib/hooks/useNotebookChat.ts`、`useSourceChat.ts`、`types/api.ts` | 消费安全推理状态并复用既有活动 UI |
+| `tests/test_sse_helpers.py`、`test_real_streaming_sse.py` 及对应前端测试 | 跨 chunk 防泄漏、协议顺序、真实透传和 UI 状态回归 |
+
+### 53.4 验证
+
+```text
+无模型 SSE 探针，FastAPI 直连
+4 个事件到达：523 / 1017 / 1518 / 2019 ms
+
+无模型 SSE 探针，Next.js 通用 rewrite（修复前）
+4 个事件均在约 2023 ms 到达，确认整段缓冲
+
+无模型 SSE 探针，定向 Route Handler（修复后）
+4 个事件到达：1235 / 1724 / 2224 / 2728 ms；后续间隔 489 / 500 / 504 ms
+
+.venv/bin/python -m pytest tests/test_sse_helpers.py tests/test_real_streaming_sse.py tests/test_chat_heartbeat_sse.py tests/test_source_chat_heartbeat_sse.py tests/test_ask_heartbeat_sse.py tests/test_chat_suggestions_sse.py tests/test_chat_observability.py -q
+48 passed, 1 warning
+
+.venv/bin/python -m ruff check api/sse_helpers.py api/routers/chat.py api/routers/source_chat.py tests/test_sse_helpers.py tests/test_real_streaming_sse.py
+All checks passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+378 passed, 33 deselected, 6 warnings
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+202 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；四个 SSE Route Handler 均列为动态路由，Next.js 生产构建与 TypeScript 检查通过
+
+git diff --check
+exit 0
+```
+
+未验证项：开发机没有在修复后再次消耗真实 provider 配额，也尚未补录登录态浏览器对比视频。下一步本机验收应同时观察正文逐块出现、活动状态从“正在组织回答”切换到模型输出、页面自动滚动及服务端首个公开答案耗时；用户 Mac Studio 部署后还需确认其外层代理没有重新缓冲 `text/event-stream`。特定 provider 若始终只产生 `stream_mode=buffered`，再依据该 provider 的实测事件检查 Esperanto/LangChain 适配层。
+
+### 53.5 本机验收后的状态与滚动修正
+
+- 本机真实模型验收确认正文已经逐块输出，但暴露出两个独立问题。`make status` 的 API 项原来通过 macOS `pgrep` 检查 `run_api.py\|uvicorn api.main:app`；`pgrep` 使用扩展正则，转义后的 `\|` 被当成字面量，因此即使 5056 已有 API 监听也会误报 `Not running`。状态检查现改为请求启动流程已经使用的 `http://127.0.0.1:5056/api/config`，报告的是 API 真实可用性，而不是易受父进程命令行影响的进程名。
+- ChatPanel 原有自动滚动只在 React `messages` 数组变化时安排一次滚动。真实 token 流持续更新 Markdown 时，内容实际高度可能在该次 effect 之后继续变化，视口因此停留在旧底部，需要用户滚轮才能看到最新输出。
+- ChatPanel 现在使用 `ResizeObserver` 监听消息内容容器的真实高度。流式期间、且用户仍停留在自动跟随模式时，每次高度增长都把局部聊天视口推进到最新内容；用户主动向上滚动后立即停止跟随，回到底部后才恢复，避免阅读历史时被强制拉走。
+- 没有新增前端文案、依赖、API 契约或部署拓扑。该滚动修复同时覆盖 Notebook Quick/Research Chat 和 Source Chat，因为三者共用 `ChatPanel`。
+
+补充验证：
+
+```text
+make status
+Database / API Backend / Background Worker / Next.js Frontend 均显示 Running
+
+.venv/bin/python -m pytest tests/test_makefile_logging.py -q
+5 passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run src/components/source/ChatPanel.test.tsx
+29 passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+204 passed, 9 skipped
+
+cd frontend && npx eslint src/components/source/ChatPanel.tsx src/components/source/ChatPanel.test.tsx
+exit 0
+
+cd frontend && npm run build
+exit 0；Next.js 16.1.7 Webpack 生产构建与 TypeScript 检查通过
+```
+
+未验证项：`make status` 已在当前真实服务进程上复核；ResizeObserver 的跟随与用户上滚保护已有组件回归测试，但仍需用户在当前登录态页面再发送一次长回答，确认实际浏览器视口能够持续跟上输出。
+
+---
+
+## 54. DeepSeek V4 Flash 上下文上限与引用摘要归组（2026-08-01）
+
+### 54.1 问题与决策
+
+- 本机切换到 `deepseek-v4-flash` 后，Quick Chat 摘要右侧显示“未配置上下文上限”；同一位置使用 `deepseek-v4-pro` 时能正常显示当前 payload、1M 上限和百分比。数据库实查确认 Flash 模型记录的 `provider=deepseek`、管理员覆盖字段为 `null`，不是前端模型 ID 匹配失败。
+- 根因是第 43 节实施时只把 `deepseek/deepseek-v4-pro = 1,000,000` 加入内置白名单。DeepSeek 当前官方 Models & Pricing 文档已经明确 V4-Flash 与 V4-Pro 的 Context Length 均为 1M，因此本轮把 `deepseek-v4-flash` 同样加入已确认的内置值；管理员正整数覆盖仍保持最高优先级，未知模型继续不猜测。官方依据：`https://api-docs.deepseek.com/quick_start/pricing/`。
+- Quick 摘要原为三列：左侧来源/笔记类型数量、中间所选内容总词元、右侧模型 payload/窗口。所选总词元与三类数量属于同一份引用选择统计，本轮按用户反馈把词元尾随在数量徽标之后；外层收敛为左右两列，右侧模型窗口用量语义不变。
+- 移动后的词元仍使用既有 `sources.contextTokens` i18n 文案和 K/M 格式；没有新增可见文本、依赖、API、数据库迁移或部署拓扑。Quick/Research 的数据边界、上下文构建和 `context_usage` SSE 均未改变。
+
+### 54.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/ai/model_context.py` | 增加已由官方确认的 DeepSeek V4 Flash 1M 内置窗口 |
+| `tests/test_model_context.py` | 同时覆盖 Flash/Pro、大小写规范化和管理员覆盖优先级 |
+| `frontend/src/components/common/ContextIndicator.tsx` | 词元总量归入来源/笔记数量组，三列改为左右两列 |
+| `frontend/src/components/common/ContextIndicator.test.tsx` | 锁定词元 DOM 归属、元素顺序、窗口用量和首次提问状态 |
+
+### 54.3 验证
+
+```text
+当前数据库 deepseek-v4-flash 记录只读实查
+provider=deepseek；configured=null；effective=[1000000, builtin]
+
+.venv/bin/python -m pytest tests/test_model_context.py tests/test_models_api.py tests/test_message_history.py tests/test_chat_heartbeat_sse.py -q
+37 passed, 6 warnings
+
+.venv/bin/python -m ruff check open_notebook/ai/model_context.py tests/test_model_context.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run src/components/common/ContextIndicator.test.tsx 'src/app/(dashboard)/notebooks/components/ChatColumn.test.tsx'
+4 passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+204 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 16.1.7 Webpack 生产构建与 TypeScript 检查通过
+
+git diff --check
+exit 0
+```
+
+未验证项：后端热重载与真实模型记录的有效窗口解析已经验证；生产构建也已通过。仍需用户强制刷新当前登录态页面，确认 Flash 右侧显示 `≈已用 / 1M`，并视觉确认所选词元已紧跟引用类型数量、摘要在实际窗口宽度下没有拥挤或换行异常。
+
+---
+
+## 55. 模型测试时自动保存上下文窗口元数据（2026-08-01）
+
+### 55.1 边界与决策
+
+- 最小生成请求只能证明模型可调用，成功响应通常不携带模型上下文上限。本轮没有通过逐步发送超长 prompt 来试探限制，避免额外费用、限流和生产服务压力。
+- 单模型测试成功后，再读取供应商明确提供的模型元数据：Google Gemini 使用 `inputTokenLimit`，OpenRouter 使用 `context_length`，Mistral 使用 `max_context_length`，Ollama 使用 `/api/show` 返回的架构级 `*.context_length`；OpenAI-compatible / Azure 等兼容接口仅在返回已知的显式字段时采用。供应商没有返回可靠字段时，才使用项目中已经由官方文档核验的内置目录；其余模型继续保持未知，不根据名称猜测。
+- `model.context_window_tokens` 新增配套来源字段 `context_window_source`。管理员手工填写标为 `configured`，供应商元数据标为 `provider`，已核验内置目录标为 `builtin`。单模型测试可以刷新此前的 `provider` / `builtin` 自动值，但绝不覆盖 `configured` 手工值；旧记录只有数值、没有来源时按手工配置处理，保持向后兼容。
+- 通过凭据发现并注册模型时，如果发现响应已经包含上下文上限，会在创建模型记录时一并保存。手工输入的自定义模型没有可靠元数据，仍保存为空，等待单模型测试或管理员填写。
+- 测试结果弹窗现在显示有效上下文上限；本次自动写入时显示 i18n 提示。若测试成功但供应商、内置目录均没有可确认值，则明确沿用“未配置上下文上限”。
+
+### 55.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/ai/model_context.py` | 统一解析供应商显式字段、内置目录和 `configured/provider/builtin` 来源优先级 |
+| `api/credentials_service.py`、`open_notebook/ai/model_discovery.py` | 凭据发现、Ollama 详情读取、单模型元数据刷新与注册时保存 |
+| `open_notebook/ai/models.py`、`open_notebook/database/migrations/30*.surrealql` | 持久化上下文窗口来源并保持旧记录兼容 |
+| `api/models.py`、`api/routers/credentials.py`、`api/routers/models.py` | 扩展发现、注册和单模型测试响应契约 |
+| `frontend/src/components/settings/ModelTestResultDialog.tsx`、模型/凭据 API 类型与 hooks | 显示测试取得的窗口并在保存后刷新模型列表 |
+| `frontend/src/lib/locales/*/index.ts` | 九种语言的自动保存提示 |
+| `tests/test_model_context.py`、`ModelTestResultDialog.test.tsx` | 显式字段解析、来源优先级、手工值保护和结果 UI 回归 |
+
+### 55.3 验证
+
+```text
+.venv/bin/python -m ruff check api/credentials_service.py api/models.py api/routers/credentials.py api/routers/models.py open_notebook/ai/model_context.py open_notebook/ai/model_discovery.py open_notebook/ai/models.py tests/test_model_context.py
+All checks passed
+
+.venv/bin/python -m pytest tests/test_model_context.py tests/test_models_api.py -q
+29 passed, 6 warnings
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+390 passed, 33 deselected, 6 warnings
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+206 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 16.1.7 Webpack 生产构建与 TypeScript 检查通过
+```
+
+未验证项：当前测试没有消耗真实供应商配额，也没有直接修改现有生产模型记录。API 重启后会自动应用第 30 号迁移；本机验收时应分别测试一个会返回元数据的模型和一个不返回元数据的模型，并确认手工填写的窗口不会被后续测试覆盖。
+
+---
+
+## 56. 可迁移的模型上下文目录与启动补齐（2026-08-01）
+
+### 56.1 目录范围与优先级
+
+- 新增随代码发布的 `model_context_catalog.json`，按模型原始开发商分组，记录精确模型 ID / 别名、语言模型上下文值、取值依据、核验日期和官方资料地址。初始目录覆盖本机已配置的 GLM、Qwen、DeepSeek、MiniMax、Gemma、Intern、Doubao、StepFun 语言模型，并补充 Gemini 2.5 及之后的通用生成模型。
+- 目录值的取值依据分为 `official` 与 `default`：官网能确认上下文限制时写入官网值；已经检查官网但仍无法确认限制的模型写入统一 256K（262,144）缺省值。当前 Intern-S1-Pro 和三个 Doubao Seed 2.0 路由按 `default` 登记。此规则是目录维护时的人工官网核验结果，不以运行时模型 API 查询失败作为判定条件。
+- 目录只做精确 ID / 别名匹配，不按名称片段猜测任意未知模型。`text-embedding-v4` 属于嵌入模型、`doubao-seedance-2-0-fast-260128` 属于视频生成模型，均不参与对话上下文窗口配置。
+- 有效值优先级保持为：管理员手工值 `configured` > 模型测试取得的供应商元数据 `provider` > 随代码发布的目录值 `builtin`。供应商测试可刷新旧的 `provider` / `builtin` 自动值，但永不覆盖手工值；旧记录有数值但没有来源时继续按手工值保护。
+- 智谱官方当前明确标注 `GLM-5.2` 原生窗口为 1M，因此目录直接登记 1,000,000，不套用 256K 缺省值。
+
+### 56.2 启动、创建与迁移语义
+
+- API 完成数据库迁移后扫描现有的语言模型记录。只对 `context_window_tokens` 为空且目录精确命中的记录写入 `builtin` 值；已有值不更新，未命中不处理，也绝不根据目录创建新的模型或凭据记录。重复启动因此是幂等的。
+- 手工创建模型、凭据发现后注册模型、供应商自动同步模型时也应用同一目录，避免模型在 API 启动之后新增而必须再次重启。供应商发现结果已经携带明确限制时仍优先保存为 `provider`。
+- 目录文件被加入 Python 包数据，现场服务器只需部署同一版本代码并重启 API；不需要复制开发机 SurrealDB。启动补齐失败按非致命告警处理，不阻止 API 提供其他功能。
+- 在改动合并并推送到 `origin/main` 后，现场执行 `git pull origin main` 与 `make start-all` 即会先启动 SurrealDB、启动 API、应用 migration 30、补齐目录命中的空值，再在 API Ready 后启动前端。若 API 启动失败，前端不会继续启动，应检查 `logs/api.log` 中的 migration / catalog seed 日志。
+- Quick 笔记本问答统计条左侧展示的是用户选中的来源全文、来源见解和笔记引用，不是最终发送给模型的完整上下文；标签从“上下文：”改为“引用：”，右侧模型 payload / 上下文窗口统计保持不变。
+
+### 56.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/ai/model_context_catalog.json` | 按原始开发商组织的官方核验目录、别名和路由覆盖值 |
+| `open_notebook/ai/model_context.py` | 目录加载校验、精确匹配、类型过滤、来源优先级与启动补齐 |
+| `api/main.py` | 数据库迁移完成后幂等补齐现有语言模型记录 |
+| `api/credentials_service.py`、`api/routers/models.py`、`open_notebook/ai/model_discovery.py` | 创建、凭据注册、自动同步和模型测试统一采用目录回退 |
+| `open_notebook/ai/models.py` | 有效窗口解析显式携带模型类型，排除嵌入模型 |
+| `pyproject.toml` | 将 JSON 目录纳入 Python 包数据 |
+| `frontend/src/components/common/ContextIndicator.tsx`、`frontend/src/lib/locales/{en-US,zh-CN}/index.ts` | Quick 统计条标签语义从“上下文”改为“引用” |
+| `tests/test_model_context.py`、`tests/test_models_api.py` | 目录结构、GLM-5.2、Gemini、路由覆盖、手工值保护、启动补齐和嵌入模型回归 |
+
+### 56.4 验证
+
+```text
+.venv/bin/python -m ruff check api/main.py api/credentials_service.py api/routers/models.py open_notebook/ai/model_context.py open_notebook/ai/model_discovery.py open_notebook/ai/models.py tests/test_model_context.py tests/test_models_api.py
+All checks passed
+
+.venv/bin/python -m pytest tests/test_model_context.py tests/test_models_api.py -q
+42 passed, 6 warnings
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+403 passed, 33 deselected, 6 warnings
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+206 passed, 9 skipped
+
+cd frontend && npm run lint
+exit 0；4 个既有 warning，无 error
+
+cd frontend && npm run build
+exit 0；Next.js 16.1.7 Webpack 生产构建与 TypeScript 检查通过
+
+uv build --wheel --out-dir /tmp/lumina-omax-wheel-verify-20260801
+构建成功；wheel 包含 open_notebook/ai/model_context_catalog.json
+```
+
+真实供应商接口仍需现场用对应凭据验证；若第三方路由返回明确的上下文字段，模型测试会以该路由值更新 DB。

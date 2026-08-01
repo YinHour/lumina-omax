@@ -647,6 +647,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
               )
             )
           }
+        } else if (data.type === 'reasoning_status') {
+          setActivityStatus('thinking')
+          setActivityElapsedSeconds(0)
+          recordActivityStep('synthesizing')
         } else if (data.type === 'chat_status') {
           const validStages: NotebookChatProgressStage[] = [
             'received',

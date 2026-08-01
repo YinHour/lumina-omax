@@ -995,6 +995,7 @@ export const jaJP = {
     contextWindowPlaceholder: "例: 1000000",
     contextWindowBuiltinHint: "組み込み値: {count} トークン。上書きする値を入力するか、空欄にして組み込み値を使用します。",
     contextWindowOverrideHint: "プロバイダーが公開している上限を入力してください。不明な場合は空欄にします。",
+    contextWindowTestSaved: "このテスト中に自動取得して保存しました。",
   },
   apiKeys: {
     title: "独自のAPIキーでAIを設定",

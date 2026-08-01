@@ -184,6 +184,7 @@ export function useAutoAssignDefaults() {
 }
 
 export function useTestModel() {
+  const queryClient = useQueryClient()
   const [testResult, setTestResult] = useState<ModelTestResult | null>(null)
   const [testedModelName, setTestedModelName] = useState('')
   const [testingModelId, setTestingModelId] = useState<string | null>(null)
@@ -193,6 +194,9 @@ export function useTestModel() {
     onSuccess: (result) => {
       setTestResult(result)
       setTestingModelId(null)
+      if (result.context_window_saved) {
+        queryClient.invalidateQueries({ queryKey: MODEL_QUERY_KEYS.models })
+      }
     },
     onError: (error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error)

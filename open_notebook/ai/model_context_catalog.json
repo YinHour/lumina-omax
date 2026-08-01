@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "developers": [
+    {
+      "id": "zhipu",
+      "display_name": "Zhipu AI",
+      "models": [
+        {
+          "canonical_id": "glm-5.1",
+          "aliases": [],
+          "context_window_tokens": 200000,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.1"
+        },
+        {
+          "canonical_id": "glm-5.2",
+          "aliases": [],
+          "context_window_tokens": 1000000,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2"
+        }
+      ]
+    },
+    {
+      "id": "alibaba_qwen",
+      "display_name": "Alibaba Cloud Qwen",
+      "models": [
+        {
+          "canonical_id": "qwen3.7-max",
+          "aliases": [],
+          "context_window_tokens": 1000000,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://help.aliyun.com/zh/model-studio/qwen3-7-max"
+        },
+        {
+          "canonical_id": "qwen3.7-plus",
+          "aliases": [],
+          "context_window_tokens": 1000000,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://help.aliyun.com/zh/model-studio/qwen3-7-plus"
+        },
+        {
+          "canonical_id": "qwen3-vl-plus",
+          "aliases": [],
+          "context_window_tokens": 262144,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://help.aliyun.com/zh/model-studio/qwen3-vl-plus"
+        }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "display_name": "DeepSeek",
+      "models": [
+        {
+          "canonical_id": "deepseek-v4-flash",
+          "aliases": [],
+          "context_window_tokens": 1000000,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://api-docs.deepseek.com/quick_start/pricing/"
+        },
+        {
+          "canonical_id": "deepseek-v4-pro",
+          "aliases": [],
+          "context_window_tokens": 1000000,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://api-docs.deepseek.com/quick_start/pricing/"
+        }
+      ]
+    },
+    {
+      "id": "minimax",
+      "display_name": "MiniMax",
+      "models": [
+        {
+          "canonical_id": "MiniMax-M3",
+          "aliases": ["minimax-m3"],
+          "context_window_tokens": 1000000,
+          "provider_overrides": {
+            "dashscope": 192000
+          },
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise"
+        }
+      ]
+    },
+    {
+      "id": "google_deepmind",
+      "display_name": "Google DeepMind",
+      "models": [
+        {
+          "canonical_id": "gemma4-31b",
+          "aliases": ["gemma4:31b"],
+          "context_window_tokens": 262144,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemma/docs/core/model_card_4"
+        },
+        {
+          "canonical_id": "gemini-2.5-pro",
+          "aliases": ["gemini-2.5-pro-latest"],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro"
+        },
+        {
+          "canonical_id": "gemini-2.5-flash",
+          "aliases": ["gemini-2.5-flash-latest"],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash"
+        },
+        {
+          "canonical_id": "gemini-2.5-flash-lite",
+          "aliases": ["gemini-2.5-flash-lite-latest"],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite"
+        },
+        {
+          "canonical_id": "gemini-3-flash-preview",
+          "aliases": [],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3-flash-preview"
+        },
+        {
+          "canonical_id": "gemini-3.1-pro-preview",
+          "aliases": [],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview"
+        },
+        {
+          "canonical_id": "gemini-3.1-flash-lite",
+          "aliases": ["gemini-3.1-flash-lite-preview"],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite"
+        },
+        {
+          "canonical_id": "gemini-3.5-flash",
+          "aliases": [],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash"
+        },
+        {
+          "canonical_id": "gemini-3.5-flash-lite",
+          "aliases": [],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite"
+        },
+        {
+          "canonical_id": "gemini-3.6-flash",
+          "aliases": [],
+          "context_window_tokens": 1048576,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash"
+        }
+      ]
+    },
+    {
+      "id": "shanghai_ai_laboratory",
+      "display_name": "Shanghai AI Laboratory",
+      "models": [
+        {
+          "canonical_id": "Shanghai_AI_Laboratory/Intern-S1-Pro",
+          "aliases": ["internlm/Intern-S1-Pro"],
+          "context_window_tokens": 262144,
+          "limit_basis": "default",
+          "default_reason": "The reviewed official model materials do not publish an explicit context-window limit.",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://github.com/InternLM/Intern-S1"
+        }
+      ]
+    },
+    {
+      "id": "bytedance_doubao",
+      "display_name": "ByteDance Doubao",
+      "models": [
+        {
+          "canonical_id": "doubao-seed-2-0-code-preview-260215",
+          "aliases": [],
+          "context_window_tokens": 262144,
+          "limit_basis": "default",
+          "default_reason": "The reviewed official model materials do not publish an explicit context-window limit for this route version.",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://api.volcengine.com/api-explorer/?action=ListFoundationModelVersions&groupName=%E5%9F%BA%E7%A1%80%E6%A8%A1%E5%9E%8B&serviceCode=ark&version=2024-01-01"
+        },
+        {
+          "canonical_id": "doubao-seed-2-0-mini-260215",
+          "aliases": [],
+          "context_window_tokens": 262144,
+          "limit_basis": "default",
+          "default_reason": "The reviewed official model materials do not publish an explicit context-window limit for this route version.",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://api.volcengine.com/api-explorer/?action=ListFoundationModelVersions&groupName=%E5%9F%BA%E7%A1%80%E6%A8%A1%E5%9E%8B&serviceCode=ark&version=2024-01-01"
+        },
+        {
+          "canonical_id": "doubao-seed-2-0-pro-260215",
+          "aliases": [],
+          "context_window_tokens": 262144,
+          "limit_basis": "default",
+          "default_reason": "The reviewed official model materials do not publish an explicit context-window limit for this route version.",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://api.volcengine.com/api-explorer/?action=ListFoundationModelVersions&groupName=%E5%9F%BA%E7%A1%80%E6%A8%A1%E5%9E%8B&serviceCode=ark&version=2024-01-01"
+        }
+      ]
+    },
+    {
+      "id": "stepfun",
+      "display_name": "StepFun",
+      "models": [
+        {
+          "canonical_id": "step-3.7-flash",
+          "aliases": [],
+          "context_window_tokens": 262144,
+          "limit_basis": "official",
+          "model_type": "language",
+          "verified_at": "2026-08-01",
+          "official_url": "https://platform.stepfun.com/docs/zh/guides/developer/multiple-round"
+        }
+      ]
+    }
+  ]
+}

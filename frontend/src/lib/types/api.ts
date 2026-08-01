@@ -241,7 +241,7 @@ export interface SendMessageRequest {
 }
 
 export interface SourceChatStreamEvent {
-  type: 'user_message' | 'ai_message' | 'context_indicators' | 'complete' | 'error'
+  type: 'user_message' | 'ai_message' | 'reasoning_status' | 'context_indicators' | 'complete' | 'error'
   content?: string
   data?: unknown
   message?: string

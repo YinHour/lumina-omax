@@ -468,12 +468,14 @@ function DiscoverModelsDialog({
         name: m.name,
         provider: m.provider,
         model_type: selectedType,
+        context_window_tokens: m.context_window_tokens,
       }))
     if (customModelSelected && showCustomOption) {
       selected.push({
         name: searchQuery.trim(),
         provider: credential.provider,
         model_type: selectedType,
+        context_window_tokens: undefined,
       })
     }
     registerModels.mutate(

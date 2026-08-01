@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import time
 from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
@@ -100,6 +101,111 @@ def error_sse_event(
     }
     event.update(extra)
     return f"data: {json.dumps(event)}\n\n"
+
+
+def reasoning_status_sse_event() -> str:
+    """Signal that the model is reasoning without exposing chain-of-thought."""
+    event = {
+        "type": "reasoning_status",
+        "status": "active",
+    }
+    return f"data: {json.dumps(event)}\n\n"
+
+
+def extract_reasoning_content(chunk: Any) -> str:
+    """Read provider-specific reasoning fields without logging their contents."""
+    if isinstance(chunk, dict):
+        reasoning = chunk.get("reasoning_content")
+        if reasoning:
+            return str(reasoning)
+        additional_kwargs = chunk.get("additional_kwargs")
+        if isinstance(additional_kwargs, dict):
+            reasoning = additional_kwargs.get("reasoning_content")
+            if reasoning:
+                return str(reasoning)
+
+    for attribute in ("additional_kwargs", "response_metadata"):
+        metadata = getattr(chunk, attribute, None)
+        if isinstance(metadata, dict):
+            reasoning = metadata.get("reasoning_content")
+            if reasoning:
+                return str(reasoning)
+
+    return ""
+
+
+_THINK_BLOCK = re.compile(r"<think\b[^>]*>[\s\S]*?</think\s*>", re.IGNORECASE)
+_THINK_OPEN = re.compile(r"<think\b[^>]*>", re.IGNORECASE)
+_THINK_OPEN_PREFIX = re.compile(r"<think\b[^>]*\Z", re.IGNORECASE)
+_THINK_CLOSE = re.compile(r"</think\s*>", re.IGNORECASE)
+_THINK_TAG_PREFIXES = ("<think", "</think")
+
+
+def _visible_stream_content(content: str) -> str:
+    visible = _THINK_BLOCK.sub("", content)
+    open_match = _THINK_OPEN.search(visible)
+    close_match = _THINK_CLOSE.search(visible)
+
+    if close_match and (not open_match or close_match.start() < open_match.start()):
+        visible = visible[close_match.end() :]
+
+    remaining_open = _THINK_OPEN.search(visible)
+    if remaining_open:
+        visible = visible[: remaining_open.start()]
+    else:
+        incomplete_open = _THINK_OPEN_PREFIX.search(visible)
+        if incomplete_open:
+            visible = visible[: incomplete_open.start()]
+
+    lower_visible = visible.lower()
+    max_tag_prefix_length = max(len(prefix) for prefix in _THINK_TAG_PREFIXES)
+    for length in range(min(len(visible), max_tag_prefix_length), 0, -1):
+        suffix = lower_visible[-length:]
+        if any(prefix.startswith(suffix) for prefix in _THINK_TAG_PREFIXES):
+            return visible[:-length]
+
+    return visible
+
+
+class SafeModelContentStream:
+    """Separate public answer deltas from inline model reasoning blocks."""
+
+    def __init__(self) -> None:
+        self._raw_content = ""
+        self._visible_content = ""
+        self._reasoning_seen = False
+
+    def observe_reasoning(self) -> bool:
+        """Return ``True`` only when reasoning is observed for the first time."""
+        if self._reasoning_seen:
+            return False
+        self._reasoning_seen = True
+        return True
+
+    def feed(self, content: str) -> tuple[str, bool]:
+        if not content:
+            return "", False
+
+        self._raw_content += content
+        reasoning_detected = bool(
+            _THINK_OPEN.search(self._raw_content)
+            or _THINK_CLOSE.search(self._raw_content)
+        )
+        first_reasoning = reasoning_detected and self.observe_reasoning()
+        visible = _visible_stream_content(self._raw_content)
+
+        if not visible.startswith(self._visible_content):
+            # A malformed provider stream reclassified previously emitted text
+            # as reasoning. Never emit more raw text from that sequence.
+            return "", first_reasoning
+
+        delta = visible[len(self._visible_content) :]
+        self._visible_content = visible
+        return delta, first_reasoning
+
+    def canonical_visible(self, content: str) -> str:
+        """Return the safe visible value from a complete provider response."""
+        return _visible_stream_content(content)
 
 
 # ---------------------------------------------------------------------------

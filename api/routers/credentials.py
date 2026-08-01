@@ -328,6 +328,7 @@ async def discover_models_for_credential(credential_id: str):
                     name=d["name"],
                     provider=d["provider"],
                     description=d.get("description"),
+                    context_window_tokens=d.get("context_window_tokens"),
                 )
                 for d in discovered
             ],

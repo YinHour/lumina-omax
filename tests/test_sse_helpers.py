@@ -4,6 +4,8 @@ Covers the wire contracts that §32 promises to source chat and ask:
 
 - ``heartbeat_sse_event`` / ``llm_timeout_sse_event`` / ``error_sse_event``
   produce the SSE strings that the front-end parses.
+- reasoning metadata becomes a status-only event, while inline ``<think>``
+  blocks are held back even when their tags span provider chunks.
 - ``error_code_from_exception`` maps typed exceptions to stable wire codes.
 - ``stream_with_heartbeat_and_timeout`` interleaves heartbeats with producer
   output and enforces the overall timeout, in both ``until_first_item`` and
@@ -52,6 +54,76 @@ def test_error_sse_event_passes_through_extra_fields():
         "message": "Try again later.",
         "retry_after": 30,
     }
+
+
+def test_reasoning_status_sse_event_has_no_reasoning_content():
+    from api.sse_helpers import reasoning_status_sse_event
+
+    raw = reasoning_status_sse_event()
+    payload = json.loads(raw.removeprefix("data: ").strip())
+    assert payload == {
+        "type": "reasoning_status",
+        "status": "active",
+    }
+
+
+def test_extract_reasoning_content_supports_provider_metadata():
+    from api.sse_helpers import extract_reasoning_content
+
+    class _Chunk:
+        additional_kwargs = {"reasoning_content": "private reasoning"}
+
+    assert extract_reasoning_content(_Chunk()) == "private reasoning"
+    assert (
+        extract_reasoning_content(
+            {"additional_kwargs": {"reasoning_content": "dict reasoning"}}
+        )
+        == "dict reasoning"
+    )
+    assert extract_reasoning_content({"content": "public answer"}) == ""
+
+
+def test_safe_model_content_stream_emits_normal_answer_deltas():
+    from api.sse_helpers import SafeModelContentStream
+
+    stream = SafeModelContentStream()
+    assert stream.feed("Vis") == ("Vis", False)
+    assert stream.feed("ible answer") == ("ible answer", False)
+
+
+def test_safe_model_content_stream_hides_split_think_blocks():
+    from api.sse_helpers import SafeModelContentStream
+
+    stream = SafeModelContentStream()
+    chunks = [
+        "<thi",
+        'nk reason="analysis">private',
+        " reasoning",
+        "</thi",
+        "nk>Pub",
+        "lic",
+    ]
+    results = [stream.feed(chunk) for chunk in chunks]
+
+    assert [delta for delta, _ in results] == ["", "", "", "", "Pub", "lic"]
+    assert [first for _, first in results].count(True) == 1
+    assert "private" not in "".join(delta for delta, _ in results)
+
+
+def test_safe_model_content_stream_keeps_text_around_reasoning_block():
+    from api.sse_helpers import SafeModelContentStream
+
+    stream = SafeModelContentStream()
+    delta, first_reasoning = stream.feed(
+        "Visible prefix <think>private reasoning</think>visible suffix"
+    )
+
+    assert delta == "Visible prefix visible suffix"
+    assert first_reasoning is True
+    assert (
+        stream.canonical_visible("<think>private reasoning</think>Final answer")
+        == "Final answer"
+    )
 
 
 def test_error_code_from_exception_covers_known_classes():

@@ -243,7 +243,7 @@ status:
 	@echo "Database (SurrealDB port 8001):"
 	@docker ps --filter name=surrealdb-v2 --format "  ✅ Running" 2>/dev/null || echo "  ❌ Not running"
 	@echo "API Backend (port 5056):"
-	@pgrep -f "run_api.py\|uvicorn api.main:app" >/dev/null && echo "  ✅ Running" || echo "  ❌ Not running"
+	@curl -fsS --max-time 2 http://127.0.0.1:5056/api/config >/dev/null && echo "  ✅ Running" || echo "  ❌ Not running"
 	@echo "Background Worker:"
 	@pgrep -f "surreal-commands-worker" >/dev/null && echo "  ✅ Running" || echo "  ❌ Not running"
 	@echo "Next.js Frontend (port 3001):"

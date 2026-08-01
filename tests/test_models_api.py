@@ -115,6 +115,50 @@ class TestModelCreation:
             # Should succeed because type is different
             assert response.status_code == 200
 
+    @pytest.mark.asyncio
+    @patch("open_notebook.database.repository.repo_query")
+    async def test_create_catalog_language_model_saves_builtin_context(
+        self, mock_repo_query, client
+    ):
+        from open_notebook.ai.models import Model
+
+        mock_repo_query.return_value = []
+        with patch.object(Model, "save", new_callable=AsyncMock):
+            response = client.post(
+                "/api/models",
+                json={
+                    "name": "glm-5.2",
+                    "provider": "dashscope",
+                    "type": "language",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["context_window_tokens"] == 1_000_000
+        assert response.json()["context_window_source"] == "builtin"
+
+    @pytest.mark.asyncio
+    @patch("open_notebook.database.repository.repo_query")
+    async def test_create_embedding_model_does_not_assign_chat_context(
+        self, mock_repo_query, client
+    ):
+        from open_notebook.ai.models import Model
+
+        mock_repo_query.return_value = []
+        with patch.object(Model, "save", new_callable=AsyncMock):
+            response = client.post(
+                "/api/models",
+                json={
+                    "name": "text-embedding-v4",
+                    "provider": "dashscope",
+                    "type": "embedding",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["context_window_tokens"] is None
+        assert response.json()["context_window_source"] is None
+
 
 class TestModelsProviderAvailability:
     """Test suite for Models Provider Availability endpoint."""

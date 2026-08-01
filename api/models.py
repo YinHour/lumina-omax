@@ -707,6 +707,7 @@ class DiscoveredModelResponse(BaseModel):
     provider: str
     model_type: Optional[str] = None
     description: Optional[str] = None
+    context_window_tokens: Optional[int] = Field(default=None, gt=0)
 
 
 class DiscoverModelsResponse(BaseModel):
@@ -723,6 +724,7 @@ class RegisterModelData(BaseModel):
     name: str
     provider: str
     model_type: str  # Required: user specifies the type
+    context_window_tokens: Optional[int] = Field(default=None, gt=0)
 
 
 class RegisterModelsRequest(BaseModel):

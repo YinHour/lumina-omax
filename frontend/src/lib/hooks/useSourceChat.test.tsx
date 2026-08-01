@@ -212,4 +212,63 @@ describe('useSourceChat', () => {
     expect(result.current.activityStatus).toBeNull()
     expect(result.current.activityElapsedSeconds).toBe(0)
   })
+
+  it('shows reasoning as a safe thinking state before visible source content', async () => {
+    let release!: () => void
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const reasoningStream = {
+      getReader: () => {
+        let step = 0
+        return {
+          read: vi.fn(async () => {
+            step += 1
+            if (step === 1) {
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"reasoning_status","status":"active"}\n\n',
+                ),
+              }
+            }
+            if (step === 2) {
+              await released
+              return {
+                done: false,
+                value: new TextEncoder().encode(
+                  'data: {"type":"ai_message","content":"Visible source answer"}\n\n' +
+                  'data: {"type":"complete"}\n\n',
+                ),
+              }
+            }
+            return { done: true, value: undefined }
+          }),
+        }
+      },
+    } as unknown as ReadableStream<Uint8Array>
+    sourceChatApiMock.sendMessage.mockResolvedValue(reasoningStream)
+
+    const { result } = renderHook(() => useSourceChat('source:1'), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.currentSessionId).toBe('session:1'))
+
+    let sendPromise: Promise<void>
+    await act(async () => {
+      sendPromise = result.current.sendMessage('Think safely')
+    })
+
+    await waitFor(() => expect(result.current.activityStatus).toBe('thinking'))
+    expect(result.current.messages.filter(message => message.type === 'ai')).toEqual([])
+
+    await act(async () => {
+      release()
+      await sendPromise!
+    })
+
+    expect(result.current.messages.some(message => (
+      message.type === 'ai' && message.content === 'Visible source answer'
+    ))).toBe(true)
+  })
 })

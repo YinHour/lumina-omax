@@ -995,6 +995,7 @@ export const frFR = {
     contextWindowPlaceholder: "Par exemple, 1000000",
     contextWindowBuiltinHint: "Valeur intégrée : {count} jetons. Saisissez une valeur pour la remplacer ou videz le champ pour l'utiliser.",
     contextWindowOverrideHint: "Saisissez la limite publiée par le fournisseur. Videz le champ si elle est inconnue.",
+    contextWindowTestSaved: "Détectée et enregistrée automatiquement pendant ce test.",
   },
   apiKeys: {
     title: "Configurez votre IA avec vos propres clés API",

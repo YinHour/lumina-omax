@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useId } from 'react'
+import { useState, useRef, useEffect, useId, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -222,6 +222,7 @@ export function ChatPanel({
   
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const messagesContentRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { openModal } = useModalManager()
@@ -248,6 +249,19 @@ export function ChatPanel({
   const isUserScrolling = useRef(false)
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  const scrollToBottom = useCallback(() => {
+    if (scrollAreaRef.current) {
+      const viewport = scrollAreaRef.current.querySelector<HTMLElement>(
+        '[data-slot="scroll-area-viewport"]'
+      )
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+        return
+      }
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [])
+
   // Auto-scroll to bottom when new messages arrive, but only if user hasn't scrolled up
   useEffect(() => {
     // If a new message was added (either by user or AI starting to respond), 
@@ -265,25 +279,38 @@ export function ChatPanel({
       
       // Use requestAnimationFrame for smoother scrolling during React renders
       scrollTimeoutRef.current = setTimeout(() => {
-        requestAnimationFrame(() => {
-          if (scrollAreaRef.current) {
-            const viewport = scrollAreaRef.current.querySelector('[data-slot="scroll-area-viewport"]')
-            if (viewport) {
-              viewport.scrollTop = viewport.scrollHeight
-            } else {
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-            }
-          } else {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-          }
-        })
+        requestAnimationFrame(scrollToBottom)
       }, 10)
       
       return () => {
         if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current)
       }
     }
-  }, [messages, isAutoScrollEnabled]) // Removed isStreaming from dependencies to avoid jitter
+  }, [messages, isAutoScrollEnabled, scrollToBottom]) // Removed isStreaming from dependencies to avoid jitter
+
+  // Markdown can change the rendered height after the message state update.
+  // Follow the actual content geometry while streaming instead of relying only
+  // on message-array changes, but preserve the user's position after scrolling up.
+  useEffect(() => {
+    const content = messagesContentRef.current
+    if (
+      !isStreaming ||
+      !isAutoScrollEnabled ||
+      !content ||
+      typeof ResizeObserver === 'undefined'
+    ) {
+      return
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (!isUserScrolling.current) {
+        scrollToBottom()
+      }
+    })
+    observer.observe(content)
+
+    return () => observer.disconnect()
+  }, [isStreaming, isAutoScrollEnabled, scrollToBottom])
 
   // Detect when user scrolls up to disable auto-scroll
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -311,18 +338,7 @@ export function ChatPanel({
       // Force scroll immediately on send
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current)
       scrollTimeoutRef.current = setTimeout(() => {
-        requestAnimationFrame(() => {
-          if (scrollAreaRef.current) {
-            const viewport = scrollAreaRef.current.querySelector('[data-slot="scroll-area-viewport"]')
-            if (viewport) {
-              viewport.scrollTop = viewport.scrollHeight
-            } else {
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-            }
-          } else {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-          }
-        })
+        requestAnimationFrame(scrollToBottom)
       }, 10)
       onSendMessage(trimmed, modelOverride, webSearchEnabled)
     }
@@ -476,7 +492,7 @@ export function ChatPanel({
           ref={scrollAreaRef}
           onScrollCapture={handleScroll}
         >
-          <div className="space-y-4 py-4">
+          <div ref={messagesContentRef} className="space-y-4 py-4">
             {contextType === 'notebook' && hasMoreMessages && onLoadEarlierMessages && (
               <div className="flex justify-center">
                 <Button

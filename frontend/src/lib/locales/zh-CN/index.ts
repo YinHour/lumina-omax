@@ -531,7 +531,7 @@ export const zhCN = {
     selectAll: "全选",
     deselectAll: "取消全选",
     contextNoContent: "上下文中未包含来源或笔记。点击卡片上的图标进行切换。",
-    contextLabel: "上下文：",
+    referencesLabel: "引用：",
     contextInsightsTooltip: "{count} 个来源的见解",
     contextFullSourcesTooltip: "{count} 个来源全文",
     contextFullNotesTooltip: "{count} 个笔记全文",
@@ -1203,6 +1203,7 @@ export const zhCN = {
     contextWindowPlaceholder: "例如 1000000",
     contextWindowBuiltinHint: "内置值：{count} 词元。输入新值可覆盖；清空后继续使用内置值。",
     contextWindowOverrideHint: "请输入模型服务商公布的上限；如果未知，请清空此字段。",
+    contextWindowTestSaved: "本次测试已自动获取并保存。",
   },
   apiKeys: {
     title: "使用您自己的 API 密钥配置 AI",

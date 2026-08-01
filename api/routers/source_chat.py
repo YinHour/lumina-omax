@@ -12,10 +12,13 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from api.sse_helpers import (
+    SafeModelContentStream,
     env_positive_float,
     error_code_from_exception,
     error_sse_event,
+    extract_reasoning_content,
     llm_timeout_sse_event,
+    reasoning_status_sse_event,
     stream_with_heartbeat_and_timeout,
 )
 from open_notebook.config import LANGGRAPH_SOURCE_CHAT_CHECKPOINT_FILE
@@ -506,6 +509,7 @@ async def stream_source_chat_response(
         async def run_producer(out_queue: asyncio.Queue) -> None:
             yielded_ai_chunks = False
             first_ai_output_logged = False
+            safe_model_stream = SafeModelContentStream()
 
             async def emit_ai_content(
                 content: str, *, stream_mode: Literal["delta", "buffered"] = "delta"
@@ -534,6 +538,24 @@ async def stream_source_chat_response(
                 }
                 await out_queue.put(f"data: {json.dumps(ai_event)}\n\n")
 
+            async def emit_reasoning_started() -> None:
+                await out_queue.put(reasoning_status_sse_event())
+
+            async def emit_model_content(
+                content: str, *, stream_mode: Literal["delta", "buffered"] = "delta"
+            ) -> None:
+                if stream_mode == "buffered":
+                    first_reasoning = (
+                        "<think" in content.lower() or "</think" in content.lower()
+                    ) and safe_model_stream.observe_reasoning()
+                    visible_content = safe_model_stream.canonical_visible(content)
+                else:
+                    visible_content, first_reasoning = safe_model_stream.feed(content)
+
+                if first_reasoning:
+                    await emit_reasoning_started()
+                await emit_ai_content(visible_content, stream_mode=stream_mode)
+
             async with AsyncSqliteSaver.from_conn_string(LANGGRAPH_SOURCE_CHAT_CHECKPOINT_FILE) as saver:
                 async_graph = source_chat_state.compile(checkpointer=saver)
 
@@ -546,28 +568,41 @@ async def stream_source_chat_response(
                         if "chunk" in event["data"]:
                             chunk = event["data"]["chunk"]
 
+                            if (
+                                extract_reasoning_content(chunk)
+                                and safe_model_stream.observe_reasoning()
+                            ):
+                                await emit_reasoning_started()
+
                             if hasattr(chunk, "content") and chunk.content:
                                 content = chunk.content
                                 if isinstance(content, str):
-                                    await emit_ai_content(content)
+                                    await emit_model_content(content)
                                 elif isinstance(content, list):
                                     for c in content:
                                         if isinstance(c, dict) and "text" in c:
-                                            await emit_ai_content(c["text"])
+                                            await emit_model_content(c["text"])
                                         elif isinstance(c, str):
-                                            await emit_ai_content(c)
+                                            await emit_model_content(c)
 
                             elif isinstance(chunk, str) and chunk:
-                                await emit_ai_content(chunk)
-                            elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
-                                await emit_ai_content(chunk["content"])
+                                await emit_model_content(chunk)
+                            elif (
+                                isinstance(chunk, dict)
+                                and "content" in chunk
+                                and chunk["content"]
+                            ):
+                                await emit_model_content(chunk["content"])
 
                     elif kind == "on_chat_model_end":
-                        if "output" in event["data"] and "content" in event["data"]["output"]:
+                        if (
+                            "output" in event["data"]
+                            and "content" in event["data"]["output"]
+                        ):
                             if not yielded_ai_chunks:
                                 content = event["data"]["output"]["content"]
                                 if isinstance(content, str):
-                                    await emit_ai_content(
+                                    await emit_model_content(
                                         content, stream_mode="buffered"
                                     )
 
@@ -575,18 +610,25 @@ async def stream_source_chat_response(
                         final_state = event["data"]["output"]
                         if isinstance(final_state, dict):
                             context_indicators = None
-                            if "source_chat_agent" in final_state and isinstance(final_state["source_chat_agent"], dict):
-                                if not yielded_ai_chunks and "messages" in final_state["source_chat_agent"]:
+                            if "source_chat_agent" in final_state and isinstance(
+                                final_state["source_chat_agent"], dict
+                            ):
+                                if (
+                                    not yielded_ai_chunks
+                                    and "messages" in final_state["source_chat_agent"]
+                                ):
                                     msg = final_state["source_chat_agent"]["messages"]
                                     if hasattr(msg, "content"):
                                         content_text = msg.content
                                         if content_text:
-                                            await emit_ai_content(
+                                            await emit_model_content(
                                                 content_text,
                                                 stream_mode="buffered",
                                             )
 
-                                context_indicators = final_state["source_chat_agent"].get("context_indicators")
+                                context_indicators = final_state[
+                                    "source_chat_agent"
+                                ].get("context_indicators")
                             elif "context_indicators" in final_state:
                                 context_indicators = final_state["context_indicators"]
 
@@ -595,7 +637,9 @@ async def stream_source_chat_response(
                                     "type": "context_indicators",
                                     "data": context_indicators,
                                 }
-                                await out_queue.put(f"data: {json.dumps(context_event)}\n\n")
+                                await out_queue.put(
+                                    f"data: {json.dumps(context_event)}\n\n"
+                                )
 
         try:
             async for chunk in stream_with_heartbeat_and_timeout(

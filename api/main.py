@@ -123,6 +123,15 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Podcast profile migration encountered errors: {e}")
         # Non-fatal: profiles can be migrated manually via UI
 
+    # Seed reviewed context-window fallbacks only onto existing language models.
+    # This is intentionally non-fatal and never creates model records.
+    try:
+        from open_notebook.ai.model_context import seed_missing_model_context_windows
+
+        await seed_missing_model_context_windows()
+    except Exception as e:
+        logger.warning(f"Model context catalog seed encountered errors: {e}")
+
     logger.success("API initialization completed successfully")
 
     # Yield control to the application

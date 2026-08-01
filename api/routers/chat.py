@@ -56,13 +56,16 @@ from api.sse_helpers import (  # noqa: E402
     ERROR_CODE_BY_EXCEPTION_NAME as _ERROR_CODE_BY_EXCEPTION_NAME,  # noqa: F401
 )
 from api.sse_helpers import (
+    SafeModelContentStream,
+    extract_reasoning_content,
+    heartbeat_sse_event,  # noqa: F401
+    reasoning_status_sse_event,
+)
+from api.sse_helpers import (
     env_positive_float as _env_positive_float,
 )
 from api.sse_helpers import (
     error_code_from_exception as chat_error_code_from_exception,  # noqa: F401
-)
-from api.sse_helpers import (
-    heartbeat_sse_event,  # noqa: F401
 )
 
 CHAT_LLM_TIMEOUT_SECONDS = _env_positive_float("CHAT_LLM_TIMEOUT_SECONDS", 240.0)
@@ -866,6 +869,7 @@ async def stream_chat_response(
         yielded_ai_chunks = False
         first_ai_chunk_logged = False
         final_answer_parts: list[str] = []
+        safe_model_stream = SafeModelContentStream()
 
         # Producer/consumer split so the consumer can interleave heartbeats while
         # the model is still computing the first chunk, and so the whole graph
@@ -931,6 +935,26 @@ async def stream_chat_response(
             }
             await put_output(f"data: {json.dumps(ai_event)}\n\n")
 
+        async def emit_reasoning_started() -> None:
+            nonlocal current_status_stage
+            current_status_stage = "synthesizing"
+            await put_output(reasoning_status_sse_event())
+
+        async def emit_model_content(
+            content: str, *, stream_mode: Literal["delta", "buffered"] = "delta"
+        ) -> None:
+            if stream_mode == "buffered":
+                first_reasoning = (
+                    "<think" in content.lower() or "</think" in content.lower()
+                ) and safe_model_stream.observe_reasoning()
+                visible_content = safe_model_stream.canonical_visible(content)
+            else:
+                visible_content, first_reasoning = safe_model_stream.feed(content)
+
+            if first_reasoning:
+                await emit_reasoning_started()
+            await emit_ai_content(visible_content, stream_mode=stream_mode)
+
         async def run_graph_producer() -> None:
             async with AsyncSqliteSaver.from_conn_string(
                 checkpoint_file
@@ -953,21 +977,31 @@ async def stream_chat_response(
                         if "chunk" in event["data"]:
                             chunk = event["data"]["chunk"]
 
+                            if (
+                                extract_reasoning_content(chunk)
+                                and safe_model_stream.observe_reasoning()
+                            ):
+                                await emit_reasoning_started()
+
                             if hasattr(chunk, "content") and chunk.content:
                                 content = chunk.content
                                 if isinstance(content, str):
-                                    await emit_ai_content(content)
+                                    await emit_model_content(content)
                                 elif isinstance(content, list):
                                     for c in content:
                                         if isinstance(c, dict) and "text" in c:
-                                            await emit_ai_content(c["text"])
+                                            await emit_model_content(c["text"])
                                         elif isinstance(c, str):
-                                            await emit_ai_content(c)
+                                            await emit_model_content(c)
 
                             elif isinstance(chunk, str) and chunk:
-                                await emit_ai_content(chunk)
-                            elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
-                                await emit_ai_content(chunk["content"])
+                                await emit_model_content(chunk)
+                            elif (
+                                isinstance(chunk, dict)
+                                and "content" in chunk
+                                and chunk["content"]
+                            ):
+                                await emit_model_content(chunk["content"])
 
                     elif kind == "on_tool_start":
                         tool_stage = CHAT_TOOL_STAGE.get(
@@ -995,23 +1029,29 @@ async def stream_chat_response(
                         await put_output(context_usage_sse_event(usage_data))
 
                     elif kind == "on_chat_model_end":
-                        if "output" in event["data"] and "content" in event["data"]["output"]:
+                        if (
+                            "output" in event["data"]
+                            and "content" in event["data"]["output"]
+                        ):
                             if not yielded_ai_chunks:
                                 content = event["data"]["output"]["content"]
                                 if isinstance(content, str):
-                                    await emit_ai_content(
+                                    await emit_model_content(
                                         content, stream_mode="buffered"
                                     )
 
                     elif kind == "on_chain_end" and event["name"] == "LangGraph":
                         final_state = event["data"]["output"]
                         if isinstance(final_state, dict) and "agent" in final_state:
-                            if not yielded_ai_chunks and "messages" in final_state["agent"]:
+                            if (
+                                not yielded_ai_chunks
+                                and "messages" in final_state["agent"]
+                            ):
                                 msg = final_state["agent"]["messages"]
                                 if hasattr(msg, "content"):
                                     content_text = msg.content
                                     if content_text:
-                                        await emit_ai_content(
+                                        await emit_model_content(
                                             content_text, stream_mode="buffered"
                                         )
 

@@ -56,6 +56,7 @@ package-dir = {"open_notebook" = "open_notebook"}
 
 [tool.setuptools.package-data]
 open_notebook = [
+    "ai/model_context_catalog.json",
     "research_skills/skills/*/manifest.json",
     "research_skills/skills/*/SKILL.md",
 ]

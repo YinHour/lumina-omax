@@ -1,0 +1,1 @@
+REMOVE FIELD IF EXISTS context_window_source ON TABLE model;

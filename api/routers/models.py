@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel
 
+from api.credentials_service import refresh_model_context_window
 from api.models import (
     DefaultModelsResponse,
     ModelCreate,
@@ -17,6 +18,7 @@ from api.models import (
 from api.routers.auth import require_admin
 from open_notebook.ai.connection_tester import test_individual_model
 from open_notebook.ai.key_provider import provision_provider_keys
+from open_notebook.ai.model_context import get_builtin_context_window
 from open_notebook.ai.model_discovery import (
     discover_provider_models,
     get_provider_model_count,
@@ -57,6 +59,7 @@ class DiscoveredModelResponse(BaseModel):
     provider: str
     model_type: str
     description: Optional[str] = None
+    context_window_tokens: Optional[int] = None
 
 
 class ProviderSyncResponse(BaseModel):
@@ -98,6 +101,9 @@ class ModelTestResponse(BaseModel):
     success: bool
     message: str
     details: Optional[str] = None
+    context_window_tokens: Optional[int] = None
+    context_window_source: Optional[str] = None
+    context_window_saved: bool = False
 
 
 # Provider priority for auto-assignment (higher priority first)
@@ -229,12 +235,26 @@ async def create_model(model_data: ModelCreate):
                 detail=f"Model '{model_data.name}' already exists for provider '{model_data.provider}' with type '{model_data.type}'",
             )
 
+        context_window_tokens = model_data.context_window_tokens
+        context_window_source = (
+            "configured" if context_window_tokens is not None else None
+        )
+        if context_window_tokens is None:
+            context_window_tokens = get_builtin_context_window(
+                model_data.provider,
+                model_data.name,
+                model_data.type,
+            )
+            if context_window_tokens is not None:
+                context_window_source = "builtin"
+
         new_model = Model(
             name=model_data.name,
             provider=model_data.provider,
             type=model_data.type,
             credential=model_data.credential,
-            context_window_tokens=model_data.context_window_tokens,
+            context_window_tokens=context_window_tokens,
+            context_window_source=context_window_source,
         )
         await new_model.save()
 
@@ -278,6 +298,9 @@ async def update_model(
         update_data = model_data.model_dump(exclude_unset=True)
         if "context_window_tokens" in update_data:
             model.context_window_tokens = update_data["context_window_tokens"]
+            model.context_window_source = (
+                "configured" if update_data["context_window_tokens"] is not None else None
+            )
         await model.save()
         return model_to_response(model)
     except InvalidInputError as e:
@@ -303,7 +326,24 @@ async def test_model(model_id: str):
 
     try:
         success, message = await test_individual_model(model)
-        return ModelTestResponse(success=success, message=message)
+        context_window_saved = False
+        if success:
+            (
+                context_window_tokens,
+                context_window_source,
+                context_window_saved,
+            ) = await refresh_model_context_window(model)
+        else:
+            context_window_tokens, context_window_source = (
+                model.get_effective_context_window()
+            )
+        return ModelTestResponse(
+            success=success,
+            message=message,
+            context_window_tokens=context_window_tokens,
+            context_window_source=context_window_source,
+            context_window_saved=context_window_saved,
+        )
     except Exception as e:
         logger.error(f"Error testing model {model_id}: {traceback.format_exc()}")
         return ModelTestResponse(
@@ -531,6 +571,7 @@ async def discover_models(provider: str):
                 provider=m.provider,
                 model_type=m.model_type,
                 description=m.description,
+                context_window_tokens=m.context_window_tokens,
             )
             for m in discovered
         ]

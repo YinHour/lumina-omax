@@ -31,3 +31,10 @@ def test_makefile_logging_timestamps_do_not_use_gawk_only_strftime():
     assert "logs/api.log" in makefile
     assert "logs/worker.log" in makefile
     assert "logs/frontend.log" in makefile
+
+
+def test_make_status_checks_api_readiness_endpoint():
+    makefile = Path("Makefile").read_text()
+
+    assert "curl -fsS --max-time 2 http://127.0.0.1:5056/api/config" in makefile
+    assert 'run_api.py\\|uvicorn api.main:app' not in makefile

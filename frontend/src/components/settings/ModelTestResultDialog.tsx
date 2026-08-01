@@ -45,6 +45,26 @@ export function ModelTestResultDialog({
           <p className="text-sm text-muted-foreground">{modelName}</p>
           <p className="text-sm">{result.message}</p>
 
+          {result.context_window_tokens ? (
+            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              <p>
+                {t.models.contextWindowTokensLabel}: {' '}
+                <span className="font-medium">
+                  {result.context_window_tokens.toLocaleString()}
+                </span>
+              </p>
+              {result.context_window_saved && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t.models.contextWindowTestSaved}
+                </p>
+              )}
+            </div>
+          ) : result.success ? (
+            <p className="text-xs text-muted-foreground">
+              {t.models.contextLimitUnknown}
+            </p>
+          ) : null}
+
           {result.details && (
             <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-60 whitespace-pre-wrap break-words">
               {result.details}

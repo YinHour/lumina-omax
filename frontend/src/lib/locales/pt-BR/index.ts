@@ -995,6 +995,7 @@ export const ptBR = {
     contextWindowPlaceholder: "Por exemplo, 1000000",
     contextWindowBuiltinHint: "Valor integrado: {count} tokens. Digite um valor para substituir ou limpe o campo para usá-lo.",
     contextWindowOverrideHint: "Informe o limite publicado pelo provedor. Limpe o campo se ele for desconhecido.",
+    contextWindowTestSaved: "Detectada e salva automaticamente durante este teste.",
   },
   apiKeys: {
     title: "Configure sua IA com suas próprias chaves de API",

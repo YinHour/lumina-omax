@@ -57,12 +57,12 @@ export function ContextIndicator({
     <div
       data-testid="context-summary"
       className={cn(
-        'grid flex-shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground',
+        'grid flex-shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground',
         className
       )}
     >
-      <div data-testid="context-source-counts" className="flex min-w-0 items-center gap-1.5 justify-self-start">
-        <span className="shrink-0 font-medium">{t.sources.contextLabel}</span>
+      <div data-testid="context-source-counts" className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 justify-self-start">
+        <span className="shrink-0 font-medium">{t.sources.referencesLabel}</span>
 
         {hasContext ? (
           <div className="flex min-w-0 items-center gap-1">
@@ -118,10 +118,10 @@ export function ContextIndicator({
             </TooltipContent>
           </Tooltip>
         )}
-      </div>
 
-      <div data-testid="context-source-tokens" className="justify-self-center whitespace-nowrap tabular-nums">
-        {t.sources.contextTokens.replace('{count}', formatNumber(tokenCount ?? 0))}
+        <span data-testid="context-source-tokens" className="shrink-0 whitespace-nowrap tabular-nums">
+          {t.sources.contextTokens.replace('{count}', formatNumber(tokenCount ?? 0))}
+        </span>
       </div>
 
       <div

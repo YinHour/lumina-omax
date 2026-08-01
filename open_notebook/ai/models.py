@@ -19,12 +19,17 @@ ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeech
 
 class Model(ObjectModel):
     table_name: ClassVar[str] = "model"
-    nullable_fields: ClassVar[set[str]] = {"credential", "context_window_tokens"}
+    nullable_fields: ClassVar[set[str]] = {
+        "credential",
+        "context_window_tokens",
+        "context_window_source",
+    }
     name: str
     provider: str
     type: str
     credential: Optional[str] = None
     context_window_tokens: Optional[int] = Field(default=None, gt=0)
+    context_window_source: Optional[str] = None
 
     def get_effective_context_window(self):
         from open_notebook.ai.model_context import get_effective_context_window
@@ -33,6 +38,8 @@ class Model(ObjectModel):
             self.provider,
             self.name,
             self.context_window_tokens,
+            self.context_window_source,
+            self.type,
         )
 
     @classmethod

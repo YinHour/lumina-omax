@@ -5,7 +5,7 @@ export interface Model {
   type: 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
   credential?: string | null
   context_window_tokens?: number | null
-  context_window_source?: 'configured' | 'builtin' | null
+  context_window_source?: 'configured' | 'provider' | 'builtin' | null
   created: string
   updated: string
 }
@@ -76,4 +76,7 @@ export interface ModelTestResult {
   success: boolean
   message: string
   details?: string
+  context_window_tokens?: number | null
+  context_window_source?: 'configured' | 'provider' | 'builtin' | null
+  context_window_saved?: boolean
 }

@@ -524,7 +524,7 @@ export const enUS = {
     selectAll: "Select All",
     deselectAll: "Deselect All",
     contextNoContent: "No sources or notes included in context. Toggle icons on cards to include them.",
-    contextLabel: "Context:",
+    referencesLabel: "References:",
     contextInsightsTooltip: "Insights for {count} source(s)",
     contextFullSourcesTooltip: "{count} full source(s)",
     contextFullNotesTooltip: "{count} full note(s)",
@@ -1203,6 +1203,7 @@ export const enUS = {
     contextWindowPlaceholder: "For example, 1000000",
     contextWindowBuiltinHint: "Built-in value: {count} tokens. Enter a value to override it, or clear the field to use the built-in value.",
     contextWindowOverrideHint: "Enter the provider's documented limit. Clear the field if the limit is unknown.",
+    contextWindowTestSaved: "Automatically detected and saved during this test.",
   },
   apiKeys: {
     title: "Configure your AI with your own API keys",

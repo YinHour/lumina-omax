@@ -17,6 +17,7 @@ import {
 
 export type SourceChatActivityStatus =
   | 'awaitingModel'
+  | 'thinking'
   | 'modelStreaming'
 
 export function useSourceChat(sourceId: string) {
@@ -190,6 +191,9 @@ export function useSourceChat(sourceId: string) {
               )
             )
           }
+        } else if (data.type === 'reasoning_status') {
+          setActivityStatus('thinking')
+          setActivityElapsedSeconds(0)
         } else if (data.type === 'heartbeat') {
           // Backend keep-alive while waiting for first model byte. Surface
           // elapsed seconds so the UI can show "model still working, waited Ns".

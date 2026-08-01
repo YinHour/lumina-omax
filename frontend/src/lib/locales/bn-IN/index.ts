@@ -996,6 +996,7 @@ export const bnIN = {
     contextWindowPlaceholder: "যেমন, 1000000",
     contextWindowBuiltinHint: "অন্তর্নির্মিত মান: {count} টোকেন। ওভাররাইড করতে মান লিখুন বা অন্তর্নির্মিত মান ব্যবহার করতে ক্ষেত্রটি খালি করুন।",
     contextWindowOverrideHint: "প্রদানকারীর প্রকাশিত সীমা লিখুন। সীমা অজানা হলে ক্ষেত্রটি খালি করুন।",
+    contextWindowTestSaved: "এই পরীক্ষার সময় স্বয়ংক্রিয়ভাবে শনাক্ত ও সংরক্ষণ করা হয়েছে।",
   },
   apiKeys: {
     title: "আপনার নিজের API কী দিয়ে আপনার AI কনফিগার করুন",

@@ -995,6 +995,7 @@ export const itIT = {
     contextWindowPlaceholder: "Ad esempio, 1000000",
     contextWindowBuiltinHint: "Valore integrato: {count} token. Inserisci un valore per sostituirlo o svuota il campo per usarlo.",
     contextWindowOverrideHint: "Inserisci il limite pubblicato dal provider. Svuota il campo se è sconosciuto.",
+    contextWindowTestSaved: "Rilevata e salvata automaticamente durante questo test.",
   },
   apiKeys: {
     title: "Configura la tua IA con le tue chiavi API",

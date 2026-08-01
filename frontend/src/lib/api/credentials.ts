@@ -60,12 +60,14 @@ export interface DiscoveredModel {
   provider: string
   model_type?: string
   description?: string
+  context_window_tokens?: number | null
 }
 
 export interface RegisterModelData {
   name: string
   provider: string
   model_type: string
+  context_window_tokens?: number | null
 }
 
 export interface DiscoverModelsResponse {

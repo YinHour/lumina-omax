@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, render, screen, fireEvent, within } from '@testing-library/react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 
 const { openModalMock } = vi.hoisted(() => ({
@@ -20,6 +20,10 @@ describe('ChatPanel stop button', () => {
   beforeEach(() => {
     localStorage.clear()
     openModalMock.mockClear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   const baseProps = {
@@ -325,6 +329,93 @@ describe('ChatPanel stop button', () => {
     )
 
     expect(container.querySelector('[data-slot="scroll-area-viewport"]')).toHaveClass('[&>div]:!block')
+  })
+
+  it('follows rendered message height growth while streaming', () => {
+    let resizeCallback: ResizeObserverCallback | null = null
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+
+      observe = observe
+      unobserve = vi.fn()
+      disconnect = disconnect
+    })
+
+    const { container } = render(
+      <ChatPanel
+        {...baseProps}
+        isStreaming
+        messages={[{
+          id: 'ai-streaming',
+          type: 'ai',
+          content: 'Streaming answer',
+        }]}
+      />
+    )
+    const viewport = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]'
+    )!
+    let scrollHeight = 800
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      scrollTop: { configurable: true, writable: true, value: 600 },
+    })
+
+    scrollHeight = 1200
+    act(() => {
+      resizeCallback!([], {} as ResizeObserver)
+    })
+
+    expect(observe).toHaveBeenCalledOnce()
+    expect(viewport.scrollTop).toBe(1200)
+    expect(disconnect).not.toHaveBeenCalled()
+  })
+
+  it('preserves the reader position after the user scrolls up', () => {
+    let resizeCallback: ResizeObserverCallback | null = null
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+
+      observe = vi.fn()
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+    })
+
+    const { container } = render(
+      <ChatPanel
+        {...baseProps}
+        isStreaming
+        messages={[{
+          id: 'ai-streaming',
+          type: 'ai',
+          content: 'Streaming answer',
+        }]}
+      />
+    )
+    const viewport = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]'
+    )!
+    let scrollHeight = 1200
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      scrollTop: { configurable: true, writable: true, value: 300 },
+    })
+
+    fireEvent.scroll(viewport)
+    scrollHeight = 1400
+    act(() => {
+      resizeCallback!([], {} as ResizeObserver)
+    })
+
+    expect(viewport.scrollTop).toBe(300)
   })
 
   it('turns escaped inline workspace citations into source links', () => {

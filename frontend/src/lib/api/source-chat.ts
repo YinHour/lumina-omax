@@ -63,7 +63,8 @@ export const sourceChatApi = {
       }
     }
 
-    // Get the base API URL to bypass Next.js rewrites which buffer SSE streams
+    // Relative URLs use the dedicated streaming Route Handler; an explicit
+    // browser API URL continues to call FastAPI directly.
     const { getApiUrl } = await import('@/lib/config')
     const baseUrl = await getApiUrl()
     const url = `${baseUrl}/api/sources/${sourceId}/chat/sessions/${sessionId}/messages`
