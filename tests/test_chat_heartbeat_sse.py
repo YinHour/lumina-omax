@@ -236,6 +236,9 @@ async def test_stream_chat_response_emits_heartbeats_before_first_chunk(monkeypa
 async def test_research_stream_emits_tool_activity_sequence(monkeypatch):
     from api.routers import chat
 
+    log_messages: list[str] = []
+    monkeypatch.setattr(chat.logger, "info", log_messages.append)
+
     class _FakeSqliteSaver:
         @classmethod
         def from_conn_string(cls, _path):
@@ -268,8 +271,16 @@ async def test_research_stream_emits_tool_activity_sequence(monkeypatch):
     )
 
     async def _events(*, input, config=None, version=None):  # noqa: A002
-        yield {"event": "on_tool_start", "name": "search_notebook_evidence"}
-        yield {"event": "on_tool_end", "name": "search_notebook_evidence"}
+        yield {
+            "event": "on_tool_start",
+            "name": "search_notebook_evidence",
+            "run_id": "tool-run-1",
+        }
+        yield {
+            "event": "on_tool_end",
+            "name": "search_notebook_evidence",
+            "run_id": "tool-run-1",
+        }
         yield {
             "event": "on_chat_model_stream",
             "data": {"chunk": MagicMock(content="answer")},
@@ -303,6 +314,37 @@ async def test_research_stream_emits_tool_activity_sequence(monkeypatch):
         ("synthesizing", "active"),
         ("model_streaming", "active"),
     ]
+    tool_start_log = next(
+        message
+        for message in log_messages
+        if "step=research_tool_start" in message
+    )
+    tool_end_log = next(
+        message for message in log_messages if "step=research_tool_end" in message
+    )
+    assert "tool=search_notebook_evidence" in tool_start_log
+    assert "tool_sequence=1" in tool_start_log
+    assert "tool=search_notebook_evidence" in tool_end_log
+    assert "tool_sequence=1" in tool_end_log
+    assert "status=success" in tool_end_log
+    assert "elapsed_ms=" in tool_end_log
+
+    research_log_count = sum(
+        "step=research_tool_" in message for message in log_messages
+    )
+    async for _ in chat.stream_chat_response(
+        session_id="chat_session:quick",
+        message="question",
+        context={"sources": [], "notes": []},
+        state_graph=state_graph,
+        checkpoint_file="quick.sqlite",
+        chat_mode="quick",
+    ):
+        pass
+    assert (
+        sum("step=research_tool_" in message for message in log_messages)
+        == research_log_count
+    )
 
 
 @pytest.mark.asyncio

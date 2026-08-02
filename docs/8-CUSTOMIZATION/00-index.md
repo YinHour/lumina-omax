@@ -4208,3 +4208,65 @@ uv build --wheel --out-dir /tmp/lumina-omax-wheel-verify-20260801
 ```
 
 真实供应商接口仍需现场用对应凭据验证；若第三方路由返回明确的上下文字段，模型测试会以该路由值更新 DB。
+
+---
+
+## 57. Research Agent 超时根因观测（2026-08-02）
+
+### 57.1 复现与根因边界
+
+- 登录态浏览器在独立 Research 新会话中关闭联网搜索、跨笔记本发现和科研数据库，仅要求读取当前笔记本内一份明确来源。真实 trace `92ba8d0f6768` 的首个公开回答增量为 4.355 秒，主回答 19.909 秒完成，包含建议问题的请求总耗时 23.177 秒；页面显示 7 个步骤、保存成功、工作区引用可用，浏览器没有新增 warning/error。这说明短任务下的 Research Agent、SSE、工具调用、最终综合和 transcript 链路正常。
+- 另一个已有真实 trace `92ca069db433` 带 19 条历史消息并启用联网、跨笔记本和科研数据库：144.218 秒出现首个公开回答增量，随后在 146、154、205 秒仍进入新的研究轮次，但整个 LangGraph 在 240 秒被 `CHAT_LLM_TIMEOUT_SECONDS` 强制取消。
+- Git 历史确认 240 秒总预算于 2026-06-28 为 Quick Chat 加入，当时依据单轮大上下文调用 30–40 秒总耗时校准；Research Agent 于 2026-07-11 通过参数化复用 `stream_chat_response()`，没有重新定义多轮“模型 → 工具 → 模型”工作流的超时边界。直接根因是 Quick Chat 固定总预算被 Research Agent 继承后的语义错配，不是 SSE 或 transcript 整体失效。
+- DeepSeek 延迟、历史长度和启用工具数量是已观察到的耗时相关因素，但旧日志无法分解每轮模型与工具耗时，暂不把其中任何一项单独认定为根因。`first_ai_chunk` 记录的是过滤推理内容后的首个公开答案增量，也不能严格等同于供应商网络首字节。
+- 现有超时测试只覆盖 producer 完全挂起；Research 测试覆盖工具状态与心跳，但没有覆盖“总耗时超过 Quick 预算、各研究轮次仍持续推进”的场景。本轮先补观测证据，不直接调整时限或取消语义。
+
+### 57.2 只读观测决策
+
+- 每次 Research 模型调用增加 `research_model_call_start` / `research_model_call_end` INFO 日志，记录 trace、`agent/final` 阶段、本轮序号、历史/选中消息数量、历史估算 token、payload 字符数、可用工具数量、三类外部能力开关、调用耗时、响应字符数、tool call 数量或错误类型；超时触发的 `CancelledError` 也会记录 `status=cancelled` 后原样继续传播，不吞掉或改写取消语义。
+- Research 工具事件增加 `research_tool_start` / `research_tool_end` INFO 日志，按 LangChain `run_id` 关联并记录工具名称、请求内序号、成功/失败和耗时；支持并发工具运行，不改变原有 `chat_status` SSE 顺序或内容。
+- 日志明确不记录用户问题、回答正文、工具参数、工具返回、来源原文、模型推理、凭据或异常正文。回归测试使用带有 `private` 标记的内容，锁定这些文本不会进入日志。
+- Quick Chat 继续使用原有路径，只有 `chat_mode == "research"` 才记录工具耗时。`CHAT_LLM_TIMEOUT_SECONDS=240`、`asyncio.wait_for()`、Research 最大 6 轮工具调用、模型配置、前端协议、i18n、API 路由、数据库和部署拓扑均未改变。
+- 服务热重载后已采集三类真实 trace，观测字段和隐私边界均按预期工作：
+
+| 场景 | trace | 主要证据 |
+|------|-------|----------|
+| 当前笔记本最小任务 | `19965d7169f6` | 1 条历史消息；3 轮模型分别为 2.069、1.893、6.275 秒；3 个笔记本工具最长 0.830 秒；主回答 11.249 秒、含建议问题总计 15.665 秒 |
+| 长历史、外部能力关闭 | `c7d0ec5bb09c` | 13 条历史消息、历史估算 24,153 token、payload 47,701 字符；不调用工具，单轮模型 7.757 秒；主回答 7.788 秒、总计 13.945 秒 |
+| 联网 + 科研数据库 | `dca5cb5683b6` | 1 条起始历史消息；6 轮 agent + 1 轮 final；23 次工具调用多数并发；模型调用累计 170.658 秒，主链路 188.402 秒、总计 192.339 秒；发送 22 次心跳并持续产生研究进度 |
+
+- 外部能力 trace 中，模型轮次耗时从 7.353 秒逐步增长到 37.382 秒，最终综合为 66.041 秒；历史在第 6 轮达到 24 条并触发压缩，选中 payload 仍达到 89,926 字符。按并发工具每批最长耗时估算，工具墙钟时间约 17.5 秒，而模型累计约占主链路的 90.6%。因此新的代码级结论是：**主要耗时来自外部证据不断扩张 payload 后的多轮模型调用累积，不是某一个检索工具卡住**；长历史本身也不是 240 秒超时的充分条件。
+- 三组浏览器验证均正常保存，最后一组在 192.3 秒自然完成且无新增 console warning/error。结合旧失败 trace 在 205 秒仍有研究轮次、240 秒被统一总预算取消的事实，后续架构方向优先考虑 **Research 的“有效进度停滞超时 + 独立整体硬上限”**，而不是只把 240 秒固定总时限简单调大。SSE transport heartbeat 不能单独视为有效进度；可重置停滞计时的候选信号应限定为模型轮次完成、工具开始/结束或公开回答增量。具体停滞时长和硬上限仍需在独立行为变更中用失败/卡死测试校准，本轮不改变运行语义。
+
+### 57.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/research_agent.py` | 记录 Research 模型轮次、payload 规模、工具数量、耗时和安全结果元数据 |
+| `api/routers/chat.py` | 关联 Research 工具 run 并记录开始、结束、状态和耗时 |
+| `tests/test_research_agent_scope.py` | 覆盖模型轮次日志字段及问题/参数/证据/回答正文不泄漏 |
+| `tests/test_chat_heartbeat_sse.py` | 覆盖工具计时日志，同时保持既有 Research SSE 状态序列 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 记录复现、根因、只读观测边界、验证与后续决策门槛 |
+
+### 57.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_research_agent_scope.py tests/test_chat_heartbeat_sse.py tests/test_chat_observability.py -q
+39 passed, 1 warning
+
+.venv/bin/python -m ruff check api/routers/chat.py open_notebook/graphs/research_agent.py tests/test_research_agent_scope.py tests/test_chat_heartbeat_sse.py tests/test_chat_observability.py
+All checks passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+405 passed, 33 deselected, 6 warnings
+
+git diff --check
+exit 0
+```
+
+真实浏览器验证：
+
+- `chat_session:kw8c7y4lgi18jcw8ttxg` / trace `19965d7169f6`：最小当前笔记本任务，外部能力关闭，7 个页面步骤，保存成功。
+- `chat_session:xrjo41ua80icvziib574` / trace `c7d0ec5bb09c`：13 条消息的长历史续问，外部能力关闭，3 个页面步骤，保存成功。
+- `chat_session:2sjuxf5ba1vjt6lmjguo` / trace `dca5cb5683b6`：公开标准比较，联网和科研数据库开启、跨笔记本关闭，持续进度与心跳正常，保存成功。
+- 三个会话均保留用于后续证据复核，未擅自删除。未验证项仅剩下一阶段的超时行为变更及其卡死/持续推进测试；本轮没有修改任何 timeout 参数。

@@ -880,6 +880,8 @@ async def stream_chat_response(
         model_first_byte_ms: Optional[int] = None
         current_status_stage = initial_stage
         last_output_at = time.perf_counter()
+        research_tool_sequence = 0
+        research_tool_runs: dict[str, tuple[str, int, float]] = {}
 
         def observe_ai_chunk(
             content: str, stream_mode: Literal["delta", "buffered"]
@@ -956,6 +958,7 @@ async def stream_chat_response(
             await emit_ai_content(visible_content, stream_mode=stream_mode)
 
         async def run_graph_producer() -> None:
+            nonlocal research_tool_sequence
             async with AsyncSqliteSaver.from_conn_string(
                 checkpoint_file
             ) as saver:
@@ -1004,12 +1007,53 @@ async def stream_chat_response(
                                 await emit_model_content(chunk["content"])
 
                     elif kind == "on_tool_start":
+                        if chat_mode == "research":
+                            research_tool_sequence += 1
+                            tool_name = event.get("name", "unknown")
+                            tool_key = str(
+                                event.get("run_id") or f"{tool_name}:{research_tool_sequence}"
+                            )
+                            research_tool_runs[tool_key] = (
+                                tool_name,
+                                research_tool_sequence,
+                                time.perf_counter(),
+                            )
+                            log_chat_info(
+                                trace_id,
+                                "research_tool_start",
+                                tool=tool_name,
+                                tool_sequence=research_tool_sequence,
+                            )
                         tool_stage = CHAT_TOOL_STAGE.get(
                             event.get("name", ""), "using_research_tool"
                         )
                         await emit_status(tool_stage, "active")
 
                     elif kind == "on_tool_end":
+                        if chat_mode == "research":
+                            tool_name = event.get("name", "unknown")
+                            tool_key = str(event.get("run_id") or f"{tool_name}:unknown")
+                            tool_run = research_tool_runs.pop(tool_key, None)
+                            tool_sequence = tool_run[1] if tool_run else 0
+                            tool_started_at = tool_run[2] if tool_run else None
+                            output = (event.get("data") or {}).get("output")
+                            tool_status = (
+                                "error"
+                                if getattr(output, "status", None) == "error"
+                                else "success"
+                            )
+                            log_chat_info(
+                                trace_id,
+                                "research_tool_end",
+                                tool=tool_name,
+                                tool_sequence=tool_sequence,
+                                status=tool_status,
+                                elapsed_ms=(
+                                    int((time.perf_counter() - tool_started_at) * 1000)
+                                    if tool_started_at is not None
+                                    else -1
+                                ),
+                            )
                         tool_stage = CHAT_TOOL_STAGE.get(
                             event.get("name", ""), "using_research_tool"
                         )
@@ -1019,6 +1063,27 @@ async def stream_chat_response(
                             if chat_mode == "research"
                             else "awaiting_model",
                             "active",
+                        )
+
+                    elif kind == "on_tool_error" and chat_mode == "research":
+                        tool_name = event.get("name", "unknown")
+                        tool_key = str(event.get("run_id") or f"{tool_name}:unknown")
+                        tool_run = research_tool_runs.pop(tool_key, None)
+                        tool_sequence = tool_run[1] if tool_run else 0
+                        tool_started_at = tool_run[2] if tool_run else None
+                        error = (event.get("data") or {}).get("error")
+                        log_chat_info(
+                            trace_id,
+                            "research_tool_end",
+                            tool=tool_name,
+                            tool_sequence=tool_sequence,
+                            status="error",
+                            elapsed_ms=(
+                                int((time.perf_counter() - tool_started_at) * 1000)
+                                if tool_started_at is not None
+                                else -1
+                            ),
+                            error_type=(type(error).__name__ if error else "unknown"),
                         )
 
                     elif (

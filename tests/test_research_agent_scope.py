@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -446,6 +447,127 @@ async def test_research_model_does_not_bind_skill_loader_when_off(monkeypatch):
 
     bound_names = {tool.name for tool in model.bind_tools.call_args.args[0]}
     assert "load_research_skills" not in bound_names
+
+
+@pytest.mark.asyncio
+async def test_research_model_logs_round_timing_without_content(monkeypatch):
+    from open_notebook.graphs import research_agent
+
+    logs: list[str] = []
+    bound_model = MagicMock()
+    bound_model.ainvoke = AsyncMock(
+        return_value=AIMessage(
+            content="private answer",
+            tool_calls=[
+                {
+                    "name": "search_notebook_evidence",
+                    "args": {"query": "private query"},
+                    "id": "call-2",
+                }
+            ],
+        )
+    )
+    model = MagicMock()
+    model.bind_tools.return_value = bound_model
+    monkeypatch.setattr(research_agent.logger, "info", logs.append)
+    monkeypatch.setattr(
+        research_agent.Prompter, "render", MagicMock(return_value="system")
+    )
+    monkeypatch.setattr(
+        research_agent,
+        "provision_langchain_model",
+        AsyncMock(return_value=model),
+    )
+
+    await research_agent.call_research_model(
+        {
+            "messages": [
+                HumanMessage(content="private question"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "list_notebook_sources",
+                            "args": {},
+                            "id": "call-1",
+                        }
+                    ],
+                ),
+                ToolMessage(content="private evidence", tool_call_id="call-1"),
+            ],
+            "notebook_id": "notebook:1",
+            "enable_web_search": False,
+            "enable_scientific_databases": False,
+            "allow_cross_notebook_discovery": False,
+            "research_skill_mode": "off",
+            "chat_trace": "trace-observe",
+        },
+        {},
+    )
+
+    start_log = next(
+        message for message in logs if "step=research_model_call_start" in message
+    )
+    end_log = next(
+        message for message in logs if "step=research_model_call_end" in message
+    )
+    assert "chat_trace=trace-observe" in start_log
+    assert "phase=agent" in start_log
+    assert "round_index=2" in start_log
+    assert "history_messages=3" in start_log
+    assert f"tool_count={len(research_agent.PRIVATE_TOOLS)}" in start_log
+    assert "enable_web_search=False" in start_log
+    assert "enable_scientific_databases=False" in start_log
+    assert "allow_cross_notebook_discovery=False" in start_log
+    assert "status=success" in end_log
+    assert "round_index=2" in end_log
+    assert "response_chars=14" in end_log
+    assert "tool_calls=1" in end_log
+    assert "private question" not in "\n".join(logs)
+    assert "private query" not in "\n".join(logs)
+    assert "private evidence" not in "\n".join(logs)
+    assert "private answer" not in "\n".join(logs)
+
+
+@pytest.mark.asyncio
+async def test_research_model_logs_cancellation_and_preserves_cancellation(monkeypatch):
+    from open_notebook.graphs import research_agent
+
+    logs: list[str] = []
+    bound_model = MagicMock()
+    bound_model.ainvoke = AsyncMock(side_effect=asyncio.CancelledError())
+    model = MagicMock()
+    model.bind_tools.return_value = bound_model
+    monkeypatch.setattr(research_agent.logger, "info", logs.append)
+    monkeypatch.setattr(
+        research_agent.Prompter, "render", MagicMock(return_value="system")
+    )
+    monkeypatch.setattr(
+        research_agent,
+        "provision_langchain_model",
+        AsyncMock(return_value=model),
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await research_agent.call_research_model(
+            {
+                "messages": [HumanMessage(content="question")],
+                "notebook_id": "notebook:1",
+                "enable_web_search": False,
+                "enable_scientific_databases": False,
+                "allow_cross_notebook_discovery": False,
+                "research_skill_mode": "off",
+                "chat_trace": "trace-cancelled",
+            },
+            {},
+        )
+
+    end_log = next(
+        message for message in logs if "step=research_model_call_end" in message
+    )
+    assert "chat_trace=trace-cancelled" in end_log
+    assert "status=cancelled" in end_log
+    assert "error_type=CancelledError" in end_log
 
 
 def test_research_request_scientific_databases_default_off_and_stage_mapping():

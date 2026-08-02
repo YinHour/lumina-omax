@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import time
 from typing import Annotated, Optional
 
 from ai_prompter import Prompter
@@ -255,6 +256,23 @@ async def call_research_model_final(
     return await _call_research_model(state, config, allow_tools=False)
 
 
+def _research_round_index(messages: list) -> int:
+    latest_human_index = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if isinstance(messages[index], HumanMessage)
+        ),
+        -1,
+    )
+    completed_tool_rounds = sum(
+        1
+        for message in messages[latest_human_index + 1 :]
+        if getattr(message, "tool_calls", [])
+    )
+    return completed_tool_rounds + 1
+
+
 async def _call_research_model(
     state: ResearchState,
     config: RunnableConfig,
@@ -325,9 +343,6 @@ async def _call_research_model(
         model_id = config.get("configurable", {}).get("model_id") or state.get(
             "model_override"
         )
-        model = await provision_langchain_model(
-            str(payload), model_id, "chat", max_tokens=8192, streaming=True
-        )
         tools = list(PRIVATE_TOOLS)
         if state.get("enable_web_search"):
             tools.append(tavily_search)
@@ -335,10 +350,76 @@ async def _call_research_model(
             tools.extend(SCIENTIFIC_DATABASE_TOOLS)
         if state.get("research_skill_mode", "auto") == "auto":
             tools.append(load_research_skills)
-        runnable = model.bind_tools(tools) if allow_tools else model
-        ai_message = await runnable.ainvoke(payload, config=config)
+        phase = "agent" if allow_tools else "final"
+        round_index = _research_round_index(history)
+        trace_id = state.get("chat_trace") or "unknown"
+        payload_chars = sum(
+            len(extract_text_content(message.content)) for message in payload
+        )
+        model_call_started_at = time.perf_counter()
+        logger.info(
+            "chat_trace={} step=research_model_call_start phase={} round_index={} "
+            "history_messages={} selected_messages={} history_estimated_tokens={} "
+            "payload_chars={} tool_count={} enable_web_search={} "
+            "enable_scientific_databases={} allow_cross_notebook_discovery={} "
+            "research_skill_mode={}".format(
+                trace_id,
+                phase,
+                round_index,
+                len(history),
+                len(payload),
+                history_window.estimated_tokens,
+                payload_chars,
+                len(tools) if allow_tools else 0,
+                bool(state.get("enable_web_search")),
+                bool(state.get("enable_scientific_databases")),
+                bool(state.get("allow_cross_notebook_discovery")),
+                state.get("research_skill_mode", "auto"),
+            )
+        )
+        try:
+            model = await provision_langchain_model(
+                str(payload), model_id, "chat", max_tokens=8192, streaming=True
+            )
+            runnable = model.bind_tools(tools) if allow_tools else model
+            ai_message = await runnable.ainvoke(payload, config=config)
+        except asyncio.CancelledError as exc:
+            logger.info(
+                "chat_trace={} step=research_model_call_end phase={} "
+                "round_index={} status=cancelled elapsed_ms={} error_type={}".format(
+                    trace_id,
+                    phase,
+                    round_index,
+                    int((time.perf_counter() - model_call_started_at) * 1000),
+                    type(exc).__name__,
+                )
+            )
+            raise
+        except Exception as exc:
+            logger.info(
+                "chat_trace={} step=research_model_call_end phase={} "
+                "round_index={} status=error elapsed_ms={} error_type={}".format(
+                    trace_id,
+                    phase,
+                    round_index,
+                    int((time.perf_counter() - model_call_started_at) * 1000),
+                    type(exc).__name__,
+                )
+            )
+            raise
         content = extract_text_content(ai_message.content)
         cleaned = clean_thinking_content(content)
+        logger.info(
+            "chat_trace={} step=research_model_call_end phase={} round_index={} "
+            "status=success elapsed_ms={} response_chars={} tool_calls={}".format(
+                trace_id,
+                phase,
+                round_index,
+                int((time.perf_counter() - model_call_started_at) * 1000),
+                len(cleaned),
+                len(getattr(ai_message, "tool_calls", []) or []),
+            )
+        )
         return {"messages": ai_message.model_copy(update={"content": cleaned})}
     except OpenNotebookError:
         raise
