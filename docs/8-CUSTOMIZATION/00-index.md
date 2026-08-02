@@ -4270,3 +4270,183 @@ exit 0
 - `chat_session:xrjo41ua80icvziib574` / trace `c7d0ec5bb09c`：13 条消息的长历史续问，外部能力关闭，3 个页面步骤，保存成功。
 - `chat_session:2sjuxf5ba1vjt6lmjguo` / trace `dca5cb5683b6`：公开标准比较，联网和科研数据库开启、跨笔记本关闭，持续进度与心跳正常，保存成功。
 - 三个会话均保留用于后续证据复核，未擅自删除。未验证项仅剩下一阶段的超时行为变更及其卡死/持续推进测试；本轮没有修改任何 timeout 参数。
+
+---
+
+## 58. LibreOffice 缺失根因调查与老 .doc 解析恢复（新增 2026-08-02）
+
+### 58.1 用户报告与根因
+
+用户报告「测 低缓凝型降失水剂调整实验记录-2020.4.17.doc」上传后解析失败。备份日志（`/Users/omax/YinShiMaintenance/lumina-omax/debug/logs/`，覆盖 7-19 ~ 8-02）确认失败链路：
+
+```text
+LibreOffice conversion failed: /Applications/LibreOffice.app/Contents/MacOS/soffice: No such file or directory
+→ MinerU: Error: No supported documents found under ...doc（MinerU 不支持老 .doc 二进制格式）
+→ Falling back to simple engine → Unable to determine file type for: ...doc
+→ Command open_notebook.process_source failed after 15 attempt(s)
+```
+
+共 8 个 .doc 源同因失败，每次重试 15 次。根因：`/opt/homebrew/bin/soffice` wrapper 指向 `/Applications/LibreOffice.app`，但该 app 缺失（brew caskroom 26.2.4 目录只有 LICENSEs/READMEs/wrapper 无 .app 本体）。
+
+### 58.2 LibreOffice 消失时间线重建（只读调查）
+
+| 时间 | 事件 | 证据 |
+|------|------|------|
+| 2026-05-10 13:53 | 首次安装 26.2.3 成功 | `INSTALL_RECEIPT.json` mtime + 内容（version 26.2.3） |
+| 2026-06-20 19:44 | 升级 26.2.4 完成 | `soffice.wrapper.sh`、`.metadata/26.2.4/`、LICENSEs quarantine 时间戳 `1781955833` 吻合 |
+| 2026-07-06 16:18 | LibreOffice 仍在运行 | `~/Library/Application Support/LibreOffice/4/user/registrymodifications.xcu` 最后更新 |
+| 2026-07-24 15:06 | 26.2.5 dmg 下载到缓存 | `recentcksum @1784876781`，sha256 与官方一致 |
+| 2026-07-29 12:20 | app 已消失 | worker 日志 `soffice: No such file or directory` |
+
+**结论**：app 在 7/6 ~ 7/29 之间消失，最可能发生在 7/24 15:06 的 26.2.5 升级尝试（先卸载旧 app、再装新版，中途失败/中断则留下残缺状态）。8/2 21:00 用户重装尝试失败（21:10:07 挂载 26.2.5 dmg → 21:10:14 卸载，仅 7 秒，无 /Applications 拷贝痕迹），brew 因 metadata 存在判定已安装后快速回滚。
+
+### 58.3 修复与回归验证
+
+- 用户手动执行 `brew install --cask libreoffice` 成功安装 **26.2.5**（`/Applications/LibreOffice.app` 就位，`soffice --headless --version` 正常）。
+- **Step 1 单元验证**：`convert_to_modern_office_format()` 转换用户报告文件成功生成 PDF（2 页，内容完整含表格）。
+- **Step 2 端到端回归**：对 DB 中仍处于失败状态的 `source:pkbfuc1bnflbs7zdxnnl`（2020.4.17.doc）直接提交 `open_notebook.process_source` worker 命令（retry API 因源无 notebook 引用被拒，改用 command_service 直提）：
+  - `Successfully processed source in 59.33s`（7/29 时 15 次重试全败）
+  - 写入 `full_text`（Markdown 化，含公式与表格），13 个 embedding chunks 落库
+  - KG 抽取 42 实体 / 40 关系落库
+- **Step 3 代码加固**：`open_notebook/utils/office_converter.py` 失败分支区分三种根因并输出可操作日志（命令缺失 / 转换退出码 / 退出 0 但无输出），行为契约不变（仍回退返回原路径，不破坏下游）。
+
+### 58.4 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/utils/office_converter.py` | 新增 `_log_conversion_failure()`；缺失命令预检；CalledProcessError 携带 stderr；退出 0 无输出检测；FileNotFoundError 分支 |
+| `tests/test_office_converter.py` | 新增 3 个失败分支测试（命令缺失 / 转换失败 / 无输出），断言 fallback 与可操作日志 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节记录 |
+
+### 58.5 验证
+
+```text
+.venv/bin/python -m pytest tests/test_office_converter.py -q
+12 passed（含 3 个新增）
+
+.venv/bin/python -m pytest tests/test_office_converter.py tests/test_excel_source_cleanup.py tests/test_sources_duplicates.py -q
+20 passed
+
+.venv/bin/python -m pytest tests/test_graphs.py::TestSaveSourceTitlePreservation tests/test_vision_descriptions.py -q
+27 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+408 passed, 33 deselected, 6 warnings
+
+.venv/bin/python -m ruff check open_notebook/utils/office_converter.py tests/test_office_converter.py
+All checks passed
+
+git diff --check
+exit 0
+```
+
+### 58.6 未尽事宜
+
+1. **DB 中其余 12 个未解析 .doc 源**：本轮只回归了用户报告的 1 个（pkbfuc1bnflbs7zdxnnl）。其余失败源（如 `mlqpojyj0vsp82j0f7m4`、`okq5fau4lkpwaoah72eq`、`v8wjxersfgpst73izaxn` 等）仍停留在 `full_text=null`，需用户从界面逐个重试或删除重建。
+2. **LibreOffice 升级健壮性**：7/24 升级中断导致 app 缺失的机制仍未在代码层防护（brew 层行为）。如需自动告警，可考虑 API 启动时探测 `_resolve_libreoffice_command()` 可用性并记录明确告警日志（当前仅在调用时失败才报错）。
+3. **`.doc` 直传回归**：MinerU 输出已确认包含公式（`$( \mathsf { 9 0 ^ { \circ } C } )$`），与 §42 公式渲染链路配合效果待用户浏览器端目检。
+
+---
+
+## 59. Research Agent 停滞超时与独立整体硬上限（新增 2026-08-02）
+
+§57 观测结论落地：Research 不再继承 Quick Chat 的 `CHAT_LLM_TIMEOUT_SECONDS=240` 一刀切预算，改为「有效进度停滞超时 + 独立整体硬上限」双机制。
+
+### 59.1 行为决策
+
+- 新增 `RESEARCH_AGENT_HARD_TIMEOUT_SECONDS`（默认 `600` 秒）：Research 整体硬上限，替代 Quick 语义的 240s。达到上限发送 `error_code=research_hard_timeout` SSE 错误。
+- 新增 `RESEARCH_AGENT_STALL_TIMEOUT_SECONDS`（默认 `120` 秒）：有效进度停滞窗口。停滞时钟**仅**由以下信号重置：
+  - 模型轮次完成（`on_chat_model_end`）
+  - 工具开始 / 结束 / 错误（`on_tool_start` / `on_tool_end` / `on_tool_error`）
+  - 公开回答增量（`ai_message` delta）
+  - **心跳和状态事件不计入有效进度**（§57 明确排除）。
+- 停滞触发时：取消 producer，发送 `error_code=research_stall` SSE 错误（含 `stall_seconds`），并跳过后续 transcript / 建议问题 / complete 流程。
+- Quick Chat 行为完全不变：仍走 `llm_timeout`（240s），停滞 watchdog 不启用（`chat_mode != "research"` 直接返回）。
+- 停滞检查周期 = `min(stall/3, 5s)`，下限 0.1s，避免高频轮询。
+- `finalize_task` 中 producer 被停滞取消产生的 `CancelledError` 视为预期（不重新抛出）；只有真实异常继续向外传播。
+
+### 59.2 前端
+
+- `error-bubble.ts`：`ChatErrorCode` 增加 `research_stall` / `research_hard_timeout`；`ErrorBubbleTemplates` 增加 `errorResearchStall` / `errorResearchHardTimeout`，按 code 分发本地化模板，未知 code 继续走 `errorGeneric` 兜底。
+- `useNotebookChat.ts` / `useSourceChat.ts` / `use-ask.ts` 三个调用点传入新模板键（Ask/Source Chat 不会收到这两个 code，但模板接口统一）。
+- i18n：`zh-CN` / `en-US` 各新增 2 条文案，指引用户拆分问题或减少启用能力；其余 7 个 locale 沿用 en-US fallback（与既有约定一致）。
+
+### 59.3 验证
+
+```text
+.venv/bin/python -m pytest tests/test_research_stall_timeout.py -q
+5 passed（停滞触发 / 工具重置 / 模型轮次+回答增量重置 / 硬上限 / Quick 不受影响）
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+413 passed, 33 deselected, 6 warnings
+
+.venv/bin/python -m ruff check api/routers/chat.py tests/test_research_stall_timeout.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test
+208 passed | 9 skipped
+
+cd frontend && npm run lint
+0 errors, 4 pre-existing warnings
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+### 59.4 未尽事宜
+
+1. **真实长 Research 回归**：默认 120s 停滞 / 600s 硬上限仍需在真实笔记本中用长 Research 任务校准；§57 观测的最长自然完成 192s 远低于 600s 上限，120s 停滞窗口可覆盖单轮综合（66s）+ 工具墙钟（17.5s）的最坏组合，但真实模型波动下的误杀率待观察。
+2. **参数可调**：两个环境变量已加入 `.env.production.example`；如用户场景频繁触发停滞，可先调大 `RESEARCH_AGENT_STALL_TIMEOUT_SECONDS`。
+3. **错误气泡文案验收**：`research_stall` / `research_hard_timeout` 气泡的中文文案与诊断段需用户在真实浏览器中目检一次。
+
+### 59.5 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `api/routers/chat.py` | `RESEARCH_AGENT_HARD_TIMEOUT_SECONDS` / `RESEARCH_AGENT_STALL_TIMEOUT_SECONDS`；`mark_research_progress()`；`run_stall_watchdog()`；`finalize_producer` 按模式选择超时；`research_stall` / `research_hard_timeout` SSE 错误；停滞后跳过 transcript/建议流程；`CancelledError` 预期处理 |
+| `.env.production.example` | 两个 Research 超时环境变量说明 |
+| `frontend/src/lib/chat/error-bubble.ts` | 新 error code 类型与模板接口 |
+| `frontend/src/lib/hooks/useNotebookChat.ts` / `useSourceChat.ts` / `use-ask.ts` | 传入新模板键 |
+| `frontend/src/lib/locales/en-US/index.ts` / `zh-CN/index.ts` | `errorResearchStall` / `errorResearchHardTimeout` 文案 |
+| `frontend/src/lib/chat/error-bubble.test.ts` | 新增 research_stall / research_hard_timeout 渲染用例 |
+| `tests/test_research_stall_timeout.py` | **新增** — 停滞触发、进度重置（工具/模型轮次/回答增量）、硬上限、Quick 回归 |
+
+---
+
+## 60. 新加入笔记本的源默认改为引用见解（新增 2026-08-02）
+
+### 60.1 问题与决策
+
+- 用户习惯把大量文档作为单个笔记本的源。§21.5 曾把「新增来源默认参考全文」，导致首次提问时一次性携带全部来源全文，上下文膨胀、首次回答等待时间过长，影响首用体验。
+- 现将新加入笔记本的源**默认设为「引用见解」（insights）**，而非「全文」（full）。用户仍可在每个源卡片上手动切换为全文/不参考，行为不变。
+- 笔记默认仍为全文（未改动）；`localStorage` 中已持久化的历史选择不受影响，仅对新出现的源（`contextSelections` 中无记录）应用新默认。
+
+### 60.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/app/(dashboard)/notebooks/[id]/page.tsx` | 新源默认 `'full'` → `'insights'`（含注释说明） |
+
+### 60.3 验证
+
+```text
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test
+208 passed | 9 skipped
+
+cd frontend && npm run lint
+0 errors, 4 pre-existing warnings
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+### 60.4 未尽事宜
+
+1. 后端 `/chat/context` 的 `insights` 模式依赖该源已有 insights 生成；新上传源在嵌入/insight 未完成时提问，insights 模式可能取到空见解。行为是否可接受需在真实笔记本中目检。
+2. 已存在笔记本的旧 `localStorage` 缓存中源仍为 `full`；如需整体切换可引导用户清除浏览器存储或逐个切换。

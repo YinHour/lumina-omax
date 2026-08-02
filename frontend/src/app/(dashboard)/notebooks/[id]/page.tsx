@@ -122,7 +122,10 @@ export default function NotebookPage({ params }: { params: Promise<{ id: string 
         let changed = false
         sources.forEach(source => {
           if (newSourceSelections[source.id] === undefined) {
-            newSourceSelections[source.id] = 'full'
+            // New sources default to 'insights' (not 'full') so that notebooks
+            // with many documents keep the first question's context small and
+            // the first answer arrives quickly. Users can switch per-source.
+            newSourceSelections[source.id] = 'insights'
             changed = true
           }
         })
