@@ -4,6 +4,9 @@ import { buildErrorBubbleBody } from './error-bubble'
 const templates = {
   errorLlmTimeoutPrefix: '⚠️ System notice: ',
   errorLlmTimeout: 'Model response timed out after {seconds}s. Try shrinking sources.',
+  errorResearchStall: 'Research Agent made no effective progress. Narrow the question.',
+  errorResearchHardTimeout:
+    'Research Agent exceeded the overall limit of {seconds}s. Narrow the scope.',
   errorAuthentication: 'API key is invalid.',
   errorRateLimit: 'Rate-limited. Wait a minute.',
   errorConfiguration: 'No default model configured.',
@@ -48,6 +51,37 @@ describe('buildErrorBubbleBody', () => {
     expect(body).toContain('error_code=authentication')
     // No timeout_seconds for non-timeout codes.
     expect(body).not.toContain('timeout_seconds=')
+  })
+
+  it('renders research_stall with its own template and no seconds', () => {
+    const { body, code } = buildErrorBubbleBody(
+      {
+        type: 'error',
+        error_code: 'research_stall',
+        message: 'Research Agent made no progress for 120s.',
+      },
+      templates,
+    )
+    expect(code).toBe('research_stall')
+    expect(body).toContain('no effective progress')
+    expect(body).toContain('error_code=research_stall')
+    expect(body).not.toContain('timeout_seconds=')
+  })
+
+  it('renders research_hard_timeout with seconds substituted', () => {
+    const { body, code } = buildErrorBubbleBody(
+      {
+        type: 'error',
+        error_code: 'research_hard_timeout',
+        timeout_seconds: 600,
+        message: 'Research Agent exceeded the overall time limit.',
+      },
+      templates,
+    )
+    expect(code).toBe('research_hard_timeout')
+    expect(body).toContain('limit of 600s')
+    expect(body).toContain('error_code=research_hard_timeout')
+    expect(body).toContain('timeout_seconds=600')
   })
 
   it('falls back to errorGeneric for unknown codes but still embeds server message', () => {

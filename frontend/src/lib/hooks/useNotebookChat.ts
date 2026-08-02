@@ -730,6 +730,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
           const { body: bubbleBody } = buildErrorBubbleBody(data, {
             errorLlmTimeoutPrefix: t.chat.errorLlmTimeoutPrefix,
             errorLlmTimeout: t.chat.errorLlmTimeoutNotebook,
+            errorResearchStall: t.chat.errorResearchStall,
+            errorResearchHardTimeout: t.chat.errorResearchHardTimeout,
             errorAuthentication: t.chat.errorAuthentication,
             errorRateLimit: t.chat.errorRateLimit,
             errorConfiguration: t.chat.errorConfiguration,

@@ -73,6 +73,17 @@ CHAT_STREAM_HEARTBEAT_SECONDS = _env_positive_float(
     "CHAT_STREAM_HEARTBEAT_SECONDS", 5.0
 )
 
+# Research Agent has its own timeout semantics (see §57): the overall hard
+# limit is larger than the Quick Chat budget, and a separate stall watchdog
+# cancels the run when no effective progress is made (model round completion,
+# tool start/end, or a public answer delta) within the stall window.
+RESEARCH_AGENT_HARD_TIMEOUT_SECONDS = _env_positive_float(
+    "RESEARCH_AGENT_HARD_TIMEOUT_SECONDS", 600.0
+)
+RESEARCH_AGENT_STALL_TIMEOUT_SECONDS = _env_positive_float(
+    "RESEARCH_AGENT_STALL_TIMEOUT_SECONDS", 120.0
+)
+
 
 def fallback_followup_questions(answer: str) -> list[str]:
     """Return deterministic follow-up questions when model generation fails."""
@@ -883,6 +894,17 @@ async def stream_chat_response(
         research_tool_sequence = 0
         research_tool_runs: dict[str, tuple[str, int, float]] = {}
 
+        # Effective-progress tracking for the Research stall watchdog. Only
+        # meaningful signals reset the stall clock: a completed model round, a
+        # tool start/end, or a public answer delta. Heartbeats and status
+        # events deliberately do NOT count as progress (§57).
+        research_last_progress_at = time.perf_counter()
+        research_stall_triggered = False
+
+        def mark_research_progress() -> None:
+            nonlocal research_last_progress_at
+            research_last_progress_at = time.perf_counter()
+
         def observe_ai_chunk(
             content: str, stream_mode: Literal["delta", "buffered"]
         ) -> bool:
@@ -929,6 +951,8 @@ async def stream_chat_response(
                 return
             if observe_ai_chunk(content, stream_mode):
                 await emit_status("model_streaming", "active")
+            if chat_mode == "research":
+                mark_research_progress()
             ai_event = {
                 "type": "ai_message",
                 "content": content,
@@ -1024,6 +1048,7 @@ async def stream_chat_response(
                                 tool=tool_name,
                                 tool_sequence=research_tool_sequence,
                             )
+                            mark_research_progress()
                         tool_stage = CHAT_TOOL_STAGE.get(
                             event.get("name", ""), "using_research_tool"
                         )
@@ -1054,6 +1079,7 @@ async def stream_chat_response(
                                     else -1
                                 ),
                             )
+                            mark_research_progress()
                         tool_stage = CHAT_TOOL_STAGE.get(
                             event.get("name", ""), "using_research_tool"
                         )
@@ -1085,6 +1111,7 @@ async def stream_chat_response(
                             ),
                             error_type=(type(error).__name__ if error else "unknown"),
                         )
+                        mark_research_progress()
 
                     elif (
                         kind == "on_custom_event"
@@ -1094,6 +1121,8 @@ async def stream_chat_response(
                         await put_output(context_usage_sse_event(usage_data))
 
                     elif kind == "on_chat_model_end":
+                        if chat_mode == "research":
+                            mark_research_progress()
                         if (
                             "output" in event["data"]
                             and "content" in event["data"]["output"]
@@ -1143,13 +1172,64 @@ async def stream_chat_response(
             except asyncio.CancelledError:
                 return
 
+        async def run_stall_watchdog() -> None:
+            """Cancel a stalled Research run when no effective progress occurs.
+
+            Only active for ``chat_mode == "research"``. The stall clock is
+            reset by model round completion, tool start/end, or a public answer
+            delta — never by heartbeats or status events (§57).
+            """
+            nonlocal research_stall_triggered
+            if chat_mode != "research":
+                return
+            check_interval = max(
+                min(RESEARCH_AGENT_STALL_TIMEOUT_SECONDS / 3.0, 5.0), 0.1
+            )
+            try:
+                while True:
+                    await asyncio.sleep(check_interval)
+                    if producer_task.done():
+                        return
+                    stalled_for = (
+                        time.perf_counter() - research_last_progress_at
+                    )
+                    if stalled_for >= RESEARCH_AGENT_STALL_TIMEOUT_SECONDS:
+                        research_stall_triggered = True
+                        log_chat_info(
+                            trace_id,
+                            "research_stall",
+                            stall_seconds=RESEARCH_AGENT_STALL_TIMEOUT_SECONDS,
+                            elapsed_ms=elapsed_ms(started_at),
+                        )
+                        stall_event = {
+                            "type": "error",
+                            "error_code": "research_stall",
+                            "stall_seconds": RESEARCH_AGENT_STALL_TIMEOUT_SECONDS,
+                            "message": (
+                                f"Research Agent made no progress for "
+                                f"{int(RESEARCH_AGENT_STALL_TIMEOUT_SECONDS)}s. "
+                                "The run was cancelled to avoid waiting forever."
+                            ),
+                        }
+                        await put_output(f"data: {json.dumps(stall_event)}\n\n")
+                        producer_task.cancel()
+                        return
+            except asyncio.CancelledError:
+                return
+
         producer_task = asyncio.create_task(run_graph_producer())
         heartbeat_task = asyncio.create_task(run_heartbeat_emitter())
+        stall_watchdog_task = asyncio.create_task(run_stall_watchdog())
 
         async def finalize_producer() -> None:
             try:
                 await asyncio.wait_for(
-                    producer_task, timeout=CHAT_LLM_TIMEOUT_SECONDS
+                    producer_task,
+                    timeout=(
+                        RESEARCH_AGENT_HARD_TIMEOUT_SECONDS
+                        if chat_mode == "research"
+                        else CHAT_LLM_TIMEOUT_SECONDS
+                    ),
                 )
             finally:
                 await out_queue.put(_PRODUCER_DONE)
@@ -1167,9 +1247,15 @@ async def stream_chat_response(
             raise
         finally:
             heartbeat_task.cancel()
+            stall_watchdog_task.cancel()
             if not producer_task.done():
                 producer_task.cancel()
-            for task in (heartbeat_task, producer_task, finalize_task):
+            for task in (
+                heartbeat_task,
+                stall_watchdog_task,
+                producer_task,
+                finalize_task,
+            ):
                 try:
                     await task
                 except (asyncio.CancelledError, asyncio.TimeoutError):
@@ -1179,10 +1265,23 @@ async def stream_chat_response(
                     pass
 
         # Re-raise underlying producer error if any (preserved across cancellation).
+        # A CancelledError here is expected when the stall watchdog cancelled the
+        # producer — it already emitted the error event and set the flag below.
         if finalize_task.done():
-            exc = finalize_task.exception()
-            if exc is not None:
-                raise exc
+            if finalize_task.cancelled():
+                # producer was cancelled by the stall watchdog (or outer cancel)
+                pass
+            else:
+                exc = finalize_task.exception()
+                if exc is not None and not isinstance(
+                    exc, asyncio.CancelledError
+                ):
+                    raise exc
+
+        if research_stall_triggered:
+            # The stall watchdog already emitted the error event and cancelled
+            # the producer. Skip transcript / suggestions / complete flow.
+            return
 
         answer = "".join(final_answer_parts)
         log_chat_info(
@@ -1236,28 +1335,42 @@ async def stream_chat_response(
     except asyncio.TimeoutError:
         import traceback
 
+        if chat_mode == "research":
+            timeout_seconds = RESEARCH_AGENT_HARD_TIMEOUT_SECONDS
+            error_code = "research_hard_timeout"
+            message = (
+                f"Research Agent exceeded the overall "
+                f"{int(timeout_seconds)}s time limit. "
+                "The run was cancelled; consider narrowing the question or "
+                "reducing the enabled research capabilities."
+            )
+        else:
+            timeout_seconds = CHAT_LLM_TIMEOUT_SECONDS
+            error_code = "llm_timeout"
+            message = (
+                f"Model response timed out after {int(timeout_seconds)}s. "
+                "Try shrinking the included sources or notes and ask again."
+            )
+
         logger.error(
             "chat_trace={} step=request_timeout total_ms={} timeout_seconds={}\n{}".format(
                 trace_id,
                 elapsed_ms(started_at),
-                CHAT_LLM_TIMEOUT_SECONDS,
+                timeout_seconds,
                 traceback.format_exc(),
             )
         )
         log_chat_info(
             trace_id,
             "request_timeout",
-            timeout_seconds=CHAT_LLM_TIMEOUT_SECONDS,
+            timeout_seconds=timeout_seconds,
             total_ms=elapsed_ms(started_at),
         )
         timeout_event = {
             "type": "error",
-            "error_code": "llm_timeout",
-            "timeout_seconds": CHAT_LLM_TIMEOUT_SECONDS,
-            "message": (
-                f"Model response timed out after {int(CHAT_LLM_TIMEOUT_SECONDS)}s. "
-                "Try shrinking the included sources or notes and ask again."
-            ),
+            "error_code": error_code,
+            "timeout_seconds": timeout_seconds,
+            "message": message,
         }
         yield f"data: {json.dumps(timeout_event)}\n\n"
     except Exception as e:

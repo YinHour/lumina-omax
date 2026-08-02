@@ -170,6 +170,8 @@ export function useAsk() {
                 const { body } = buildErrorBubbleBody(data, {
                   errorLlmTimeoutPrefix: t.chat.errorLlmTimeoutPrefix,
                   errorLlmTimeout: t.chat.errorLlmTimeoutAsk,
+                  errorResearchStall: t.chat.errorResearchStall,
+                  errorResearchHardTimeout: t.chat.errorResearchHardTimeout,
                   errorAuthentication: t.chat.errorAuthentication,
                   errorRateLimit: t.chat.errorRateLimit,
                   errorConfiguration: t.chat.errorConfiguration,

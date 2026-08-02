@@ -7,6 +7,8 @@
  */
 export type ChatErrorCode =
   | 'llm_timeout'
+  | 'research_stall'
+  | 'research_hard_timeout'
   | 'authentication'
   | 'rate_limit'
   | 'configuration'
@@ -19,6 +21,8 @@ export type ChatErrorCode =
 export interface ErrorBubbleTemplates {
   errorLlmTimeoutPrefix: string
   errorLlmTimeout: string
+  errorResearchStall: string
+  errorResearchHardTimeout: string
   errorAuthentication: string
   errorRateLimit: string
   errorConfiguration: string
@@ -69,6 +73,8 @@ export function buildErrorBubbleBody(
 
   const codeTemplates: Partial<Record<string, string>> = {
     llm_timeout: templates.errorLlmTimeout,
+    research_stall: templates.errorResearchStall,
+    research_hard_timeout: templates.errorResearchHardTimeout,
     authentication: templates.errorAuthentication,
     rate_limit: templates.errorRateLimit,
     configuration: templates.errorConfiguration,
