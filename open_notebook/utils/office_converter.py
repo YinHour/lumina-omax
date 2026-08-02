@@ -51,6 +51,23 @@ def get_libreoffice_command() -> str:
     return command
 
 
+def _log_conversion_failure(file_path: str, command: str, reason: str) -> None:
+    """Log an actionable failure message for office conversion.
+
+    Keeps the fallback contract (callers receive the original path) while making
+    the root cause visible in logs instead of the misleading downstream
+    "Unable to determine file type" error.
+    """
+    logger.error(
+        "Office conversion failed for %s using command %r: %s. "
+        "Install LibreOffice (e.g. `brew install --cask libreoffice`) or set "
+        "SOFFICE_PATH / LIBREOFFICE_PATH, then retry processing the source.",
+        file_path,
+        command,
+        reason,
+    )
+
+
 def get_libreoffice_command_info() -> Dict[str, object]:
     command, source = _resolve_libreoffice_command()
     if os.path.isabs(command):
@@ -91,6 +108,11 @@ def convert_to_modern_office_format(file_path: str) -> str:
     
     try:
         cmd = get_libreoffice_command()
+        if not cmd or not os.path.exists(cmd):
+            _log_conversion_failure(
+                file_path, cmd, "LibreOffice executable not found"
+            )
+            return file_path
         subprocess.run([
             cmd, "--headless", "--invisible", "--nodefault", 
             "--convert-to", conversion_target,
@@ -103,9 +125,18 @@ def convert_to_modern_office_format(file_path: str) -> str:
         if os.path.exists(new_file_path):
             logger.info(f"Successfully converted to {new_file_path}")
             return new_file_path
+        _log_conversion_failure(
+            file_path, cmd,
+            f"command exited 0 but {conversion_target} output was not created",
+        )
             
+    except FileNotFoundError:
+        _log_conversion_failure(
+            file_path, cmd, "LibreOffice executable not found"
+        )
     except subprocess.CalledProcessError as e:
-        logger.error(f"LibreOffice conversion failed: {e.stderr.decode()}")
+        stderr = (e.stderr or b"").decode(errors="replace").strip()
+        _log_conversion_failure(file_path, cmd, f"exit code {e.returncode}: {stderr}")
     except Exception as e:
         logger.error(f"Error during office conversion: {str(e)}")
         

@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from open_notebook.utils.office_converter import convert_to_modern_office_format
@@ -129,3 +131,86 @@ def test_extension_case_and_multiple_dots_handled_correctly(tmp_path, monkeypatc
     doc_result = convert_to_modern_office_format(str(doc_with_dots))
     assert isinstance(doc_result, str)
     assert calls["count"] >= 1
+
+
+def test_missing_libreoffice_logs_actionable_error_and_falls_back(
+    tmp_path, monkeypatch, caplog
+):
+    """A missing LibreOffice binary must not crash and must log an actionable message."""
+    doc_file = tmp_path / "experiment.doc"
+    doc_file.write_bytes(b"placeholder")
+
+    monkeypatch.setattr(
+        "open_notebook.utils.office_converter.get_libreoffice_command",
+        lambda: "/nonexistent/soffice",
+    )
+
+    result = convert_to_modern_office_format(str(doc_file))
+
+    assert result == str(doc_file)
+    assert any("LibreOffice executable not found" in r.message for r in caplog.records)
+    assert any("brew install --cask libreoffice" in r.message for r in caplog.records)
+
+
+def test_libreoffice_failure_logs_exit_code_and_falls_back(
+    tmp_path, monkeypatch, caplog
+):
+    """A failing LibreOffice run must log exit code/stderr and fall back to the original path."""
+    doc_file = tmp_path / "experiment.doc"
+    doc_file.write_bytes(b"placeholder")
+
+    monkeypatch.setattr(
+        "open_notebook.utils.office_converter.get_libreoffice_command",
+        lambda: "/bin/ls",
+    )
+
+    class FakeResult:
+        returncode = 1
+        stderr = b"soffice: cannot open"
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, "soffice", output=None, stderr=b"soffice: cannot open")
+
+    monkeypatch.setattr(
+        "open_notebook.utils.office_converter.subprocess.run",
+        fake_run,
+        raising=False,
+    )
+
+    result = convert_to_modern_office_format(str(doc_file))
+
+    assert result == str(doc_file)
+    assert any("exit code 1" in r.message for r in caplog.records)
+    assert any("soffice: cannot open" in r.message for r in caplog.records)
+
+
+def test_libreoffice_success_but_missing_output_logs_warning(
+    tmp_path, monkeypatch, caplog
+):
+    """A successful exit code without output file must log a clear reason."""
+    doc_file = tmp_path / "experiment.doc"
+    doc_file.write_bytes(b"placeholder")
+
+    monkeypatch.setattr(
+        "open_notebook.utils.office_converter.get_libreoffice_command",
+        lambda: "/bin/ls",
+    )
+
+    def fake_run(*args, **kwargs):
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr(
+        "open_notebook.utils.office_converter.subprocess.run",
+        fake_run,
+        raising=False,
+    )
+
+    result = convert_to_modern_office_format(str(doc_file))
+
+    assert result == str(doc_file)
+    assert any(
+        "output was not created" in r.message for r in caplog.records
+    )
