@@ -4516,3 +4516,66 @@ exit 0
 1. **真实验收**：在设置页填入 Firecrawl API Key 保存 → `GET /api/settings` 确认持久化 → 对之前失败的微信源（`source:9188fu4ly1sx3wp8kx4d`）在 UI 重试，确认导入/嵌入/KG 链路。此步需用户提供有效 Firecrawl Key，本轮未执行。
 2. **无 key 时仍会失败**：若设置页未填 key 而 url 引擎为 firecrawl，失败表现与本轮修复前相同；后续如需彻底防呆可补「无 key 降级 auto」守卫。
 3. **微信反爬不确定性**：Firecrawl 对微信验证页的穿透能力未在本轮验证，若失败按 61.2 已知限制处理。
+
+---
+
+## 62. Research Agent 语义检索静默为空：surrealdb 客户端多语句截断修复（新增 2026-08-03）
+
+### 62.1 问题现象
+
+- 笔记本中使用「科研 Agent」提问时，回答中出现「语义检索未返回结果，说明该笔记本内可能未对 PDF 内容做全文语义索引」。
+- 实查发现笔记本 5 个源全部有嵌入（160 条 `source_embedding`，1024 维，与当前嵌入模型一致），真实余弦相似度 0.21-0.81，数据完全正常；`search_notebook_evidence` 工具确实执行了（trace `3c42f57fc804` 中 863ms 完成），但**工具始终拿到空结果**。
+- 那句话是 LLM 对空工具结果的推测性解释，不是系统检测，误导性较强。
+
+### 62.2 根因
+
+- `scoped_vector_search`（`open_notebook/domain/notebook.py:911-950`）使用 `LET $source_chunks = (...); ...; RETURN SELECT ...` 多语句查询。
+- `surrealdb` Python 客户端（1.0.7 / 1.0.8 / 2.0.0 均如此，`async_ws.py` 的 `query()` 固定 `return response["result"][0]["result"]`）**只返回第一条语句的结果**；`LET` 语句的结果是 `None`，后续 `RETURN` 的结果被静默丢弃。
+- 服务器本身正确返回全部语句结果（实测 `LET ...; RETURN array::len(...); RETURN 'after'` → 三条结果齐全）。这是客户端设计行为，不是 1.0.8 的回归；v3.0.0（alpha）才改为返回全部语句（破坏性 API，不适合生产）。
+- 全库唯一使用多语句查询的代码就是 `scoped_vector_search`，因此只影响 Research Agent 的 `search_notebook_evidence` 与 `discover_across_notebooks`；Ask 全局搜索走 `fn::vector_search` 单语句不受影响。`repo_transaction` 无影响（服务器把 BEGIN/CREATE/COMMIT 折叠为单条结果）。
+
+### 62.3 决策与实现
+
+- **不升级客户端**：最新稳定版 2.0.0 源码确认 `query()` 同款截断，升级解决不了问题；3.0.0-alpha 是破坏性变更不适合生产。
+- **方案 A（实施）**：`repo_query` 改用 `connection.query_raw()` 自行解析完整响应，新增 `_extract_query_results()`：
+  - 响应级 `error` → `RuntimeError`（保持事务冲突重试语义，`_is_transaction_conflict` 依赖消息关键字）
+  - 逐条检查语句 `status == "ERR"` → `RuntimeError`（比原实现对后续语句错误的检查更完整）
+  - 返回**最后一条语句**的 `result`（多语句惯例：数据在末尾 RETURN；单语句与原先 `[0]` 完全等价）
+- 客户端版本无关：将来升级 2.0.0 或迁移 3.0.0 均不受影响。
+
+### 62.4 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/database/repository.py` | 新增 `_extract_query_results()`；`repo_query` 改用 `query_raw` 并解析末语句结果 |
+| `tests/test_repository_query.py` | **新增** — 解析函数单测（单语句/多语句/末语句 None/语句级 ERR/响应级 ERR/非 dict 透传）+ repo_query 用 query_raw 的 mock 测试 |
+
+### 62.5 验证
+
+```text
+真实 DB 回归：
+  LET+RETURN len  -> 3（修复前 None）
+  单语句 RETURN   -> [1,2,3]（行为不变）
+  事务 round-trip -> 返回创建的记录（行为不变）
+  响应级语法错误  -> RuntimeError 抛出
+  notebook_vector_search('高温缓凝型降失水剂') -> 9 条（修复前 0 条），
+    相似度 0.71-0.81，含 source chunks 与 source_insight
+
+.venv/bin/python -m pytest tests/test_repository_query.py -q
+9 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+430 passed, 33 deselected, 8 warnings
+
+.venv/bin/python -m ruff check open_notebook/database/repository.py tests/test_repository_query.py
+All checks passed
+
+git diff --check
+exit 0
+```
+
+### 62.6 未尽事宜
+
+1. **真实 Research Agent 回归**：语义检索链路已在函数级验证；建议在浏览器中用真实笔记本再跑一次科研 Agent，确认回答引用真实文档内容、不再出现「语义检索未返回结果」误导文案（此文案只在检索真为空时才会合理出现）。
+2. **历史回答**：此前基于空检索生成的回答仍保留在会话记录中，不会自动修正。
+3. **客户端升级**：本次不升级 surrealdb 客户端；如后续升级 2.0.0，`repo_query` 修复继续有效，无需联动改动。

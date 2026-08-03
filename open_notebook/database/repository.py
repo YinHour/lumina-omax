@@ -244,6 +244,36 @@ async def db_connection():
         await pool.release(db)
 
 
+def _extract_query_results(response: Any) -> Any:
+    """Extract results from a raw SurrealDB query response.
+
+    The surrealdb client's ``query()`` only returns the first statement's
+    result (``response["result"][0]["result"]``), silently dropping data from
+    multi-statement queries such as ``LET ...; RETURN ...``. Parse the raw
+    response here instead and return the last statement's result - the
+    conventional final RETURN - while keeping single-statement behavior
+    unchanged. Any statement-level ``ERR`` status is raised as RuntimeError
+    so transaction-conflict retry semantics are preserved.
+    """
+    if not isinstance(response, dict):
+        return response
+    if response.get("error") is not None:
+        error = response.get("error")
+        if isinstance(error, dict):
+            raise RuntimeError(error.get("message", "Unknown SurrealDB error"))
+        raise RuntimeError(str(error))
+    statements = response.get("result")
+    if not isinstance(statements, list) or not statements:
+        return response
+    for item in statements:
+        if isinstance(item, dict) and item.get("status") == "ERR":
+            raise RuntimeError(item.get("detail", "Unknown SurrealDB error"))
+    last = statements[-1]
+    if isinstance(last, dict):
+        return last.get("result")
+    return response
+
+
 async def repo_query(
     query_str: str, vars: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
@@ -251,15 +281,12 @@ async def repo_query(
 
     async with db_connection() as connection:
         try:
-            result = parse_record_ids(
-                await _run_with_query_timeout(connection.query(query_str, vars))
+            raw_response = await _run_with_query_timeout(
+                connection.query_raw(query_str, vars)
             )
+            result = parse_record_ids(_extract_query_results(raw_response))
             if isinstance(result, str):
                 raise RuntimeError(result)
-            if isinstance(result, list):
-                for item in result:
-                    if isinstance(item, dict) and item.get("status") == "ERR":
-                        raise RuntimeError(item.get("detail", "Unknown SurrealDB error"))
             return result
         except RuntimeError as e:
             # RuntimeError is raised for retriable transaction conflicts - log at debug to avoid noise
