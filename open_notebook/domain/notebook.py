@@ -718,6 +718,29 @@ class ChatSession(ObjectModel):
         return await self.relate("refers_to", source_id)
 
 
+_TEXT_SEARCH_SUBSTRING_SOURCE_SQL = """
+    SELECT id, id AS parent_id, title, 0.5 AS relevance
+    FROM source
+    WHERE string::contains(string::lowercase(title ?? ''), string::lowercase($keyword))
+       OR string::contains(string::lowercase(full_text ?? ''), string::lowercase($keyword))
+"""
+
+_TEXT_SEARCH_SUBSTRING_INSIGHT_SQL = """
+    SELECT id, source.id AS parent_id,
+           insight_type + ' - ' + (source.title OR '') AS title,
+           0.5 AS relevance
+    FROM source_insight
+    WHERE string::contains(string::lowercase(content ?? ''), string::lowercase($keyword))
+"""
+
+_TEXT_SEARCH_SUBSTRING_NOTE_SQL = """
+    SELECT id, id AS parent_id, title, 0.5 AS relevance
+    FROM note
+    WHERE string::contains(string::lowercase(title ?? ''), string::lowercase($keyword))
+       OR string::contains(string::lowercase(content ?? ''), string::lowercase($keyword))
+"""
+
+
 async def text_search(
     keyword: str, results: int, source: bool = True, note: bool = True
 ):
@@ -731,7 +754,33 @@ async def text_search(
             """,
             {"keyword": keyword, "results": results, "source": source, "note": note},
         )
-        return search_results
+        search_results = search_results or []
+
+        # BM25 full-text search uses word-token matching and the configured
+        # analyzer has no Chinese tokenizer, so continuous CJK text is indexed
+        # as a single token and substring queries silently miss (§63). Append a
+        # substring fallback so Chinese terms match titles/full text/insights
+        # the same way the sources list filter does. BM25 hits keep priority.
+        if keyword.strip():
+            substring_parts = []
+            if source:
+                substring_parts.append(_TEXT_SEARCH_SUBSTRING_SOURCE_SQL)
+                substring_parts.append(_TEXT_SEARCH_SUBSTRING_INSIGHT_SQL)
+            if note:
+                substring_parts.append(_TEXT_SEARCH_SUBSTRING_NOTE_SQL)
+            seen: set[str] = {str(item.get("id")) for item in search_results}
+            for substring_sql in substring_parts:
+                substring_results = await repo_query(
+                    substring_sql, {"keyword": keyword, "results": results}
+                )
+                for item in substring_results or []:
+                    item_id = str(item.get("id"))
+                    if item_id in seen:
+                        continue
+                    seen.add(item_id)
+                    search_results.append(item)
+
+        return search_results[:results]
     except Exception as e:
         logger.error(f"Error performing text search: {str(e)}")
         logger.exception(e)

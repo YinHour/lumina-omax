@@ -4579,3 +4579,65 @@ exit 0
 1. **真实 Research Agent 回归**：语义检索链路已在函数级验证；建议在浏览器中用真实笔记本再跑一次科研 Agent，确认回答引用真实文档内容、不再出现「语义检索未返回结果」误导文案（此文案只在检索真为空时才会合理出现）。
 2. **历史回答**：此前基于空检索生成的回答仍保留在会话记录中，不会自动修正。
 3. **客户端升级**：本次不升级 surrealdb 客户端；如后续升级 2.0.0，`repo_query` 修复继续有效，无需联动改动。
+
+---
+
+## 63. 全局文本搜索中文漏匹配：子串兜底（新增 2026-08-03）
+
+### 63.1 问题现象与根因
+
+- 用户反馈：源列表筛选「中海油冲洗剂」12 条，全局文本搜索（`/api/search` type=text）只有 3 条。
+- 两种搜索语义不同：源列表用 `string::contains(lowercase(title), ...)` **子串包含**（sources.py:270）；文本搜索走 `fn::text_search` 的 **BM25 词元精确匹配**（migrations/1.surrealql:65-72 `my_analyzer`）。
+- 根因是平台能力限制：`my_analyzer` 分词器 `blank,class,camel,punct + snowball(english), lowercase` **无中文分词**（SurrealDB 2.6.5 文档确认：snowball 支持语言无中文，无 jieba）。连续汉字「中海油冲洗剂研发报告2025.7.7」被 class 分词器切为**一个整体 token**，与查询词元「中海油冲洗剂」不相等 → BM25 不命中。
+- 3 条命中不是模糊匹配，而是文档恰好存在**词元边界**把关键词切了出来（实测 `search::analyze` 定位）：
+  1. title 含全角括号的「（近期白油对比）」→ punct 切出独立 token；
+  2. 两份报告 full_text 中 `<td>中海油冲洗剂</td>` HTML 表格标签的 `<`/`>` 切出独立 token。
+  3. 佐证：查询「冲洗剂」（中间子串）命中 11 条，因正文有「1.冲洗剂」数字编号标点边界；「冲洗剂研发」（无边界）0 条。
+
+### 63.2 决策与实现
+
+- **方案 A（实施）：查询层子串兜底**——`text_search()` 在 BM25 结果之后追加 `CONTAINS` 子串查询（source.title / source.full_text / source_insight.content / note.title / note.content），Python 侧去重合并：
+  - BM25 命中保持在前（真实 relevance），子串兜底统一 `relevance=0.5` 排后，最终截断 `results` 条；
+  - 尊重 `source` / `note` 开关（source=False 跳过 source+insight 扫描，note=False 跳过 note 扫描）；
+  - 全空白关键词跳过子串扫描（避免 `CONTAINS ''` 命中全表）；
+  - **不扫 `source_embedding.content`**（11750 行大文本全表扫描成本高，chunk 级检索由 BM25 负责）；
+  - 字段契约不变：`id / parent_id / title / relevance`（前端把 relevance 映射为 final_score）。
+- 实施中的 SurrealDB 2.6.5 坑：
+  - **不支持 SQL `UNION`**（三种语法变体均报 Parse error）→ 改为 Python 侧逐分支查询合并；
+  - `string::lowercase(NONE)` 抛运行时错误 → 所有字段加 `?? ''` 兜底（source 的 full_text、note 的 title/content 都可能为 NONE）。
+- 未做方案 B（ngram analyzer 索引层改造）：需 REBUILD 11750 行 embedding 索引、索引膨胀、英文搜索行为变化，风险高，留作数据量增大后的长期优化。
+
+### 63.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/domain/notebook.py` | 新增 3 条子串兜底 SQL 常量；`text_search()` 合并去重逻辑、开关与空白防护 |
+| `tests/test_text_search_substring.py` | **新增** — 合并去重、优先级、开关、空白防护、截断 4 条 |
+
+### 63.4 验证
+
+```text
+真实 DB（本地库）：
+  「中海油冲洗剂」-> 14 条（修复前 3 条；12 title + 2 insight 子串，BM25 3 条排前）
+  「冲洗剂」      -> 30 条
+  「中海油」      -> 27 条
+  「缓凝剂」      -> 20 条
+  「deep learning」-> 0 条（库中无相关文档，行为合理）
+
+.venv/bin/python -m pytest tests/test_text_search_substring.py -q
+4 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+434 passed, 33 deselected, 8 warnings
+
+.venv/bin/python -m ruff check open_notebook/domain/notebook.py tests/test_text_search_substring.py
+All checks passed
+
+git diff --check
+exit 0
+```
+
+### 63.5 未尽事宜
+
+1. **性能**：子串兜底对 source/note/insight 表做全表扫描（数百行级），当前可接受；数据量显著增长后可考虑方案 B（ngram 索引）或限制子串扫描范围。
+2. **Ask 全局提问的「无意义字符串」问题**（用户此前反馈）尚未处理：调查中发现 `dhwwf9u93up` 实为真实源 `source:bpqgzxbzzdhwwf9u93up`（中海油冲洗剂研发报告2025.6.20）ID 的一部分，此前"模型幻觉假 ID"的判断有误，需另行复检（待用户确认后继续）。
