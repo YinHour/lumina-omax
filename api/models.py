@@ -314,6 +314,7 @@ class SettingsResponse(BaseModel):
     youtube_preferred_languages: Optional[List[str]] = None
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
+    firecrawl_api_key: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -325,6 +326,7 @@ class SettingsUpdate(BaseModel):
     youtube_preferred_languages: Optional[List[str]] = None
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
+    firecrawl_api_key: Optional[str] = None
 
 
 # Sources API models

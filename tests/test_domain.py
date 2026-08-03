@@ -394,6 +394,7 @@ class TestContentSettings:
         assert settings.auto_delete_files == "yes"
         assert settings.source_batch_limit == 50
         assert len(settings.youtube_preferred_languages) > 0
+        assert settings.firecrawl_api_key is None
 
     def test_content_settings_rejects_invalid_source_batch_limit(self):
         """Test source batch limit must stay within the supported range."""

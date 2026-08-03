@@ -24,6 +24,7 @@ const settingsSchema = z.object({
   source_batch_limit: z.number().int().min(1).max(200).optional(),
   tavily_api_key: z.string().optional().nullable(),
   tavily_include_domains: z.string().optional().nullable(),
+  firecrawl_api_key: z.string().optional().nullable(),
 })
 
 type SettingsFormData = z.infer<typeof settingsSchema>
@@ -57,6 +58,7 @@ export function SettingsForm() {
       source_batch_limit: 50,
       tavily_api_key: '',
       tavily_include_domains: '',
+      firecrawl_api_key: '',
     }
   })
 
@@ -76,6 +78,7 @@ export function SettingsForm() {
         source_batch_limit: settings.source_batch_limit ?? 50,
         tavily_api_key: settings.tavily_api_key || '',
         tavily_include_domains: settings.tavily_include_domains || '',
+        firecrawl_api_key: settings.firecrawl_api_key || '',
       }
       reset(formData)
       setHasResetForm(true)
@@ -185,6 +188,24 @@ export function SettingsForm() {
                 <p>{t.settings.urlHelp}</p>
               </CollapsibleContent>
             </Collapsible>
+          </div>
+
+          <div className="space-y-3">
+            <Label htmlFor="firecrawl_api_key">{t.settings.firecrawlApiKey}</Label>
+            <Controller
+              name="firecrawl_api_key"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  id="firecrawl_api_key"
+                  type="password"
+                  placeholder={t.settings.firecrawlApiKeyPlaceholder}
+                  value={field.value || ''}
+                  onChange={field.onChange}
+                  disabled={field.disabled || isLoading}
+                />
+              )}
+            />
           </div>
 
         </CardContent>

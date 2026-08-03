@@ -23,6 +23,7 @@ async def get_settings():
             youtube_preferred_languages=settings.youtube_preferred_languages,
             tavily_api_key=settings.tavily_api_key,
             tavily_include_domains=settings.tavily_include_domains,
+            firecrawl_api_key=settings.firecrawl_api_key,
         )
     except Exception as e:
         logger.error(f"Error fetching settings: {str(e)}")
@@ -76,6 +77,8 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.tavily_api_key = settings_update.tavily_api_key
         if settings_update.tavily_include_domains is not None:
             settings.tavily_include_domains = settings_update.tavily_include_domains
+        if settings_update.firecrawl_api_key is not None:
+            settings.firecrawl_api_key = settings_update.firecrawl_api_key
 
         await settings.update()
 
@@ -88,6 +91,7 @@ async def update_settings(settings_update: SettingsUpdate):
             youtube_preferred_languages=settings.youtube_preferred_languages,
             tavily_api_key=settings.tavily_api_key,
             tavily_include_domains=settings.tavily_include_domains,
+            firecrawl_api_key=settings.firecrawl_api_key,
         )
     except HTTPException:
         raise

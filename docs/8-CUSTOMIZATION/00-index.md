@@ -4450,3 +4450,69 @@ exit 0
 
 1. 后端 `/chat/context` 的 `insights` 模式依赖该源已有 insights 生成；新上传源在嵌入/insight 未完成时提问，insights 模式可能取到空见解。行为是否可接受需在真实笔记本中目检。
 2. 已存在笔记本的旧 `localStorage` 缓存中源仍为 `full`；如需整体切换可引导用户清除浏览器存储或逐个切换。
+
+---
+
+## 61. 设置页 Firecrawl API Key 入口与 URL 导入恢复（新增 2026-08-03）
+
+### 61.1 问题与根因
+
+- 用户导入微信公众号文章 URL（`mp.weixin.qq.com/s/...`）失败。worker 日志失败链路：`Engine doc: mineru, URL: firecrawl` → `Firecrawl extraction failed ... No API key provided` → `Could not extract any text content from this source`。
+- **第一层根因（配置错配，影响所有 URL 导入）**：DB `open_notebook:content_settings` 中 `default_content_processing_engine_url=firecrawl`（设置页显式配置过），但 `.env` 无 `FIRECRAWL_API_KEY`。content_core `extract_url()` 对**显式指定**的 `firecrawl` 引擎没有回退链（回退链只存在于 `auto` 模式：firecrawl → Jina → crawl4ai → bs4），Firecrawl SDK 以 `api_key=None` 初始化直接抛错。
+- **第二层（微信反爬）**：实测同一 URL 在无浏览器环境下，`simple`/bs4 仅提取 36 字符页面底部工具栏文字，`jina` 返回 325 字符且含 `Warning: This page maybe requiring CAPTCHA`；原始 HTML 仅 18KB，是微信「环境异常，完成验证后即可继续访问」反爬验证页（无 `js_content`/`og:title`）。即免费引擎拿不到微信正文，只有具备浏览器渲染+反爬能力的 Firecrawl 有成功可能。
+- **第三层（体验）**：提取失败统一报通用文案，无法区分「配置缺失」与「内容不可达」。
+
+### 61.2 决策与实现
+
+- 采纳「设置页入口」方案：为 `FIRECRAWL_API_KEY` 增加设置页配置能力，照 Tavily 先例（`tavily_api_key` 已在设置页配置、由 `ContentSettings` 持久化）。DB-first 语义，运行时注入环境变量（content_core 只读 `os.environ`，与 `key_provider` 的 database-first 模式一致）。
+- 本轮不做「无 key 时 firecrawl → auto 降级」守卫：设置页有了 key 入口后误配概率大幅降低，避免范围膨胀；如后续仍出现同类失败可单独补守卫。
+- 已知限制：微信链接导入能否成功取决于 Firecrawl 对反爬验证页的穿透能力；即使配置了 key 仍可能失败，届时需改用 Firecrawl 自托管或浏览器人工复制内容。
+
+### 61.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/domain/content_settings.py` | 新增 `firecrawl_api_key: Optional[str]` 字段（与 `tavily_api_key` 同模式） |
+| `api/models.py` | `SettingsResponse` / `SettingsUpdate` 各加 `firecrawl_api_key` |
+| `api/routers/settings.py` | GET 返回 + PUT 写入透传 |
+| `open_notebook/graphs/source.py` | 新增 `provision_firecrawl_api_key()`；`content_process()` 提取前注入 env（DB 有值覆盖，空值不动 env） |
+| `frontend/src/app/(dashboard)/settings/components/SettingsForm.tsx` | URL 引擎下拉下方新增密码类型输入框 + zod schema + defaultValues + reset |
+| `frontend/src/lib/types/api.ts` | `SettingsResponse` 加 `firecrawl_api_key` |
+| `frontend/src/lib/locales/en-US/index.ts` / `zh-CN/index.ts` | `firecrawlApiKey` / `firecrawlApiKeyPlaceholder` 文案（其余 7 locale 走 en-US fallback） |
+| `tests/test_firecrawl_key_settings.py` | **新增** — env 注入语义（有值覆盖/空值保留/无操作）与 `/api/settings` GET/PUT round-trip（含清空） |
+| `tests/test_domain.py` | ContentSettings 默认值断言补 `firecrawl_api_key is None` |
+| `frontend/src/app/(dashboard)/settings/components/SettingsForm.test.tsx` | **新增** — Firecrawl key 输入框渲染回显 + 提交透传 |
+
+### 61.4 验证
+
+```text
+.venv/bin/python -m ruff check api/models.py api/routers/settings.py open_notebook/domain/content_settings.py open_notebook/graphs/source.py tests/test_firecrawl_key_settings.py tests/test_domain.py
+All checks passed
+
+.venv/bin/python -m pytest tests/test_firecrawl_key_settings.py tests/test_domain.py -q
+27 passed（两种文件顺序均通过；ContentSettings 单例隔离 fixture）
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+421 passed, 33 deselected, 8 warnings
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run src/app/\(dashboard\)/settings/components/SettingsForm.test.tsx
+2 passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+210 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0；0 errors，4 个既有 warning
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+### 61.5 验收步骤与未尽事宜
+
+1. **真实验收**：在设置页填入 Firecrawl API Key 保存 → `GET /api/settings` 确认持久化 → 对之前失败的微信源（`source:9188fu4ly1sx3wp8kx4d`）在 UI 重试，确认导入/嵌入/KG 链路。此步需用户提供有效 Firecrawl Key，本轮未执行。
+2. **无 key 时仍会失败**：若设置页未填 key 而 url 引擎为 firecrawl，失败表现与本轮修复前相同；后续如需彻底防呆可补「无 key 降级 auto」守卫。
+3. **微信反爬不确定性**：Firecrawl 对微信验证页的穿透能力未在本轮验证，若失败按 61.2 已知限制处理。

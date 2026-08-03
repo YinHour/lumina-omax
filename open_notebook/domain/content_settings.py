@@ -14,6 +14,9 @@ class ContentSettings(RecordModel):
     default_content_processing_engine_url: Optional[
         Literal["auto", "firecrawl", "jina", "simple"]
     ] = Field("auto", description="Default Content Processing Engine for URLs")
+    firecrawl_api_key: Optional[str] = Field(
+        None, description="Firecrawl API Key for URL extraction"
+    )
     default_embedding_option: Optional[Literal["ask", "always", "never"]] = Field(
         "ask", description="Default Embedding Option for Vector Search"
     )

@@ -1088,6 +1088,17 @@ def _default_figure_context(
     )
 
 
+def provision_firecrawl_api_key(content_settings) -> None:
+    """Provision the DB-stored Firecrawl key into the environment.
+
+    content-core only reads ``FIRECRAWL_API_KEY`` from the environment, so the
+    key configured in settings must be injected before URL extraction. When the
+    DB value is empty, an existing environment key is left untouched.
+    """
+    if content_settings.firecrawl_api_key:
+        os.environ["FIRECRAWL_API_KEY"] = content_settings.firecrawl_api_key
+
+
 async def content_process(state: SourceState) -> dict:
     ContentSettings.clear_instance()  # Force reload from DB
     content_settings = await ContentSettings.get_instance()
@@ -1100,6 +1111,8 @@ async def content_process(state: SourceState) -> dict:
         content_settings.default_content_processing_engine_doc or "auto"
     )
     content_state["output_format"] = "markdown"
+
+    provision_firecrawl_api_key(content_settings)
 
     # Add speech-to-text model configuration from Default Models
     try:

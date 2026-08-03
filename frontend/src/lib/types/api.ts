@@ -100,6 +100,7 @@ export interface SettingsResponse {
   youtube_preferred_languages?: string[]
   tavily_api_key?: string | null
   tavily_include_domains?: string | null
+  firecrawl_api_key?: string | null
 }
 
 export interface CreateNotebookRequest {

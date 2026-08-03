@@ -988,6 +988,8 @@ export const enUS = {
     docHelp: "· Docling is a little slower but more accurate, specially if the documents contain tables and images. · Simple will extract any content from the document without formatting it. · Auto (recommended) will try to process through docling and default to simple.",
     firecrawl: "Firecrawl",
     jina: "Jina",
+    firecrawlApiKey: "Firecrawl API Key",
+    firecrawlApiKeyPlaceholder: "Enter your Firecrawl API Key",
     urlHelp: "· Firecrawl is a paid service (with a free tier), and very powerful. · Jina is a good option as well and also has a free tier. · Simple will use basic HTTP extraction and will miss content on javascript-based websites. · Auto (recommended) will try to use firecrawl then Jina, finally fallback to simple.",
     embeddingAndSearch: "Embedding and Search",
     embeddingAndSearchDesc: "Configure search and embedding options",
