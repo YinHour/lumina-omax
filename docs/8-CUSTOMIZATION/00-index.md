@@ -4641,3 +4641,77 @@ exit 0
 
 1. **性能**：子串兜底对 source/note/insight 表做全表扫描（数百行级），当前可接受；数据量显著增长后可考虑方案 B（ngram 索引）或限制子串扫描范围。
 2. **Ask 全局提问的「无意义字符串」问题**（用户此前反馈）尚未处理：调查中发现 `dhwwf9u93up` 实为真实源 `source:bpqgzxbzzdhwwf9u93up`（中海油冲洗剂研发报告2025.6.20）ID 的一部分，此前"模型幻觉假 ID"的判断有误，需另行复检（待用户确认后继续）。
+
+---
+
+## 64. 引用 ID 被模型截短：后端修复 + 前端兜底（新增 2026-08-03）
+
+### 64.1 问题与根因
+
+- 用户反馈：回答中的「工作区引用」source-id 被截短，点击引用链接无法打开。日志铁证（17:47:39）：
+
+  ```
+  ERROR api.routers.sources:get_source:910 - Error fetching source source:lh9mbu:
+        source with id source:lh9mbu not found
+  ```
+
+  真实 ID 是 `source:lh9mbuyd1m9g4bh56u36`；`dhwwf9u93up` 同理是 `source:bpqgzxbzzdhwwf9u93up` 的片段。
+- **根因**：模型生成引用时截短了 SurrealDB 的 20 字符随机 record id（截前部/尾部/中间都可能，长随机串对 LLM 复制不可靠）。前端 `parseSourceReferences` 等正常解析模型写出的（截短）ID → 参考文献列表展示截短 ID → 点击 `GET /sources/source:lh9mbu` → 404。**前端渲染无 bug，数据（模型输出）就是截短的**。
+
+### 64.2 决策与实现
+
+- **方案 A（主修复）：后端引用 ID 唯一匹配修复**——新增 `open_notebook/utils/reference_repair.py`：
+  - `repair_reference_ids(text, known_ids)`：对 `(source_insight|insight|note|source):([a-zA-Z0-9_]+)` 引用，若 ID 不在已知集，按类型过滤后做唯一匹配（`startswith` / `endswith` / 包含）；唯一候选则替换为完整 ID，歧义/无匹配保留原样；`insight:` 别名归一化到 `source_insight:`。
+  - Chat 接入：`api/routers/chat.py` 的 `stream_chat_response` 从 context（sources/notes/insights 的 id）构建 `known_reference_ids`，`emit_ai_content` 逐 chunk 修复（引用通常在单 chunk 内完整出现）。
+  - Ask 接入：`open_notebook/graphs/ask.py` 的 `provide_answer` 返回值新增 `ids`（全部检索结果 id，含 insight/note）；`api/routers/search.py` 在 `provide_answer` 的 `on_chain_end` 事件收集 `ids` 为 `known_reference_ids`，`emit_final_answer_delta` 逐 chunk 修复、`write_final_answer` 的 buffered 最终答案整体修复、局部 `answer` 事件同样修复。
+- **方案 B（辅助）：prompt 强化**——`prompts/chat/system.jinja`、`prompts/ask/final_answer.jinja`、`prompts/ask/query_process.jinja` 均追加警告：ID 为 20 字符随机串，必须完整复制，截短导致引用失效，不确定则省略引用。
+- **方案 C（前端兜底）**：新增 `frontend/src/lib/utils/reference-exists.ts`（按类型 GET `/sources/{id}`、`/notes/{id}`、`/insights/{id}` 校验存在性）；`ChatPanel.handleReferenceClick` 与 `StreamingResponse.handleReferenceClick` 改为异步：校验失败 toast `itemNotFound`（「未找到该 {type}」），成功才 `openModal`，替代原先打开一个只显示"未找到"的空模态框。
+- 未做方案 D（编号引用 + 映射下发）：改动 prompt/SSE/前端三处、风险高，留作模型截短问题复发后的彻底重构选项。
+
+### 64.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/utils/reference_repair.py` | **新增** — `repair_reference_ids()` 唯一匹配修复 |
+| `api/routers/chat.py` | context 构建 known IDs；`emit_ai_content` 逐 chunk 修复 |
+| `api/routers/search.py` | Ask 收集检索 ids；delta/buffered/局部 answer 三处修复 |
+| `open_notebook/graphs/ask.py` | `provide_answer` 返回 `ids` |
+| `prompts/chat/system.jinja`、`prompts/ask/final_answer.jinja`、`prompts/ask/query_process.jinja` | ID 完整性警告 |
+| `frontend/src/lib/utils/reference-exists.ts` | **新增** — 引用存在性校验 |
+| `frontend/src/components/source/ChatPanel.tsx`、`frontend/src/components/search/StreamingResponse.tsx` | 引用点击异步校验 + 404 toast |
+| `tests/test_reference_repair.py` | **新增** — 前缀/后缀/中间截短、歧义、类型隔离、alias、批量 11 条 |
+| `frontend/src/components/source/ChatPanel.test.tsx`、`frontend/src/components/search/StreamingResponse.test.tsx` | mock referenceExists + waitFor 适配异步点击 |
+
+### 64.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_reference_repair.py -q
+11 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+445 passed, 33 deselected, 8 warnings
+
+.venv/bin/python -m ruff check api/routers/chat.py api/routers/search.py open_notebook/graphs/ask.py open_notebook/utils/reference_repair.py tests/test_reference_repair.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+210 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0；0 errors，4 个既有 warning
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+真实案例回归（函数级）：`[source:lh9mbu]` → `[source:lh9mbuyd1m9g4bh56u36]`（前缀匹配）；`[source:dhwwf9u93up]` → `[source:bpqgzxbzzdhwwf9u93up]`（后缀匹配）。
+
+### 64.5 未尽事宜
+
+1. **跨 chunk 引用**：流式修复按 chunk 处理，极少数引用横跨两个 chunk 时可能漏修（前端 404 toast 兜底）。
+2. **歧义保留**：多个真实 ID 共享同一截短片段时修复放弃（如两个源都以 `u93up` 结尾），保持不误替换。
+3. **历史消息**：已保存的 transcript/Ask 历史中的截短引用不会自动修复。
+4. **方案 D 备选**：若后续模型截短仍频繁，可评估编号引用 + SSE 下发编号→ID 映射的彻底重构。

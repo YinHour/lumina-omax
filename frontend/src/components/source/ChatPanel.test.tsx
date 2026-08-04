@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, fireEvent, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, within, waitFor } from '@testing-library/react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 
 const { openModalMock } = vi.hoisted(() => ({
   openModalMock: vi.fn(),
+}))
+
+vi.mock('@/lib/utils/reference-exists', () => ({
+  referenceExists: vi.fn().mockResolvedValue(true),
 }))
 
 vi.mock('@/lib/hooks/use-modal-manager', () => ({
@@ -418,7 +422,7 @@ describe('ChatPanel stop button', () => {
     expect(viewport.scrollTop).toBe(300)
   })
 
-  it('turns escaped inline workspace citations into source links', () => {
+  it('turns escaped inline workspace citations into source links', async () => {
     render(
       <ChatPanel
         {...baseProps}
@@ -435,9 +439,9 @@ describe('ChatPanel stop button', () => {
     expect(screen.queryByText('[1](#ref-source-abc123)')).not.toBeInTheDocument()
     expect(screen.queryByText('[2](#ref-source-def456)')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '1' }))
-    expect(openModalMock).toHaveBeenCalledWith('source', 'abc123')
+    await waitFor(() => expect(openModalMock).toHaveBeenCalledWith('source', 'abc123'))
     fireEvent.click(screen.getByRole('button', { name: '2' }))
-    expect(openModalMock).toHaveBeenCalledWith('source', 'def456')
+    await waitFor(() => expect(openModalMock).toHaveBeenCalledWith('source', 'def456'))
   })
 
   it('renders inline and block LaTeX in AI messages', () => {
@@ -456,7 +460,7 @@ describe('ChatPanel stop button', () => {
     expect(container.querySelector('.katex-display')).toBeInTheDocument()
   })
 
-  it('opens insight aliases in the insight preview', () => {
+  it('opens insight aliases in the insight preview', async () => {
     render(
       <ChatPanel
         {...baseProps}
@@ -469,7 +473,7 @@ describe('ChatPanel stop button', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '1' }))
-    expect(openModalMock).toHaveBeenCalledWith('insight', 'ide0gvve6vdoqm6tvt35')
+    await waitFor(() => expect(openModalMock).toHaveBeenCalledWith('insight', 'ide0gvve6vdoqm6tvt35'))
   })
 
   it('disables suggested questions while streaming', () => {

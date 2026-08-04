@@ -20,6 +20,7 @@ from open_notebook.database.repository import repo_query
 from open_notebook.domain.notebook import text_search, vector_search
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.graphs.ask import graph as ask_graph
+from open_notebook.utils.reference_repair import repair_reference_ids
 
 router = APIRouter()
 
@@ -126,6 +127,7 @@ async def stream_ask_response(
     try:
         final_answer: str | None = None
         retrieved_source_ids: list[str] = []
+        known_reference_ids: list[str] = []
 
         yield ask_status_sse_event("received", started_at)
 
@@ -153,6 +155,8 @@ async def stream_ask_response(
                 nonlocal yielded_final_answer_chunks
                 if not content:
                     return
+                if known_reference_ids:
+                    content = repair_reference_ids(content, known_reference_ids)
                 await emit_writing_status()
                 if not yielded_final_answer_chunks:
                     logger.info(
@@ -224,12 +228,21 @@ async def stream_ask_response(
                         for source_id in event["data"]["output"].get("retrieved_source_ids", []):
                             if source_id not in retrieved_source_ids:
                                 retrieved_source_ids.append(source_id)
+                        for ref_id in event["data"]["output"].get("ids", []):
+                            if ref_id not in known_reference_ids:
+                                known_reference_ids.append(ref_id)
                         for answer in event["data"]["output"]["answers"]:
+                            if known_reference_ids:
+                                answer = repair_reference_ids(answer, known_reference_ids)
                             answer_data = {"type": "answer", "content": answer}
                             await out_queue.put(f"data: {json.dumps(answer_data)}\n\n")
 
                     elif event["name"] == "write_final_answer" and "output" in event["data"] and event["data"]["output"] and "final_answer" in event["data"]["output"]:
                         final_answer = event["data"]["output"]["final_answer"]
+                        if known_reference_ids:
+                            final_answer = repair_reference_ids(
+                                final_answer, known_reference_ids
+                            )
                         await emit_writing_status()
                         stream_mode = (
                             "delta" if yielded_final_answer_chunks else "buffered"

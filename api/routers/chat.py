@@ -40,6 +40,7 @@ from open_notebook.research_skills import get_research_skill_registry
 from open_notebook.research_skills.registry import ResearchSkillValidationError
 from open_notebook.utils import token_count
 from open_notebook.utils.graph_utils import get_session_message_count
+from open_notebook.utils.reference_repair import repair_reference_ids
 
 router = APIRouter()
 
@@ -880,6 +881,21 @@ async def stream_chat_response(
         yielded_ai_chunks = False
         first_ai_chunk_logged = False
         final_answer_parts: list[str] = []
+
+        # Known reference IDs in scope for this answer (context sources,
+        # their insights, and notes). Used to repair truncated IDs the model
+        # may write when citing local documents (§64).
+        known_reference_ids: list[str] = []
+        for source_context in context.get("sources", []):
+            if source_context.get("id"):
+                known_reference_ids.append(str(source_context["id"]))
+            for insight in source_context.get("insights") or []:
+                if insight.get("id"):
+                    known_reference_ids.append(str(insight["id"]))
+        for note_context in context.get("notes", []):
+            if note_context.get("id"):
+                known_reference_ids.append(str(note_context["id"]))
+        known_reference_ids = list(dict.fromkeys(known_reference_ids))
         safe_model_stream = SafeModelContentStream()
 
         # Producer/consumer split so the consumer can interleave heartbeats while
@@ -949,6 +965,8 @@ async def stream_chat_response(
                 "</web_search_results>"
             ):
                 return
+            if known_reference_ids:
+                content = repair_reference_ids(content, known_reference_ids)
             if observe_ai_chunk(content, stream_mode):
                 await emit_status("model_streaming", "active")
             if chat_mode == "research":

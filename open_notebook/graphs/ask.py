@@ -173,6 +173,7 @@ async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
         return {
             "answers": [clean_thinking_content(ai_content)],
             "retrieved_source_ids": source_ids,
+            "ids": [str(rid) for rid in ids],
         }
     except OpenNotebookError:
         raise

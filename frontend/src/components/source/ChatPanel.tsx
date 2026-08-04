@@ -33,6 +33,7 @@ import {
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { referenceExists } from '@/lib/utils/reference-exists'
 import { NotebookGuideCard } from './NotebookGuideCard'
 import { SuggestedQuestionList } from './SuggestedQuestionList'
 import { stripThinkingContent } from '@/lib/chat/thinking-content'
@@ -231,16 +232,19 @@ export function ChatPanel({
     onAllowCrossNotebookDiscoveryChange?.(enabled)
   }
 
-  const handleReferenceClick = (type: string, id: string) => {
+  const handleReferenceClick = async (type: string, id: string) => {
     const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
+    const typeLabel = type === 'source_insight' ? 'insight' : type
 
     try {
+      const exists = await referenceExists(modalType, id)
+      if (!exists) {
+        toast.error(t.common.itemNotFound.replace('{type}', typeLabel))
+        return
+      }
       openModal(modalType, id)
-      // Note: The modal system uses URL parameters and doesn't throw errors for missing items.
-      // The modal component itself will handle displaying "not found" states.
-      // This try-catch is here for future enhancements or unexpected errors.
     } catch {
-      toast.error(t.common.noResults)
+      toast.error(t.common.itemNotFound.replace('{type}', typeLabel))
     }
   }
 

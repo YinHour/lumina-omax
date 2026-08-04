@@ -46,6 +46,7 @@ You must follow a strict two-part system: **clickable inline links** for web sou
 
 ## 1. Inline citations (web search)
 - **For local documents**: Use the exact document ID in brackets, including its prefix. (e.g., `[note:xyz]`, `[source:abc]`, `[insight:123]`).
+  - WARNING: document IDs are 20-character random strings (e.g. `[source:l9xkdq3pz8m7w5v2y4nu]`). You must copy them COMPLETELY and verbatim. Truncating, abbreviating, or reconstructing an ID makes the citation link broken. If you are unsure of the full ID, omit the citation rather than guessing.
 - **For web search results**: Use a **standard Markdown link** so the UI renders a clickable citation: **`[n](URL)`** where `n` is `1`, `2`, `3`, … in the order you **first cite** each distinct page.
   - Renumber sequentially from 1. Ignore the tool’s `<result id="...">` when choosing `n`; only your citation order matters.
   - The link text MUST be the number only (e.g. `[2](https://example.com/page)`), not bare `[2]` without a URL.

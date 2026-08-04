@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StreamingResponse } from './StreamingResponse'
 
@@ -10,6 +10,10 @@ vi.mock('@/lib/hooks/use-modal-manager', () => ({
   useModalManager: () => ({
     openModal: openModalMock,
   }),
+}))
+
+vi.mock('@/lib/utils/reference-exists', () => ({
+  referenceExists: vi.fn().mockResolvedValue(true),
 }))
 
 vi.mock('sonner', () => ({
@@ -93,7 +97,7 @@ describe('StreamingResponse', () => {
     expect(screen.getByRole('cell', { name: 'Rendered cell' })).toBeInTheDocument()
   })
 
-  it('opens insight aliases in the insight preview', () => {
+  it('opens insight aliases in the insight preview', async () => {
     render(
       <StreamingResponse
         isStreaming={false}
@@ -104,7 +108,7 @@ describe('StreamingResponse', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '[insight:ide0gvve6vdoqm6tvt35]' }))
-    expect(openModalMock).toHaveBeenCalledWith('insight', 'ide0gvve6vdoqm6tvt35')
+    await waitFor(() => expect(openModalMock).toHaveBeenCalledWith('insight', 'ide0gvve6vdoqm6tvt35'))
   })
 
   it('lets long answers expand with the page instead of using a nested scroll box', () => {
