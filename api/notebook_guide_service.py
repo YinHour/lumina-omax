@@ -60,6 +60,73 @@ def build_source_fingerprint(sources: list[dict[str, Any]]) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
+def _parse_json_object(text: str) -> Optional[dict]:
+    """Parse a JSON object from model output, repairing truncation.
+
+    The model may truncate the response at ``max_tokens`` mid-JSON, or wrap it
+    in prose / code fences. This helper tries plain parsing first, then a
+    heuristic repair for truncated JSON: close an open string, then close any
+    open braces/brackets (§65).
+    """
+    if not text:
+        return None
+    braced = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    candidate = braced.group(0) if braced else None
+    if candidate is None:
+        # Truncated: no closing brace; take everything from the first `{`
+        open_brace = text.find("{")
+        if open_brace >= 0:
+            candidate = text[open_brace:]
+    if not candidate:
+        return None
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    repaired = candidate
+    obj_depth = 0
+    arr_depth = 0
+    in_string = False
+    escape = False
+    for ch in repaired:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            obj_depth += 1
+        elif ch == "}":
+            obj_depth = max(0, obj_depth - 1)
+        elif ch == "[":
+            arr_depth += 1
+        elif ch == "]":
+            arr_depth = max(0, arr_depth - 1)
+    if in_string:
+        repaired += '"'
+    if obj_depth or arr_depth:
+        repaired += "]" * arr_depth + "}" * obj_depth
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
+
+
+def _extract_questions_fallback(text: str) -> list[str]:
+    """Last-resort extraction of question strings when JSON parsing fails."""
+    match = re.search(r'"questions"\s*:\s*\[(.*?)\]', text, flags=re.DOTALL)
+    if not match:
+        return []
+    items = re.findall(r'"((?:[^"\\]|\\.)*)"', match.group(1))
+    return [item for item in items if item.strip()][:3]
+
+
 def parse_guide_json(
     raw_text: str,
     raise_on_json_error: bool = False,
@@ -69,19 +136,20 @@ def parse_guide_json(
         return None, []
 
     cleaned = clean_thinking_content(extract_text_content(raw_text)).strip()
+    # Strip code fences wherever they appear, not just at the start
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
     cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = re.sub(r"```(?:json)?\s*", "", cleaned)
 
-    match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
-    if match:
-        cleaned = match.group(0)
-
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
+    data = _parse_json_object(cleaned)
+    if data is None:
         logger.warning("Failed to parse notebook guide JSON")
         if raise_on_json_error:
-            raise ValueError("Failed to parse notebook guide JSON") from exc
+            raise ValueError("Failed to parse notebook guide JSON")
+        # Even when the object does not parse, salvage any questions list
+        fallback_questions = _extract_questions_fallback(cleaned)
+        if fallback_questions:
+            return None, fallback_questions
         return None, []
 
     summary = data.get("summary")
@@ -129,7 +197,7 @@ async def _invoke_json_model(prompt: str, model_override: Optional[str] = None) 
         prompt,
         model_override,
         "chat",
-        max_tokens=768,
+        max_tokens=1024,
         temperature=0,
         streaming=False,
     )

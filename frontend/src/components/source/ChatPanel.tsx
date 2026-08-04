@@ -521,6 +521,28 @@ export function ChatPanel({
                 onRegenerate={onRegenerateGuide}
               />
             )}
+            {contextType === 'notebook' && notebookGuide?.status === 'error' && !isGuideLoading && (
+              <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border bg-muted/30 p-5">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{t.chat.guideUnavailable}</p>
+                    <p className="text-xs text-muted-foreground">{t.chat.guideUnavailableDesc}</p>
+                  </div>
+                </div>
+                {onRegenerateGuide && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRegenerateGuide()}
+                    disabled={isStreaming}
+                    className="w-fit"
+                  >
+                    {t.chat.regenerateGuide}
+                  </Button>
+                )}
+              </div>
+            )}
             {contextType === 'notebook' && isGuideLoading && !notebookGuide?.summary && (
               <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 rounded-lg border bg-muted/30 p-5">
                 <div className="flex items-center gap-3">

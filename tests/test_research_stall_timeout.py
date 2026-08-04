@@ -265,3 +265,95 @@ async def test_quick_mode_keeps_llm_timeout_and_no_stall_watchdog(monkeypatch):
     assert error_event is not None
     assert error_event.get("error_code") == "llm_timeout"
     assert error_event.get("timeout_seconds") == 0.15
+
+
+@pytest.mark.asyncio
+async def test_stall_watchdog_counts_model_start_and_reasoning_as_progress(monkeypatch):
+    """A model round that starts and keeps emitting reasoning chunks must not
+    be cancelled: in-flight model calls are real progress (§65)."""
+    from api.routers import chat
+
+    monkeypatch.setattr(chat, "RESEARCH_AGENT_STALL_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(chat, "RESEARCH_AGENT_HARD_TIMEOUT_SECONDS", 30.0)
+
+    async def _stream(*, input, config=None, version=None):  # noqa: A002
+        yield {"event": "on_chat_model_start", "name": "call_research_model"}
+        for i in range(30):
+            # reasoning-only chunks keep arriving well past the stall window;
+            # the run must not be cancelled while the model is working
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": MagicMock(
+                        content="",
+                        additional_kwargs={"reasoning_content": f"thinking step {i}"},
+                        response_metadata={},
+                    )
+                },
+            }
+            await asyncio.sleep(0.1)
+        # generator completes normally - no stall window may have elapsed
+        # between chunks, so the watchdog must never fire.
+
+    compiled = MagicMock(astream_events=_stream)
+    state_graph = MagicMock(compile=MagicMock(return_value=compiled))
+    monkeypatch.setattr(chat, "CHAT_STREAM_HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(
+        chat, "build_suggested_questions_event", AsyncMock(return_value=None)
+    )
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+    class _FakeSqliteSaver:
+        @classmethod
+        def from_conn_string(cls, _path):
+            class _Ctx:
+                def __enter__(self_inner):
+                    return MagicMock(
+                        get_state=lambda config=None: MagicMock(values={"messages": []})
+                    )
+
+                def __exit__(self_inner, *args):
+                    return False
+
+            return _Ctx()
+
+    class _FakeAsyncSaver:
+        @classmethod
+        def from_conn_string(cls, _path):
+            class _Ctx:
+                async def __aenter__(self_inner):
+                    return MagicMock()
+
+                async def __aexit__(self_inner, *args):
+                    return False
+
+            return _Ctx()
+
+    monkeypatch.setattr(SqliteSaver, "from_conn_string", _FakeSqliteSaver.from_conn_string)
+    monkeypatch.setattr(
+        AsyncSqliteSaver, "from_conn_string", _FakeAsyncSaver.from_conn_string
+    )
+
+    events = []
+
+    async def _run():
+        async for raw in chat.stream_chat_response(
+            session_id="chat_session:test",
+            message="question",
+            context={"sources": [], "notes": []},
+            state_graph=state_graph,
+            checkpoint_file="test.sqlite",
+            chat_mode="research",
+        ):
+            if raw.startswith("data: "):
+                try:
+                    events.append(json.loads(raw.removeprefix("data: ").strip()))
+                except json.JSONDecodeError:
+                    continue
+
+    await _run()
+
+    error_event = next((e for e in events if e.get("type") == "error"), None)
+    assert error_event is None, f"research_stall should not fire: {error_event}"

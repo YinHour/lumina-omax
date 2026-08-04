@@ -76,13 +76,14 @@ CHAT_STREAM_HEARTBEAT_SECONDS = _env_positive_float(
 
 # Research Agent has its own timeout semantics (see §57): the overall hard
 # limit is larger than the Quick Chat budget, and a separate stall watchdog
-# cancels the run when no effective progress is made (model round completion,
-# tool start/end, or a public answer delta) within the stall window.
+# cancels the run when no effective progress is made (model round start/end,
+# reasoning output, tool start/end, or a public answer delta) within the
+# stall window. Model calls in flight count as progress (§65).
 RESEARCH_AGENT_HARD_TIMEOUT_SECONDS = _env_positive_float(
     "RESEARCH_AGENT_HARD_TIMEOUT_SECONDS", 600.0
 )
 RESEARCH_AGENT_STALL_TIMEOUT_SECONDS = _env_positive_float(
-    "RESEARCH_AGENT_STALL_TIMEOUT_SECONDS", 120.0
+    "RESEARCH_AGENT_STALL_TIMEOUT_SECONDS", 180.0
 )
 
 
@@ -982,6 +983,10 @@ async def stream_chat_response(
         async def emit_reasoning_started() -> None:
             nonlocal current_status_stage
             current_status_stage = "synthesizing"
+            if chat_mode == "research":
+                # Reasoning output is real model progress; it must reset the
+                # stall clock (§65) or long-thinking runs get cancelled early.
+                mark_research_progress()
             await put_output(reasoning_status_sse_event())
 
         async def emit_model_content(
@@ -1018,7 +1023,21 @@ async def stream_chat_response(
                 ):
                     kind = event["event"]
 
+                    if kind == "on_chat_model_start":
+                        if chat_mode == "research":
+                            # A model round starting is real progress: it will
+                            # either stream chunks, call tools, or finish. Do
+                            # not count the in-flight call itself as stalling;
+                            # the hard timeout still backstops a hung model.
+                            mark_research_progress()
+
                     if kind == "on_chat_model_stream" or kind == "on_llm_stream":
+                        if chat_mode == "research":
+                            # Any streaming model output - reasoning or visible
+                            # content - is real progress and resets the stall
+                            # clock (§65). Reasoning-only streams otherwise trip
+                            # the watchdog while the model is clearly working.
+                            mark_research_progress()
                         if "chunk" in event["data"]:
                             chunk = event["data"]["chunk"]
 

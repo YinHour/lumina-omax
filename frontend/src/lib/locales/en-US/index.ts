@@ -623,6 +623,7 @@ export const enUS = {
     saveSummaryToNote: "Save summary to note",
     regenerateGuide: "Regenerate guide",
     guideUnavailable: "Guide is not available yet",
+    guideUnavailableDesc: "Guide generation failed; click below to retry.",
     activityGettingContext: "Getting the context...",
     activitySearchingWeb: "Searching the web...",
     activityThinking: "Preparing the answer...",

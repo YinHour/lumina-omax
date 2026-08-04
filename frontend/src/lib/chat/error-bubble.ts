@@ -95,7 +95,12 @@ export function buildErrorBubbleBody(
     seconds !== null ? `timeout_seconds=${seconds}` : null,
   ].filter(Boolean).join(', ')
   const diagnosticLine = `_Diagnostic_: \`${diagnosticParts}\``
-  const serverLine = data.message ? `_Server message_: ${data.message}` : ''
+
+  // Research errors already carry a full localized explanation in the bubble
+  // body; the raw English server message adds noise for end users, so hide it
+  // for those codes (§65).
+  const hidesServerMessage = ['research_stall', 'research_hard_timeout'].includes(code)
+  const serverLine = !hidesServerMessage && data.message ? `_Server message_: ${data.message}` : ''
 
   const body = [
     `${templates.errorLlmTimeoutPrefix}${localized}`,

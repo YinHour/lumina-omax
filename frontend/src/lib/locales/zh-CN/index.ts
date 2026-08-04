@@ -624,6 +624,7 @@ export const zhCN = {
     saveSummaryToNote: "将总结保存为笔记",
     regenerateGuide: "重新生成导览",
     guideUnavailable: "导览暂不可用",
+    guideUnavailableDesc: "导览卡片生成失败，可点击下方按钮重试。",
     activityGettingContext: "正在获取上下文...",
     activitySearchingWeb: "正在联网搜索...",
     activityThinking: "正在组织回答...",
