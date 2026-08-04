@@ -4012,11 +4012,54 @@ cd frontend && npm run lint
 exit 0；4 个既有 warning，无 error
 
 cd frontend && npm run build
-exit 0；四个 SSE Route Handler 均列为动态路由，Next.js 生产构建与 TypeScript 检查通过
+exit 0
 
 git diff --check
 exit 0
 ```
+
+---
+
+## 67. 推理模型 reasoning_content 提取：思考期不再"干等"（新增 2026-08-04）
+
+### 67.1 问题
+
+- deepseek-v4-pro 等推理模型在产出可见文字前会流出大量 `reasoning_content`（思考链）。Esperanto 对所有 OpenAI-compatible 供应商统一返回 `ChatOpenAI`，而 `langchain_openai` 明确不提取第三方 `reasoning_content` 字段（见其 base.py 文档），导致思考内容被丢弃。
+- 结果：SSE 流在整个思考期（实测 20-40s）只发心跳，`reasoning_status` 事件不触发，前端无任何"思考中"提示，用户感知为首返极慢。
+
+### 67.2 修复
+
+- 新增 `open_notebook/ai/reasoning_chat.py`：`ReasoningAwareChatOpenAI(ChatOpenAI)` 覆写 `_convert_chunk_to_generation_chunk`（流式）与 `_create_chat_result`（非流式），从 delta/message 提取 `reasoning_content`/`reasoning` 写入 `additional_kwargs["reasoning_content"]`；`maybe_make_reasoning_aware()` 对 `ChatOpenAI` 实例做 class-swap（无新增字段，安全）。
+- `open_notebook/ai/provision.py`：`provision_langchain_model_with_info` 与 `provision_langchain_model` 在 `model.to_langchain()` 后、`attach_usage_callback` 前调用 `maybe_make_reasoning_aware()`，一处覆盖全部 13 个语言模型。
+- 现有 `api/sse_helpers.py extract_reasoning_content()` 已查 `additional_kwargs.reasoning_content`，无需改动即生效。
+
+### 67.3 验证
+
+- `ruff check` 通过；`tests/test_graphs.py + test_utils.py + test_models_api.py` 49 条通过。
+- 单元式验证：流式 chunk 与非流式响应均正确提取 `reasoning_content`；普通内容 chunk 不误判；`model_copy()` 保留 swap 后的类；`extract_reasoning_content` 可读到提取结果。
+
+---
+
+## 68. 询问与搜索页崩溃修复：分数空值 + i18n 循环检测误报（新增 2026-08-04）
+
+### 68.1 问题
+
+- `/search` 页两类错误（与 §67 后端改动无关，前端既有 bug）：
+  - **(A) 硬崩溃**：文本/子串搜索结果只带 `relevance` 不带 `final_score`（见 §63 子串兜底 SQL），`result.final_score.toFixed(2)` 抛 `TypeError` → React ErrorBoundary（"Error / Please try refreshing"）。
+  - **(B) dev 弹层**：结果 `.map()` 每条访问 `t.searchPage.matches`（2 次 Proxy get），100 条 × StrictMode/重渲染在 1s 内超过 `use-translation.ts` 的 1000 阈值 → `console.error` 触发 Next dev 全屏弹层（"INFINITE LOOP DETECTED on key: searchPage"），属误报。
+
+### 68.2 修复
+
+- `frontend/src/app/(dashboard)/search/page.tsx`：
+  - 分数 Badge 安全化：`const score = result.final_score ?? result.relevance ?? result.similarity ?? result.score`，仅当 `typeof score === 'number' && !Number.isNaN(score)` 时渲染 `score.toFixed(2)`。
+  - 将 `t.searchPage.matches` 提升为循环外 `matchesTemplate`，map 内复用，消除每条结果的 Proxy get。
+- `frontend/src/lib/hooks/use-translation.ts`：循环检测阈值 `1000`→`5000`，`console.error`→`console.warn`（保留防护但不再级联 dev 弹层）。
+
+### 68.3 验证
+
+- `npx tsc --noEmit` 对改动两文件无错（既有错误均在无关测试文件）。
+- `vitest run src/components/search/StreamingResponse.test.tsx` 7 通过；`use-translation.test.ts` 2 通过。
+- `npx eslint` 对两文件 0 错。
 
 未验证项：开发机没有在修复后再次消耗真实 provider 配额，也尚未补录登录态浏览器对比视频。下一步本机验收应同时观察正文逐块出现、活动状态从“正在组织回答”切换到模型输出、页面自动滚动及服务端首个公开答案耗时；用户 Mac Studio 部署后还需确认其外层代理没有重新缓冲 `text/event-stream`。特定 provider 若始终只产生 `stream_mode=buffered`，再依据该 provider 的实测事件检查 Esperanto/LangChain 适配层。
 

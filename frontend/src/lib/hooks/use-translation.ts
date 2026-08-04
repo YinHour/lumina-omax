@@ -67,8 +67,8 @@ export function useTranslation() {
              const key = path ? `${path}.${prop}` : prop;
              accessCounts.current[key] = (accessCounts.current[key] || 0) + 1;
              
-             if (accessCounts.current[key] > 1000) {
-               console.error(`[useTranslation] INFINITE LOOP DETECTED on key: "${key}". Breaking recursion.`);
+             if (accessCounts.current[key] > 5000) {
+               console.warn(`[useTranslation] INFINITE LOOP DETECTED on key: "${key}". Breaking recursion.`);
                return key; // Force break
              }
           }

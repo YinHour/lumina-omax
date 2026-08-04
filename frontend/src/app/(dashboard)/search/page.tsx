@@ -182,6 +182,10 @@ export default function SearchPage() {
 
   const hasEmbeddingModel = !!modelDefaults?.default_embedding_model
 
+  // Hoist per-item translation strings out of the results loop so each row does
+  // not hit the i18n Proxy (avoids tripping the loop detector on large result sets)
+  const matchesTemplate: string = t.searchPage.matches
+
   // Track if we've already auto-triggered from URL params
   const hasAutoTriggeredRef = useRef(false)
   const lastUrlParamsRef = useRef({ q: '', mode: '' })
@@ -655,6 +659,9 @@ export default function SearchPage() {
                           }
                           const [type, id] = result.parent_id.split(':')
                           const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
+                          // Text/substring search results carry `relevance` but no
+                          // `final_score`; guard against undefined to avoid a render crash
+                          const score = result.final_score ?? result.relevance ?? result.similarity ?? result.score
 
                           return (
                           <Card key={index}>
@@ -667,9 +674,11 @@ export default function SearchPage() {
                                   >
                                     {result.title}
                                   </button>
-                                  <Badge variant="secondary" className="ml-2">
-                                    {result.final_score.toFixed(2)}
-                                  </Badge>
+                                  {typeof score === 'number' && !Number.isNaN(score) && (
+                                    <Badge variant="secondary" className="ml-2">
+                                      {score.toFixed(2)}
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
 
@@ -677,7 +686,7 @@ export default function SearchPage() {
                                 <Collapsible className="mt-3">
                                   <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
                                     <ChevronDown className="h-4 w-4" />
-                                    {t.searchPage.matches.replace('{count}', result.matches.length.toString())}
+                                    {matchesTemplate.replace('{count}', result.matches.length.toString())}
                                   </CollapsibleTrigger>
                                   <CollapsibleContent className="mt-2 space-y-1">
                                     {result.matches.map((match: string, i: number) => (
