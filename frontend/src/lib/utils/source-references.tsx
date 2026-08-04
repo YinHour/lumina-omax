@@ -62,6 +62,44 @@ export function normalizeInternalReferenceLinks(text: string): string {
     )
 }
 
+const INTERNAL_REF_LINK_RE =
+  /\[([^\]\n]+)\]\(#ref-(source_insight|insight|note|source)-([a-zA-Z0-9_-]{1,100})\)/g
+
+/**
+ * Models occasionally emit already-numbered anchor links (e.g.
+ * `[1](#ref-source-abc123)`). The reference parsers match `type:id` inside
+ * those hrefs too, so protect them with placeholders before parsing and
+ * restore them afterwards to avoid double conversion.
+ */
+function protectInternalReferenceLinks(text: string): {
+  text: string
+  restore: (t: string) => string
+} {
+  const saved: string[] = []
+  const protectedText = text.replace(INTERNAL_REF_LINK_RE, (match) => {
+    saved.push(match)
+    return `\u0000REF${saved.length - 1}\u0000`
+  })
+  const restore = (t: string): string =>
+    t.replace(/\u0000REF(\d+)\u0000/g, (_match, index: string) => {
+      const original = saved[Number(index)]
+      return typeof original === 'string' ? original : ''
+    })
+  return { text: protectedText, restore }
+}
+
+const BRACKETED_REF_LIST_RE =
+  /\[((?:\[[^\]\n]+\]\(#ref-(?:source_insight|insight|note|source)-[a-zA-Z0-9_-]{1,100}\),?\s*)+)\]/
+
+/**
+ * Normalize a bracketed, comma-separated list of already-numbered anchor
+ * links (e.g. `[[1](#ref-source-a), [2](#ref-source-b)]`) into plain links so
+ * ReactMarkdown can render them instead of showing raw citation syntax.
+ */
+export function normalizeBracketedReferenceList(text: string): string {
+  return text.replace(BRACKETED_REF_LIST_RE, (_match, inner: string) => inner)
+}
+
 /**
  * Parse source references from text
  *
@@ -203,12 +241,19 @@ export function convertSourceReferences(
  * @returns Text with references converted to markdown links
  */
 export function convertReferencesToMarkdownLinks(text: string): string {
+  // Models sometimes backtick-escape the internal anchor link; restore it
+  // before anything else so it renders as a clickable citation (§65).
+  text = normalizeInternalReferenceLinks(text)
+  // Models sometimes emit already-numbered anchor links; protect them so the
+  // greedy pattern below does not double-convert the type:id in their hrefs.
+  const { text: protectedText, restore } = protectInternalReferenceLinks(text)
+
   // Step 1: Find ALL references using simple greedy pattern
   const refPattern = /(source_insight|insight|note|source):([a-zA-Z0-9_]+)/g
   const references: Array<{ type: ReferenceType; labelType: string; id: string; index: number; length: number }> = []
 
   let match
-  while ((match = refPattern.exec(text)) !== null) {
+  while ((match = refPattern.exec(protectedText)) !== null) {
     const labelType = match[1]
     const type = normalizeReferenceType(labelType)
     const id = match[2]
@@ -232,7 +277,7 @@ export function convertReferencesToMarkdownLinks(text: string): string {
   if (references.length === 0) return text
 
   // Step 2: Process references from end to start (to preserve indices)
-  let result = text
+  let result = protectedText
   for (let i = references.length - 1; i >= 0; i--) {
     const ref = references[i]
     const refStart = ref.index
@@ -287,7 +332,8 @@ export function convertReferencesToMarkdownLinks(text: string): string {
     result = result.substring(0, replaceStart) + markdownLink + result.substring(replaceEnd)
   }
 
-  return result
+  // Step 6: Restore pre-existing anchor links
+  return restore(result)
 }
 
 /**
@@ -371,13 +417,17 @@ export function createReferenceLinkComponent(
  */
 export function convertReferencesToCompactMarkdown(text: string, referencesLabel: string = 'References'): string {
   text = normalizeInternalReferenceLinks(text)
+  text = normalizeBracketedReferenceList(text)
+  // Models sometimes emit already-numbered anchor links; protect them so the
+  // parser below does not double-convert the type:id inside their hrefs (§65).
+  const { text: protectedText, restore } = protectInternalReferenceLinks(text)
 
   // Step 1: Parse all references using existing function
-  const references = parseSourceReferences(text)
+  const references = parseSourceReferences(protectedText)
 
-  // Step 2: If no references found, return original text
+  // Step 2: If no references found, return the restored original text
   if (references.length === 0) {
-    return text
+    return restore(text)
   }
 
   // Step 3: Build reference map (deduplicate and assign numbers)
@@ -397,7 +447,7 @@ export function convertReferencesToCompactMarkdown(text: string, referencesLabel
   }
 
   // Step 4: Replace references with numbered citations (process from end to start)
-  let result = text
+  let result = protectedText
   for (let i = references.length - 1; i >= 0; i--) {
     const reference = references[i]
     const key = `${reference.type}:${reference.id}`
@@ -441,7 +491,8 @@ export function convertReferencesToCompactMarkdown(text: string, referencesLabel
     refListLines.push(refListItem)
   }
 
-  // Step 6: Append reference list to result
+  // Step 6: Restore pre-existing anchor links, then append reference list
+  result = restore(result)
   result = result + refListLines.join('\n')
 
   return result

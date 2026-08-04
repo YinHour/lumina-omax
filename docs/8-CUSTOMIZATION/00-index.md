@@ -4715,3 +4715,111 @@ exit 0
 2. **歧义保留**：多个真实 ID 共享同一截短片段时修复放弃（如两个源都以 `u93up` 结尾），保持不误替换。
 3. **历史消息**：已保存的 transcript/Ask 历史中的截短引用不会自动修复。
 4. **方案 D 备选**：若后续模型截短仍频繁，可评估编号引用 + SSE 下发编号→ID 映射的彻底重构。
+
+---
+
+## 65. 三项体验修复：引用渲染、导览卡片、Research 停滞误杀与文案（新增 2026-08-04）
+
+### 65.1 问题一：引用显示为非链接 `[[1](#ref-source-xxx), [2](#ref-source-yyy)]`
+
+- **根因（两层）**：1) 模型格式漂移——chat 提示词要求本地引用用 `[source:xxx]`，模型却输出编号 + `#ref-` 锚点链接且用外层方括号+逗号合并多个引用；2) 前端二次转换 bug——`convertReferencesToCompactMarkdown` / `convertReferencesToMarkdownLinks` 的引用解析正则匹配到 **`#ref-` 锚点 href 内部的** `source:xxx`，再次转换为嵌套链接 `[1](#ref-[1](#ref-source-xxx))` → ReactMarkdown 解析失败 → 显示为纯文本。
+- **修复**：
+  - `frontend/src/lib/utils/source-references.tsx` 新增 `protectInternalReferenceLinks()`（解析前把已存在的 `#ref-` 锚点链接替换为占位符、解析后恢复）与 `normalizeBracketedReferenceList()`（去掉 `[[n](href), [m](href)]` 外层方括号）；两个转换函数均接入保护逻辑；
+  - `prompts/chat/system.jinja` 本地引用段追加 FORMAT 约束：不得编号、不得用 markdown 链接包裹、不得方括号合并多个引用。
+- **测试**：`source-references.test.ts` 新增 4 条（锚点不被二次转换 ×2、双括号列表规范化、裸 `[source:abc]` 与锚点共存）。
+
+### 65.2 问题二：导览卡片「正在生成」后静默消失
+
+- **根因**：`generate_notebook_guide` → `parse_guide_json` 解析模型 JSON 失败（日志反复 `Failed to parse notebook guide JSON`；模型输出被 `max_tokens=768` 截断或格式漂移）→ 返回 `status=error` → 前端仅 `status==='ready'` 渲染卡片，失败后无任何状态 → 静默。
+- **修复**：
+  - `api/notebook_guide_service.py`：`_parse_json_object()` 重写——优先取完整 `{...}`，否则取首个 `{` 到文末（截断情形），并做启发式修复（未闭合字符串补 `"`、未闭合括号/数组补 `]`/`}`）；`parse_guide_json` 剥离任意位置代码块围栏；解析仍失败时 `_extract_questions_fallback()` 宽松提取 questions 列表（宁给建议不给空）；
+  - `_invoke_json_model` `max_tokens` 768 → 1024（降低截断概率）；
+  - `frontend/src/components/source/ChatPanel.tsx` 新增失败态：`status=error` 时显示「导览暂不可用」+ 说明 + 重新生成按钮（新增 `guideUnavailableDesc` i18n，zh-CN/en-US）。
+- **测试**：`tests/test_guide_json_parsing.py` 新增 12 条（围栏/前置文字/截断补全/字符串未闭合/兜底提取/上限/类型过滤）。
+
+### 65.3 问题三：Research Agent research_stall 误杀 + 文案
+
+- **根因（第一层：报错不应该）**：trace `f8d75344cf61` 铁证——11:23:26 模型调用开始（payload 38K 字符 + 10 工具 + 联网/科研库/跨笔记本全开）→ 11:25:26 恰好 120s 被停滞检测取消（`research_model_call_end status=cancelled`）。**模型单轮正常生成 >120s 无首输出被误杀**：watchdog 进度信号不含模型调用开始，且 reasoning 输出仅在**首次**触发进度（持续思考输出不算），模型调用进行中全部计入停滞时间。
+- **修复（3a）**：`api/routers/chat.py`——
+  - `on_chat_model_start` 触发 `mark_research_progress()`（模型调用开始 = 有效工作，不因响应慢而被误杀；模型真挂起由 600s 硬超时兜底）；
+  - `on_chat_model_stream` / `on_llm_stream` 任意流式输出（含 reasoning-only chunk）都重置停滞时钟（修掉"仅首次 reasoning 算进度"缺口）；
+  - `emit_reasoning_started` 同样重置（buffered 路径兜底）；
+  - 默认停滞窗口 120s → **180s**（`RESEARCH_AGENT_STALL_TIMEOUT_SECONDS`）。
+- **修复（3b：文案中文化）**：`frontend/src/lib/chat/error-bubble.ts` 对 `research_stall` / `research_hard_timeout` **隐藏英文 server message**——气泡中文主体（`errorResearchStall` / `errorResearchHardTimeout`，§59 已提供「科研 Agent 已长时间没有有效进展…请拆分问题/减少启用能力」）已用用户可懂的语言完整解释原因与做法；`_Diagnostic_: error_code=...` 保留作为技术支持标识。其它错误类型不变。
+- **测试**：`tests/test_research_stall_timeout.py` 新增——模型开始 + 持续 reasoning 输出（30 × 0.1s，远超 0.2s 测试窗口）期间不触发 stall，generator 正常结束。
+
+### 65.4 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/lib/utils/source-references.tsx` | `protectInternalReferenceLinks` + `normalizeBracketedReferenceList` + 两个转换函数接入 |
+| `prompts/chat/system.jinja` | 本地引用 FORMAT 约束 |
+| `api/notebook_guide_service.py` | `_parse_json_object` 截断修复、任意位置围栏剥离、questions 兜底、max_tokens 1024 |
+| `frontend/src/components/source/ChatPanel.tsx` | 导览失败态（不可用 + 重试按钮） |
+| `frontend/src/lib/locales/{zh-CN,en-US}/index.ts` | `guideUnavailableDesc` |
+| `api/routers/chat.py` | `on_chat_model_start`/流式输出/reasoning 计入进度；默认窗口 180s |
+| `frontend/src/lib/chat/error-bubble.ts` | research_stall/hard_timeout 隐藏英文 server message |
+| `frontend/src/lib/utils/source-references.test.ts` | 新增锚点保护/双括号列表测试 |
+| `tests/test_guide_json_parsing.py` | **新增** 12 条 |
+| `tests/test_research_stall_timeout.py` | 新增模型开始+reasoning 进度测试 |
+
+### 65.5 验证
+
+```text
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+458 passed, 33 deselected, 8 warnings
+
+.venv/bin/python -m ruff check api/notebook_guide_service.py api/routers/chat.py tests/test_guide_json_parsing.py tests/test_research_stall_timeout.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+214 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0；0 errors，4 个既有 warning
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+### 65.6 未尽事宜
+
+1. **慢模型观测**：180s 停滞窗口 + 模型调用/流式输出算进度的组合仍需真实长 Research 任务回归；若仍触发，可先调大 `RESEARCH_AGENT_STALL_TIMEOUT_SECONDS`。
+2. **导览失败率**：截断修复与 1024 token 已覆盖主要失败模式；仍失败时前端会显示「导览暂不可用」+ 重试，不再静默。
+3. **引用格式**：prompt 约束 + 前端容错双保险；若模型仍输出非标准格式，可再评估编号引用彻底重构（§64 未尽事宜 4）。
+
+---
+
+## 66. Ask 路径引用反引号转义未还原（2026-08-04 追加）
+
+### 66.1 问题
+
+- 用户反馈 Ask 回答中引用显示为反引号代码样式（如 `` `[1](#ref-source-6462jcxkee5dqz25avy8)` ``），不可点击。
+- **根因**：模型输出被反引号转义的内部锚点链接时，`normalizeInternalReferenceLinks()` 负责还原——但仅 `convertReferencesToCompactMarkdown`（Chat 路径）调用它；`convertReferencesToMarkdownLinks`（Ask 路径，`StreamingResponse.tsx` 唯一调用点）在 §65 只补了 `#ref-` 锚点保护，**漏了 normalize 还原**，反引号保留 → ReactMarkdown 渲染为行内 `<code>`。
+
+### 66.2 修复
+
+- `frontend/src/lib/utils/source-references.tsx`：`convertReferencesToMarkdownLinks` 开头调用 `normalizeInternalReferenceLinks(text)`（顺序：normalize → protect → parse → restore）。
+- `frontend/src/lib/utils/source-references.test.ts` 新增 3 条：反引号锚点在 markdown-links 与 compact 两条路径均还原、与裸 `[source:xxx]` 共存。
+
+### 66.3 验证
+
+```text
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run src/lib/utils/source-references.test.ts
+9 passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+217 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0；0 errors，4 个既有 warning
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
