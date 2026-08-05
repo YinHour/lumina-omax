@@ -1,0 +1,1 @@
+DEFINE FIELD IF NOT EXISTS default_guide_model ON TABLE default_models TYPE option<string>;

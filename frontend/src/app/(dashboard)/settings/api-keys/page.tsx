@@ -1190,6 +1190,7 @@ function DefaultModelSelectors({
     { key: 'default_tools_model', label: t.models.toolsModelLabel, description: t.models.toolsModelDesc, modelType: 'language', id: `${generatedId}-tools` },
     { key: 'large_context_model', label: t.models.largeContextModelLabel, description: t.models.largeContextModelDesc, modelType: 'language', id: `${generatedId}-large` },
     { key: 'default_vision_model', label: t.models.visionModelLabel, description: t.models.visionModelDesc, modelType: 'language', id: `${generatedId}-vision` },
+    { key: 'default_guide_model', label: t.models.guideModelLabel, description: t.models.guideModelDesc, modelType: 'language', id: `${generatedId}-guide` },
   ]
 
   const defaultConfigs = [...primaryConfigs, ...advancedConfigs]

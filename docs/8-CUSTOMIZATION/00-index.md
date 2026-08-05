@@ -4866,3 +4866,104 @@ exit 0
 git diff --check
 exit 0
 ```
+
+---
+
+## 69. 导览卡片生成失败根因：模型不遵循 JSON + 新增可配置导览模型（新增 2026-08-05）
+
+### 69.1 问题与根因
+
+- 用户反馈：导览卡片始终生成失败，停留在「导览暂不可用」。§65 的解析鲁棒性增强未解决问题。
+- 实测复现：`_invoke_json_model(_build_guide_prompt(...))` 默认用 `default_chat_model`（gemini-3.5-flash via jp.pincc.ai 中转），模型返回 **115 字符的非 JSON 内容**（prompt 指令回声 + 一个问题开头），`_parse_json_object` 的截断修复/围栏剥离/兜底均无能为力（输出根本不是 JSON 结构）。
+- **根因不是 prompt、不是解析代码、不是 max_tokens**——是 **gemini-3.5-flash via jp.pincc.ai 中转不遵循 "Return strict JSON only" 指令**，返回极短的非结构化内容。
+
+### 69.2 模型对比实测
+
+对同一导览 prompt 实测 7 个模型：
+
+| 模型 | 供应商 | raw 长度 | JSON? | 解析 |
+|------|--------|---------|-------|------|
+| deepseek-v4-pro | DeepSeek 官方 | 464 | ✅ | ✅ 成功 |
+| **deepseek-v4-flash** | DeepSeek 官方 | 470 | ✅ | ✅ 成功 |
+| qwen3.7-plus | Qwen(dashscope) | 0 | ❌ | ❌ 空响应 |
+| qwen3.7-max | Qwen(dashscope) | 0 | ❌ | ❌ 空响应 |
+| qwen3.6-flash | Qwen(dashscope) | 0 | ❌ | ❌ 空响应 |
+| glm-5.2 | 火山引擎 | — | — | ❌ 429 配额超限 |
+| gemini-3.5-flash | Google(中转) | 41 | ❌ | ❌ 非 JSON 乱码 |
+
+**结论**：DeepSeek 系列是当前环境唯一验证可靠的 JSON 输出模型（v4-pro 和 v4-flash 都行）。
+
+### 69.3 max_tokens 与上下文窗口的澄清
+
+- 用户疑问：模型上下文 1MB/250KB，为何 max_tokens 默认 1024？
+- **两者独立**：上下文窗口 = 输入+输出总量；max_tokens = 输出 token 上限。1M 上下文模型完全可以读 999K 输入 + 只允许写 1024 输出。
+- 1024 是导览输出的合理上限：摘要 ~300 token + 3 问题 ~300 token + JSON 语法 ~50 token ≈ 700 token，1024 留 ~50% 余量。设上限还控制成本/延迟/防发散。
+- gemini 失败（115 字符）**不是 max_tokens 截断**——模型主动返回非 JSON 短内容后停止。
+
+### 69.4 §65 修复保留决策
+
+- §65 的解析鲁棒性增强（截断修复/围栏剥离/questions 兜底/前端失败态）**不清理，全部保留**——它们针对的是不同的失败模式（截断/格式漂移），与本次根因（模型不遵循 JSON）互补，是多层防御。换 deepseek 后偶发截断/围栏仍由 §65 兜底。
+
+### 69.5 决策与实现（方案 A：可配置导览模型）
+
+- **新增 `default_guide_model` 字段**（可配置，不硬编码 model id）：
+  - migration 31：`DEFINE FIELD default_guide_model ON TABLE default_models TYPE option<string>`
+  - `DefaultModels` 加 `default_guide_model: Optional[str]`
+  - `DefaultModelsResponse` + `api/routers/models.py` GET/PUT 透传
+  - `generate_notebook_guide`：优先用 `default_guide_model`，空则回退 `default_chat_model`（向后兼容）
+- **前端配置入口**：`/settings/api-keys` 页面「高级」区新增「导览模型」下拉（与转换/工具/大上下文/视觉同组，不设必填）；新增 `guideModelLabel` / `guideModelDesc` i18n（zh-CN/en-US）。
+- 管理员在设置页把导览模型配成 deepseek-v4-flash（或 pro）即可；留空维持现状。
+
+### 69.6 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/database/migrations/31.surrealql` + `31_down.surrealql` | **新增** — default_guide_model 字段 |
+| `open_notebook/ai/models.py` | DefaultModels 加字段 |
+| `api/models.py` | DefaultModelsResponse 加字段 |
+| `api/routers/models.py` | GET/PUT 透传 |
+| `api/notebook_guide_service.py` | generate_notebook_guide 优先用 guide model，回退 chat model |
+| `frontend/src/app/(dashboard)/settings/api-keys/page.tsx` | advancedConfigs 加导览模型项 |
+| `frontend/src/lib/types/models.ts` | ModelDefaults 加字段 |
+| `frontend/src/lib/locales/{zh-CN,en-US}/index.ts` | guideModelLabel / guideModelDesc |
+
+### 69.7 验证
+
+```text
+真实 DB 端到端：
+  UPDATE default_guide_model = 'model:rzv6gun8oukhukiwir0r' (deepseek-v4-flash)
+  generate_notebook_guide(notebook:yftlcwunmlqpgbtno3aw, force=True)
+    -> status: ready, summary + 3 个完整问题 ✅
+  （已还原为 NONE，待用户在设置页配置）
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+458 passed, 33 deselected, 8 warnings
+
+.venv/bin/python -m ruff check api/notebook_guide_service.py api/routers/models.py api/models.py open_notebook/ai/models.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+217 passed | 9 skipped
+
+cd frontend && npm run lint
+exit 0；0 errors，4 个既有 warning
+
+cd frontend && npm run build
+exit 0
+
+git diff --check
+exit 0
+```
+
+### 69.8 验收步骤
+
+1. API 重启后 migration 31 自动应用（字段已就位，实测 `default_guide_model = None`）
+2. 设置 → API Keys → 高级 → 导览模型 → 选 `deepseek-v4-flash`（或 pro）→ 保存
+3. 打开笔记本（或点击「重新生成导览」）→ 导览卡片应正常生成
+4. 留空导览模型 → 维持现状（用聊天模型，仍可能失败）
+
+### 69.9 未尽事宜
+
+1. **Qwen 空响应**：dashscope 兼容模式对导览 prompt 返回空响应（raw_len=0），是独立问题，不在本轮范围；日常 chat 用 Qwen 若正常，可能是导览的 `streaming=False` + `temperature=0` 组合在 dashscope 兼容端点行为异常，需单独排查。
+2. **glm-5.2 配额**：429 超限无法验证 JSON 能力，配额恢复后可补充测试。
+3. **导览模型可配置**：本方案不硬编码模型，管理员可随时在设置页更换；将来若有更优 JSON 模型可直接切换。

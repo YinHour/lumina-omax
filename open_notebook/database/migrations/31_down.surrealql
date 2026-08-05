@@ -1,0 +1,1 @@
+REMOVE FIELD IF EXISTS default_guide_model ON TABLE default_models;

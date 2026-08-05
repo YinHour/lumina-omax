@@ -31,6 +31,7 @@ export interface ModelDefaults {
   default_vision_model?: string | null
   default_embedding_model?: string | null
   default_tools_model?: string | null
+  default_guide_model?: string | null
 }
 
 export interface ProviderAvailability {

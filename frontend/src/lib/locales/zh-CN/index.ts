@@ -1172,6 +1172,8 @@ export const zhCN = {
     sttModelDesc: "用于音频转录",
     visionModelLabel: "视觉模型",
     visionModelDesc: "用于描述文档中的图片和图表",
+    guideModelLabel: "导览模型",
+    guideModelDesc: "用于生成笔记本结构化导览卡片，需稳定输出 JSON；留空时使用聊天模型",
     embeddingChangeTitle: "嵌入模型变更",
     embeddingChangeConfirm: "您即将将嵌入模型从 {from} 更改为 {to}。",
     rebuildRequired: "重要提示：需要重建索引",

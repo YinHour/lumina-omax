@@ -261,7 +261,22 @@ async def generate_notebook_guide(
         )
 
     try:
-        raw = await _invoke_json_model(_build_guide_prompt(sources, language))
+        # Guide generation needs strict JSON output. Prefer the dedicated
+        # guide model when configured; otherwise fall back to the default chat
+        # model (§67). Some relays (e.g. gemini via pincc.ai) ignore the
+        # "strict JSON only" instruction and return prose / prompt echoes,
+        # so admins can point this at a model with reliable JSON adherence
+        # (e.g. deepseek-v4-pro / flash).
+        from open_notebook.ai.models import DefaultModels
+
+        defaults = await DefaultModels.get_instance()
+        guide_model_override = (
+            defaults.default_guide_model or defaults.default_chat_model
+        )
+        raw = await _invoke_json_model(
+            _build_guide_prompt(sources, language),
+            model_override=guide_model_override,
+        )
         summary, questions = parse_guide_json(raw)
     except Exception as exc:
         logger.warning(f"Notebook guide generation failed for {notebook_id}: {exc}")

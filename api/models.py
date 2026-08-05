@@ -140,6 +140,7 @@ class DefaultModelsResponse(BaseModel):
     default_vision_model: Optional[str] = None
     default_embedding_model: Optional[str] = None
     default_tools_model: Optional[str] = None
+    default_guide_model: Optional[str] = None
 
 
 class ProviderAvailabilityResponse(BaseModel):

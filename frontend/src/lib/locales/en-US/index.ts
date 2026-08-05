@@ -1172,6 +1172,8 @@ export const enUS = {
     sttModelDesc: "Used for audio transcription",
     visionModelLabel: "Vision Model",
     visionModelDesc: "Used for describing figures and images in documents",
+    guideModelLabel: "Guide Model",
+    guideModelDesc: "Used for the structured notebook guide card; must reliably output JSON. Falls back to the chat model when empty.",
     embeddingChangeTitle: "Embedding Model Change",
     embeddingChangeConfirm: "You are about to change your embedding model from {from} to {to}.",
     rebuildRequired: "Important: Rebuild Required",
