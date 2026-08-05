@@ -5013,3 +5013,40 @@ exit 0
 回归有效性：临时还原 `ask.py`（stash 归并器）后 `test_parallel_searches_merge_ids_without_invalid_update` 失败，恢复后通过，证明测试真实覆盖该并发缺陷。
 
 未验证项：需重启 API 后在浏览器对全局 Ask 提一个会触发多检索词策略的问题做真实回归；若再次失败，错误气泡应显示 `internal_error` 而非 `external_service`。
+
+---
+
+## 71. 「询问与搜索」菜单文案统一为「提问与搜索」（新增 2026-08-05）
+
+### 71.1 问题与决策
+
+- 用户反馈侧边栏菜单显示「询问与搜索」，打开 `/search` 页面标题却是「提问与搜索」，同一页面名称两处不一致。
+- 根因：`navigation.askAndSearch` 与 `searchPage.askAndSearch` 两个 i18n 键文案不同步。菜单（`AppSidebar`、`CommandPalette`）读前者，页面标题读后者。
+- 按用户要求将「询问」统一为「提问」：`zh-CN` 导航键改为「提问与搜索」；`zh-TW` 存在同样的不一致（「詢問與搜尋」vs「提問與搜尋」），同步统一为「提問與搜尋」。
+- 不改 `searchPage.ask`（嵌入选项 always/ask/never 的「询问」，语义为「每次询问」，非页面名称）与 `accessibility.enterQuestion` 占位文案；其余 7 个 locale 两键原本一致或无「询问」措辞问题，不动。历史文档（总账 §68 标题、旧周报）中的「询问与搜索」表述属历史快照，不回写。
+- 现行用户帮助文档与开发文档中功能概念名「Ask（询问）」同步为「Ask（提问）」，与页面名称口径一致。
+
+### 71.2 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/lib/locales/zh-CN/index.ts` | `navigation.askAndSearch` 「询问与搜索」→「提问与搜索」 |
+| `frontend/src/lib/locales/zh-TW/index.ts` | `navigation.askAndSearch` 「詢問與搜尋」→「提問與搜尋」 |
+| `docs/2-CORE-CONCEPTS/index.md`、`docs/user_docs/2-CORE-CONCEPTS/index.md` | 功能概念名「Ask（询问）」→「Ask（提问）」 |
+| `docs/2-CORE-CONCEPTS/chat-vs-transformations.md`、`docs/user_docs/2-CORE-CONCEPTS/chat-vs-transformations.md` | 同上 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节记录 |
+
+### 71.3 验证
+
+```text
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test -- --run
+217 passed | 9 skipped
+
+cd frontend && npm run lint
+0 errors, 4 pre-existing warnings
+
+cd frontend && npm run build
+exit 0
+```
+
+未验证项：浏览器目检菜单与页面标题一致（纯文案键值变更，自动测试与构建已覆盖渲染链路）。

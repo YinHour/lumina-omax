@@ -240,7 +240,7 @@ export const zhCN = {
     manage: "管理",
     sources: "来源",
     notebooks: "笔记本",
-    askAndSearch: "询问与搜索",
+    askAndSearch: "提问与搜索",
     podcasts: "播客",
     models: "模型",
     transformations: "转换",

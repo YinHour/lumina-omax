@@ -210,7 +210,7 @@ export const zhTW = {
     manage: "管理",
     sources: "來源",
     notebooks: "筆記本",
-    askAndSearch: "詢問與搜尋",
+    askAndSearch: "提問與搜尋",
     podcasts: "播客",
     models: "模型",
     transformations: "轉換",
