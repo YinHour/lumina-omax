@@ -167,3 +167,37 @@ class TestClassifyErrorEdgeCases:
         cls, msg = classify_error(exc)
         assert cls is NetworkError
         assert "network" in msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# classify_error – LangGraph runtime errors are internal, not provider errors
+# ---------------------------------------------------------------------------
+class TestLangGraphInternalErrors:
+    def test_concurrent_update_message_is_internal(self):
+        from open_notebook.exceptions import OpenNotebookError
+
+        exc = Exception(
+            "At key 'ids': Can receive only one value per step. "
+            "Use an Annotated key to handle multiple values."
+        )
+        cls, msg = classify_error(exc)
+        assert cls is OpenNotebookError
+        assert "Internal workflow error" in msg
+
+    def test_invalid_update_error_type_is_internal(self):
+        from open_notebook.exceptions import OpenNotebookError
+
+        InvalidUpdateError = type("InvalidUpdateError", (Exception,), {})
+        cls, msg = classify_error(InvalidUpdateError("At key 'ids': boom"))
+        assert cls is OpenNotebookError
+        assert "Internal workflow error" in msg
+
+    def test_langgraph_error_url_marker_is_internal(self):
+        from open_notebook.exceptions import OpenNotebookError
+
+        exc = Exception(
+            "see https://docs.langchain.com/oss/python/langgraph/errors/"
+            "INVALID_CONCURRENT_GRAPH_UPDATE"
+        )
+        cls, msg = classify_error(exc)
+        assert cls is OpenNotebookError

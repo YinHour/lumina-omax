@@ -4967,3 +4967,49 @@ exit 0
 1. **Qwen 空响应**：dashscope 兼容模式对导览 prompt 返回空响应（raw_len=0），是独立问题，不在本轮范围；日常 chat 用 Qwen 若正常，可能是导览的 `streaming=False` + `temperature=0` 组合在 dashscope 兼容端点行为异常，需单独排查。
 2. **glm-5.2 配额**：429 超限无法验证 JSON 能力，配额恢复后可补充测试。
 3. **导览模型可配置**：本方案不硬编码模型，管理员可随时在设置页更换；将来若有更优 JSON 模型可直接切换。
+
+---
+
+## 70. 全局 Ask 并行检索状态归并修复（新增 2026-08-05）
+
+### 70.1 问题与根因
+
+- 用户实测全局 Ask 报错：`⚠️ 系统提示：模型供应商返回错误 … error_code=external_service … At key 'ids': Can receive only one value per step. Use an Annotated key to handle multiple values. INVALID_CONCURRENT_GRAPH_UPDATE`。截屏与录屏见用户桌面 2026-08-04 17:10/17:11 文件。
+- 根因：§64 为引用修复让 `provide_answer` 节点返回值新增 `"ids"`，但 Ask 图父状态 `ThreadState` 只给 `answers` / `retrieved_source_ids` 声明了 `Annotated[list, operator.add]` 归并器，未声明 `ids`。Ask 通过 `Send` 对每个检索词并行派发 `provide_answer`（最多 5 路），策略生成 ≥2 个检索词时多路同一步写 `ids`，LangGraph 抛 `InvalidUpdateError`。单检索词提问不触发，表现为"有时正常、有时报错"。
+- 该异常在图运行时层抛出（节点本身正常返回），被 router 的 `classify_error` 兜底误分类为 `ExternalServiceError`，用户因此看到误导性的"模型供应商返回错误"。
+
+### 70.2 决策
+
+- `open_notebook/graphs/ask.py` — `ThreadState` 增加 `ids: Annotated[list, operator.add]`，与 `retrieved_source_ids` 同模式；并行更新改为拼接归并。`api/routers/search.py` 从节点输出事件收集 ids 且已去重，无需改动；`write_final_answer` 不消费状态中的 `ids`，跨检索词重复无害。
+- `open_notebook/utils/error_classifier.py` — 新增首条规则：`can receive only one value per step` / `invalid_concurrent_graph_update` / `invalidupdateerror` 归类为 `OpenNotebookError` 基类（SSE wire 上映射 `internal_error`），内部图错误不再误报为"模型供应商返回错误"；前端已有 `errorInternal` 模板，无新增 i18n。
+- 不改 Ask 检索策略、覆盖率统计、心跳/超时与引用修复链路；前端零改动。
+
+### 70.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/ask.py` | `ThreadState` 增加 `ids` 归并器 |
+| `open_notebook/utils/error_classifier.py` | LangGraph 运行时错误归为内部错误规则 |
+| `tests/test_ask_parallel_search.py` | **新增** — 双检索词全图并行回归（ids 并集/answers/final_answer）+ 单检索词回归 |
+| `tests/test_error_classifier.py` | 新增 3 条 LangGraph 内部错误分类断言 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节记录 |
+
+### 70.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_ask_parallel_search.py tests/test_error_classifier.py -q
+30 passed, 1 warning
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+463 passed, 33 deselected, 8 warnings
+
+.venv/bin/python -m ruff check open_notebook/graphs/ask.py open_notebook/utils/error_classifier.py tests/test_ask_parallel_search.py tests/test_error_classifier.py
+All checks passed
+
+git diff --check
+exit 0
+```
+
+回归有效性：临时还原 `ask.py`（stash 归并器）后 `test_parallel_searches_merge_ids_without_invalid_update` 失败，恢复后通过，证明测试真实覆盖该并发缺陷。
+
+未验证项：需重启 API 后在浏览器对全局 Ask 提一个会触发多检索词策略的问题做真实回归；若再次失败，错误气泡应显示 `internal_error` 而非 `external_service`。

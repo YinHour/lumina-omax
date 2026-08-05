@@ -18,6 +18,17 @@ from open_notebook.exceptions import (
 
 # Classification rules: (keywords, exception_class, user_message or None to pass through)
 _CLASSIFICATION_RULES: list[tuple[list[str], type[OpenNotebookError], str | None]] = [
+    # LangGraph runtime/state errors are internal bugs, not provider failures
+    (
+        [
+            "can receive only one value per step",
+            "invalid_concurrent_graph_update",
+            "invalidupdateerror",
+        ],
+        OpenNotebookError,
+        "Internal workflow error while combining parallel results. "
+        "Please try again; if it persists, share the diagnostic block with the support team.",
+    ),
     # Authentication errors
     (
         ["authentication", "unauthorized", "invalid api key", "invalid_api_key", "401"],

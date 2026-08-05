@@ -47,6 +47,7 @@ class ThreadState(TypedDict):
     strategy: Strategy
     answers: Annotated[list, operator.add]
     retrieved_source_ids: Annotated[list, operator.add]
+    ids: Annotated[list, operator.add]
     final_answer: str
 
 
