@@ -5095,4 +5095,15 @@ exit 0
 
 回归有效性：临时还原 `source.py`（stash 修复）后 `.doc`/`.ppt` 两条用例失败、`.docx` 仍通过，证明测试真实覆盖该缺口。
 
-未验证项：需重启 API 后重处理两个失败源（`source:oqd8gy611ill0v09vn83`、`source:bhemgganqcib6v901tv0`）及 §58.6 遗留 12 个失败 .doc 源。因源无笔记本关联，UI 重试会 400；改用 `command_service` 直提 `open_notebook.process_source`（§58 同款做法）或先把源加入笔记本再 UI 重试。
+### 72.5 实机回归
+
+只重启 worker（修复仅在 `source.py`，被 worker 的 `content_process` 使用；API/前端/DB 未重启），对两个失败源 `source:oqd8gy611ill0v09vn83`、`source:bhemgganqcib6v901tv0` 经 `CommandService.submit_command_job("open_notebook","process_source",...)` 直提（源 0 笔记本，UI 重试会 400）。新 worker（修复后代码）结果：
+
+| 源 | content_process | embedding | insight | KG（DB 实查） |
+|----|---|---|---|---|
+| oqd8gy611ill0v09vn83 | 5.01s 成功 | embedded=True，4 chunks | 已建已嵌 | 84 实体 / 274 关系 |
+| bhemgganqcib6v901tv0 | 5.31s 成功 | embedded=True，12 chunks | 已建已嵌 | 80 实体 / 211 关系 |
+
+最终源详情：`embedded=True`、`kg_extracted=True`、`full_text` 1848/5000 字符。先前 worker（旧代码）对同样 .doc 反复 "Unable to determine file type" 重试 15 次放弃；修复后一次成功，证明根因消除。
+
+注：oqd8 因重提命令被处理两次（幂等保存 + KG UPSERT 去重，无害）。KG 实体/关系存于 `kg_entity`/`kg_relation` 表，前端通过源 `kg_extracted` 标志确认；无按源的 `/knowledge-graph` 读取端点（先前 curl 命中 404，非持久化失败）。worker 现为独立进程（非 make 托管），下次 `make start-all` 会自然归一。
