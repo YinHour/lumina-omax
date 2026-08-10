@@ -5050,3 +5050,49 @@ exit 0
 ```
 
 未验证项：浏览器目检菜单与页面标题一致（纯文案键值变更，自动测试与构建已覆盖渲染链路）。
+
+---
+
+## 72. 老 .doc 在 auto 引擎下不转 PDF 导致解析失败（新增 2026-08-10）
+
+### 72.1 问题与根因
+
+- 用户新上传两份老二进制 .doc（`低缓凝型降失水剂调整实验记录-2020.5.21_260810154519.doc`、`测 低缓凝型降失水剂调整实验记录-2020.4.17_260810153908.doc`），嵌入与图谱抽取长时间不完成。worker.log 显示两个源反复重试后放弃：`Error during content extraction ... Unable to determine file type for: ...doc` → `Command open_notebook.process_source failed after 15 attempt(s)`。
+- 文件确认为 OLE2 复合文档（`file` 输出 `Composite Document File V2`，magic `d0cf 11e0`），content_core 的 auto 引擎无法识别。
+- 根因：`open_notebook/graphs/source.py:_sync_extract` 的 `.doc→PDF` 转换只在 `engine == "mineru"` 分支（1152 行，内部 1156 调 `convert_to_modern_office_format`）和 `.xls` 分支（原 1253 行）发生。`.doc` + `engine=auto` → 两条件都不满足 → 原始 .doc 直送 `extract_content`（1266 行）→ "Unable to determine file type" → 重试 15 次后放弃 → `full_text=null` → 嵌入/KG 永不执行。
+- 配置漂移：`.env` 未设 `CCORE_DOCUMENT_ENGINE`，DB `content_settings` 文档引擎字段为空 → 回退 `auto`（worker.log 实测 `Engine doc: auto`）。§58 时引擎是 `mineru`（走 1152 分支会先转 PDF）所以能成功；之后引擎变 `auto`，auto 路径不转 .doc 的缺口暴露。LibreOffice 26.2.5 正常，非 §58 的缺失问题。
+- 重试接口 `POST /sources/{id}/retry`（sources.py:1165-1168）要求源关联笔记本；这两个源 worker.log 显示 `notebook_ids: []`（上传到全局来源库），故 UI 重试会被拒。
+
+### 72.2 决策
+
+- `open_notebook/graphs/source.py:1253` — 把 `endswith(".xls")` 扩为 `endswith((".doc", ".ppt", ".xls"))`，让 auto/simple/docling 路径也把老二进制 `.doc/.ppt` 经 LibreOffice 转 PDF 再交 content_core（与 mineru 分支 1156 一致、符合 §27.1 意图）。
+- `.docx/.pptx` 不纳入：content_core 原生支持，转 PDF 反而丢结构。`convert_to_modern_office_format` 对非 Office 扩展名 no-op、失败优雅回退原路径，安全；mineru 成功时 file_path 已是 .pdf 不会重复转换，mineru 失败回退 simple 时 .doc 也会被正确转换。
+- 不改引擎配置（仍 auto）、不改 office_converter、不改重试接口；前端零改动。
+
+### 72.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/graphs/source.py` | `_sync_extract` auto 分支转换元组扩展含 `.doc`/`.ppt` |
+| `tests/test_source_office_conversion.py` | **新增** — auto 引擎下 .doc/.ppt 转 PDF、.docx 不转换三条回归 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节记录 |
+
+### 72.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_source_office_conversion.py -q
+3 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+466 passed, 33 deselected, 8 warnings
+
+.venv/bin/python -m ruff check open_notebook/graphs/source.py tests/test_source_office_conversion.py
+All checks passed
+
+git diff --check
+exit 0
+```
+
+回归有效性：临时还原 `source.py`（stash 修复）后 `.doc`/`.ppt` 两条用例失败、`.docx` 仍通过，证明测试真实覆盖该缺口。
+
+未验证项：需重启 API 后重处理两个失败源（`source:oqd8gy611ill0v09vn83`、`source:bhemgganqcib6v901tv0`）及 §58.6 遗留 12 个失败 .doc 源。因源无笔记本关联，UI 重试会 400；改用 `command_service` 直提 `open_notebook.process_source`（§58 同款做法）或先把源加入笔记本再 UI 重试。

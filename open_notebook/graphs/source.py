@@ -1250,7 +1250,13 @@ async def content_process(state: SourceState) -> dict:
                 logger.warning("MinerU does not support this file type. Falling back to simple engine.")
                 state["document_engine"] = "simple"
 
-            if file_path and file_path.lower().endswith(".xls"):
+            # Convert legacy binary Office formats (.doc/.ppt) and .xls to a
+            # content_core-friendly form regardless of engine. auto/simple/docling
+            # otherwise cannot determine the file type of OLE2 .doc/.ppt, and .xls
+            # must become .xlsx to preserve table structure. Modern .docx/.pptx are
+            # left alone since content_core handles them natively (PDF conversion
+            # would lose structure).
+            if file_path and file_path.lower().endswith((".doc", ".ppt", ".xls")):
                 from open_notebook.utils.office_converter import (
                     convert_to_modern_office_format,
                 )
