@@ -7,6 +7,17 @@ from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
 
+# Masked sentinel returned by GET /settings for non-empty secret fields. The raw
+# value is never sent to the browser (parity with the credentials router, which
+# never returns api_key). The frontend must omit a field when its value still
+# equals this sentinel so PUT does not overwrite the stored secret with it.
+MASKED_SECRET = "*" * 20
+
+
+def _mask_secret(value: str | None) -> str:
+    """Return the masked sentinel when a secret is configured, empty otherwise."""
+    return MASKED_SECRET if value else ""
+
 
 @router.get("/settings", response_model=SettingsResponse)
 async def get_settings():
@@ -21,9 +32,10 @@ async def get_settings():
             auto_delete_files=settings.auto_delete_files,
             source_batch_limit=settings.source_batch_limit,
             youtube_preferred_languages=settings.youtube_preferred_languages,
-            tavily_api_key=settings.tavily_api_key,
+            # Secrets are masked; never echo raw keys back to the browser.
+            tavily_api_key=_mask_secret(settings.tavily_api_key),
             tavily_include_domains=settings.tavily_include_domains,
-            firecrawl_api_key=settings.firecrawl_api_key,
+            firecrawl_api_key=_mask_secret(settings.firecrawl_api_key),
         )
     except Exception as e:
         logger.error(f"Error fetching settings: {str(e)}")
@@ -73,11 +85,11 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.youtube_preferred_languages = (
                 settings_update.youtube_preferred_languages
             )
-        if settings_update.tavily_api_key is not None:
+        if settings_update.tavily_api_key is not None and settings_update.tavily_api_key != MASKED_SECRET:
             settings.tavily_api_key = settings_update.tavily_api_key
         if settings_update.tavily_include_domains is not None:
             settings.tavily_include_domains = settings_update.tavily_include_domains
-        if settings_update.firecrawl_api_key is not None:
+        if settings_update.firecrawl_api_key is not None and settings_update.firecrawl_api_key != MASKED_SECRET:
             settings.firecrawl_api_key = settings_update.firecrawl_api_key
 
         await settings.update()
@@ -89,9 +101,9 @@ async def update_settings(settings_update: SettingsUpdate):
             auto_delete_files=settings.auto_delete_files,
             source_batch_limit=settings.source_batch_limit,
             youtube_preferred_languages=settings.youtube_preferred_languages,
-            tavily_api_key=settings.tavily_api_key,
+            tavily_api_key=_mask_secret(settings.tavily_api_key),
             tavily_include_domains=settings.tavily_include_domains,
-            firecrawl_api_key=settings.firecrawl_api_key,
+            firecrawl_api_key=_mask_secret(settings.firecrawl_api_key),
         )
     except HTTPException:
         raise

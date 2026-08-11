@@ -62,7 +62,9 @@ class TestSettingsApiFirecrawlKey:
         ContentSettings.clear_instance()
 
     @pytest.mark.parametrize("has_key", [True, False])
-    def test_get_settings_returns_firecrawl_key(self, client, auth_headers, has_key):
+    def test_get_settings_masks_firecrawl_key(self, client, auth_headers, has_key):
+        from api.routers.settings import MASKED_SECRET
+
         settings = ContentSettings(
             firecrawl_api_key="fc-key-abc" if has_key else None
         )
@@ -73,11 +75,30 @@ class TestSettingsApiFirecrawlKey:
         ):
             response = client.get("/api/settings", headers=auth_headers)
             assert response.status_code == 200
+            # Raw key is never echoed back; configured -> sentinel, absent -> "".
             assert response.json()["firecrawl_api_key"] == (
-                "fc-key-abc" if has_key else None
+                MASKED_SECRET if has_key else ""
             )
 
+    def test_get_settings_masks_tavily_key(self, client, auth_headers):
+        from api.routers.settings import MASKED_SECRET
+
+        settings = ContentSettings(tavily_api_key="tvly-secret-123")
+        with patch(
+            "open_notebook.domain.content_settings.ContentSettings.get_instance",
+            new_callable=AsyncMock,
+            return_value=settings,
+        ):
+            response = client.get("/api/settings", headers=auth_headers)
+            assert response.status_code == 200
+            body = response.json()
+            assert body["tavily_api_key"] == MASKED_SECRET
+            # Whitelist is not secret and is returned verbatim.
+            assert body["tavily_include_domains"] == settings.tavily_include_domains
+
     def test_put_settings_stores_firecrawl_key(self, client, auth_headers):
+        from api.routers.settings import MASKED_SECRET
+
         settings = ContentSettings()
         update = AsyncMock()
         with (
@@ -94,8 +115,9 @@ class TestSettingsApiFirecrawlKey:
                 headers=auth_headers,
             )
             assert response.status_code == 200
+            # Stored raw, but the response masks it.
             assert settings.firecrawl_api_key == "fc-key-saved"
-            assert response.json()["firecrawl_api_key"] == "fc-key-saved"
+            assert response.json()["firecrawl_api_key"] == MASKED_SECRET
 
     def test_put_settings_can_clear_firecrawl_key(self, client, auth_headers):
         settings = ContentSettings(firecrawl_api_key="fc-old-key")
@@ -113,3 +135,53 @@ class TestSettingsApiFirecrawlKey:
             )
             assert response.status_code == 200
             assert settings.firecrawl_api_key == ""
+
+    def test_put_settings_ignores_masked_sentinel_value(self, client, auth_headers):
+        """The masked sentinel must never be persisted as the real key."""
+        from api.routers.settings import MASKED_SECRET
+
+        settings = ContentSettings(firecrawl_api_key="fc-real-key")
+        update = AsyncMock()
+        with (
+            patch(
+                "open_notebook.domain.content_settings.ContentSettings.get_instance",
+                new_callable=AsyncMock,
+                return_value=settings,
+            ),
+            patch.object(settings, "update", update),
+        ):
+            response = client.put(
+                "/api/settings",
+                json={"firecrawl_api_key": MASKED_SECRET, "tavily_api_key": MASKED_SECRET},
+                headers=auth_headers,
+            )
+            assert response.status_code == 200
+            # Stored secrets are untouched when the client echoes the sentinel back.
+            assert settings.firecrawl_api_key == "fc-real-key"
+            assert settings.tavily_api_key is None
+
+    def test_put_settings_omitted_fields_are_not_overwritten(self, client, auth_headers):
+        """Fields absent from the PUT body (frontend sends null for unchanged) must not wipe stored values."""
+        settings = ContentSettings(
+            tavily_api_key="tvly-kept", firecrawl_api_key="fc-kept",
+            tavily_include_domains="example.com",
+        )
+        update = AsyncMock()
+        with (
+            patch(
+                "open_notebook.domain.content_settings.ContentSettings.get_instance",
+                new_callable=AsyncMock,
+                return_value=settings,
+            ),
+            patch.object(settings, "update", update),
+        ):
+            # Only change an unrelated field; omit the secret fields entirely.
+            response = client.put(
+                "/api/settings",
+                json={"source_batch_limit": 100},
+                headers=auth_headers,
+            )
+            assert response.status_code == 200
+            assert settings.tavily_api_key == "tvly-kept"
+            assert settings.firecrawl_api_key == "fc-kept"
+            assert settings.tavily_include_domains == "example.com"

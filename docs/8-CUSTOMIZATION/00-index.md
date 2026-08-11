@@ -5107,3 +5107,65 @@ exit 0
 最终源详情：`embedded=True`、`kg_extracted=True`、`full_text` 1848/5000 字符。先前 worker（旧代码）对同样 .doc 反复 "Unable to determine file type" 重试 15 次放弃；修复后一次成功，证明根因消除。
 
 注：oqd8 因重提命令被处理两次（幂等保存 + KG UPSERT 去重，无害）。KG 实体/关系存于 `kg_entity`/`kg_relation` 表，前端通过源 `kg_extracted` 标志确认；无按源的 `/knowledge-graph` 读取端点（先前 curl 命中 404，非持久化失败）。worker 现为独立进程（非 make 托管），下次 `make start-all` 会自然归一。
+
+---
+
+## 73. 设置页 API 密钥/白名单被清空：掩码哨兵 + PATCH 语义修复（新增 2026-08-11）
+
+### 73.1 问题与根因
+
+- 用户以管理员登录查看设置页，发现 Tavily API Key、Firecrawl API Key、Tavily 域名白名单等项全空白。DB 实查 `open_notebook:content_settings` 记录中 `tavily_api_key`、`tavily_include_domains`、`firecrawl_api_key` 均为空串，`url_engine` 从 §61 时的 `firecrawl` 变为 `auto`。**密钥已丢失**（`.env` 无 `TAVILY_API_KEY`/`FIRECRAWL_API_KEY` 兜底，二者为 DB-only）。
+- 清空由两个叠加 bug 造成：
+  1. **前端 `SettingsForm.tsx:72` reset 守卫**：表单填充 `useEffect` 写成 `settings && settings.default_content_processing_engine_doc && ...`，要求"文档引擎"字段有值才填充。当 DB 该字段为空（env 回退 `auto` 的场景）时 **reset 永不触发**，表单保持 `defaultValues` 的空串（`tavily_api_key:''`、`firecrawl_api_key:''`、`tavily_include_domains:''`）。
+  2. **后端 `settings.py:76-81` PUT 守卫**：用 `is not None`——前端提交空串（非 null）被当真值覆盖。用户在表单未填充状态下改了某个不相关字段并保存 → 空串覆盖 DB 里真实 key → 清空。
+- 先前看到的"********************"是表单正常填充时 password 输入框的浏览器掩码点（key 有值即显示点）；DB 被清空后字段就空了。
+
+### 73.2 决策（正确做法）
+
+- **后端 `api/routers/settings.py`**：
+  - 新增 `MASKED_SECRET = "*" * 20` 与 `_mask_secret()`。GET 对 `tavily_api_key`、`firecrawl_api_key` 返回哨兵（已配置）或 `""`（未配置），**原始 key 永不下发浏览器**（与 credentials 路由"Never returns api_key"一致）。`tavily_include_domains`（白名单，非密钥）仍返回原值。
+  - PUT 对两个密钥字段增加 `!= MASKED_SECRET` 守卫——即便客户端误回传哨兵也不把它存成真实 key（防御性，与前端 PATCH 语义双保险）。
+- **前端 `SettingsForm.tsx`**：
+  - reset 守卫改为 `settings && !hasResetForm && !isFetching`（去掉 `default_content_processing_engine_doc` 真值依赖），表单始终用 GET 结果填充。
+  - `onSubmit` 对 `tavily_api_key`/`tavily_include_domains`/`firecrawl_api_key` 改为 PATCH 语义：字段值与 GET 原值相等则发 `null`（后端 `is not None` 跳过、不覆盖），用户改了才发新值，清空发 `""`。这样即使用户只改了不相关字段并保存，未改动的密钥也不会被空串覆盖。
+- 不改 `ContentSettings` 模型、迁移、引擎配置；前端零新增 i18n（沿用既有 placeholder 文案）。
+
+### 73.3 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `api/routers/settings.py` | `MASKED_SECRET`/`_mask_secret()`；GET 掩码密钥；PUT `!= MASKED_SECRET` 守卫 |
+| `frontend/src/app/(dashboard)/settings/components/SettingsForm.tsx` | reset 守卫去掉 doc 真值依赖；onSubmit 对三个字段发 null（未改动） |
+| `tests/test_firecrawl_key_settings.py` | GET 掩码断言（firecrawl+tavily）、PUT 存原值响应掩码、PUT 哨兵不覆盖、PUT 缺字段不覆盖 |
+| `frontend/src/app/(dashboard)/settings/components/SettingsForm.test.tsx` | 填充哨兵显示、新 key 提交、未改动发 null、doc 为空也填充 |
+| `docs/8-CUSTOMIZATION/00-index.md` | 本节记录 |
+
+### 73.4 验证
+
+```text
+.venv/bin/python -m pytest tests/test_firecrawl_key_settings.py -q
+11 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+469 passed, 33 deselected, 10 warnings
+
+.venv/bin/python -m ruff check api/routers/settings.py tests/test_firecrawl_key_settings.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test
+219 passed | 9 skipped
+
+cd frontend && npm run lint   # 0 errors, 4 既有 warning
+cd frontend && npm run build  # exit 0
+
+git diff --check
+exit 0
+```
+
+回归有效性：临时 stash `SettingsForm.tsx` 修复后"doc 为空也填充"与"未改动发 null"两条用例失败、另两条仍通过，证明测试真实覆盖该缺口。
+
+### 73.5 数据与未尽事宜
+
+- **密钥丢失**：Tavily/Firecrawl API key 与白名单已无 DB/env 备份，需用户在修复部署后于设置页重新录入。重新录入后：GET 显示掩码点（已配置指示），保存时新值正常落库（不再被空串覆盖）。
+- `default_content_processing_engine_url` 从 `firecrawl` 变 `auto` 是先前一次保存（用户选择）的结果，非 bug；用户若需 firecrawl 可在设置页重新选。
+- 未验证项：需重启 API + 前端后，浏览器登录态目检设置页：密钥字段显示掩码点、重新录入并保存后 GET 仍显示掩码点（未被清空）、改其它字段保存不抹掉密钥。

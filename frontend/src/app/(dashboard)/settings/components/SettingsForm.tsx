@@ -68,8 +68,12 @@ export function SettingsForm() {
   }
 
   useEffect(() => {
-    // Wait until background fetch is complete so we don't populate with stale cache missing new fields
-    if (settings && settings.default_content_processing_engine_doc && !hasResetForm && !isFetching) {
+    // Populate the form once the background fetch completes. Do NOT gate on any
+    // single field being truthy: previously this required
+    // default_content_processing_engine_doc to be set, which left the form on its
+    // empty-string defaults whenever that field was null (env-fallback "auto").
+    // Saving in that state wiped configured API keys/whitelist with empty strings.
+    if (settings && !hasResetForm && !isFetching) {
       const formData = {
         default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'mineru' | 'simple',
         default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'simple',
@@ -86,7 +90,19 @@ export function SettingsForm() {
   }, [hasResetForm, reset, settings, isFetching])
 
   const onSubmit = async (data: SettingsFormData) => {
-    await updateSettings.mutateAsync(data)
+    // PATCH semantics for secret + whitelist fields: send null when the value is
+    // unchanged from the GET response so the backend (is-not-None guard) skips it.
+    // This prevents overwriting stored secrets with the masked sentinel or stale
+    // empty strings when the user only changed unrelated fields.
+    const guardFields = ['tavily_api_key', 'tavily_include_domains', 'firecrawl_api_key'] as const
+    const patch = { ...data }
+    for (const field of guardFields) {
+      const original = settings?.[field] ?? ''
+      if (patch[field] === original) {
+        patch[field] = null
+      }
+    }
+    await updateSettings.mutateAsync(patch)
   }
 
   if (isLoading) {
