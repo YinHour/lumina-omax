@@ -812,6 +812,7 @@ export const ptBR = {
     notConfigured: "Não configurado",
   },
   settings: {
+    saveSettings: "Salvar configurações",
     contentProcessing: "Processamento de Conteúdo",
     contentProcessingDesc: "Configure como documentos e URLs são processados",
     docEngine: "Motor de Processamento de Documentos",

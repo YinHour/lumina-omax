@@ -812,6 +812,7 @@ export const ruRU = {
     notConfigured: "Не настроено",
   },
   settings: {
+    saveSettings: "Сохранить настройки",
     contentProcessing: "Обработка контента",
     contentProcessingDesc: "Настройте обработку документов и URL",
     docEngine: "Движок обработки документов",

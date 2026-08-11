@@ -813,6 +813,7 @@ export const bnIN = {
     notConfigured: "কনফিগার করা হয়নি",
   },
   settings: {
+    saveSettings: "সেটিংস সংরক্ষণ করুন",
     contentProcessing: "কন্টেন্ট প্রক্রিয়াকরণ",
     contentProcessingDesc: "ডকুমেন্ট এবং URL কিভাবে প্রক্রিয়া করা হবে তা কনফিগার করুন",
     docEngine: "ডকুমেন্ট প্রক্রিয়াকরণ ইঞ্জিন",

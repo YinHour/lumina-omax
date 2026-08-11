@@ -975,6 +975,7 @@ export const enUS = {
     notConfigured: "Not configured",
   },
   settings: {
+    saveSettings: "Save Settings",
     contentProcessing: "Content Processing",
     contentProcessingDesc: "Configure how documents and URLs are processed",
     docEngine: "Document Processing Engine",

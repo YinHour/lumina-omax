@@ -5177,3 +5177,12 @@ exit 0
 - `default_content_processing_engine_url` 从 `firecrawl` 变 `auto` 是先前一次保存（用户选择）的结果，非 bug；用户若需 firecrawl 可在设置页重新选。
 - 实机已验证：重启 API 后 `GET /api/settings` 对空密钥返回 `""`（未配置），掩码路径生效；密钥配置后将返回 `********************`。
 - 未验证项：浏览器登录态目检设置页——重新录入密钥后显示掩码点、改其它字段保存不抹掉密钥。
+
+---
+
+## 74. 设置页提交按钮文案改为「保存设置」（新增 2026-08-11）
+
+- 用户反馈设置页底部提交按钮显示为「设置」（沿用 `t.navigation.settings`），语义不清；改为「保存设置」。
+- `frontend/src/app/(dashboard)/settings/components/SettingsForm.tsx` 提交按钮非 pending 态文案从 `t.navigation.settings` 改为新增键 `t.settings.saveSettings`；pending 态仍为 `t.common.saving`。
+- 9 个语言包 `settings` 区段新增 `saveSettings`：zh-CN「保存设置」、en-US「Save Settings」、zh-TW「儲存設定」、ja-JP「設定を保存」、fr-FR「Enregistrer les paramètres」、ru-RU「Сохранить настройки」、pt-BR「Salvar configurações」、it-IT「Salva impostazioni」、bn-IN「সেটিংস সংরক্ষণ করুন」。
+- 验证：`SettingsForm.test.tsx` 4 通过（既有 `/settings/i` 断言匹配 "Save Settings"）；全量 `npm test` 219 通过；`npm run lint` 0 错误；`npm run build` 通过。

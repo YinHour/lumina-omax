@@ -975,6 +975,7 @@ export const zhCN = {
     notConfigured: "未配置",
   },
   settings: {
+    saveSettings: "保存设置",
     contentProcessing: "内容处理",
     contentProcessingDesc: "配置文档和 URL 的处理方式",
     docEngine: "文档处理引擎",

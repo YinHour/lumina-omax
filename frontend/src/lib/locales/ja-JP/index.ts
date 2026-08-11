@@ -812,6 +812,7 @@ export const jaJP = {
     notConfigured: "未設定",
   },
   settings: {
+    saveSettings: "設定を保存",
     contentProcessing: "コンテンツ処理",
     contentProcessingDesc: "ドキュメントとURLの処理方法を設定",
     docEngine: "ドキュメント処理エンジン",

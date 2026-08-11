@@ -813,6 +813,7 @@ export const zhTW = {
     notConfigured: "未設定",
   },
   settings: {
+    saveSettings: "儲存設定",
     contentProcessing: "內容處理",
     contentProcessingDesc: "設定文件和 URL 的處理方式",
     docEngine: "文件處理引擎",

@@ -812,6 +812,7 @@ export const itIT = {
     notConfigured: "Non configurato",
   },
   settings: {
+    saveSettings: "Salva impostazioni",
     contentProcessing: "Elaborazione contenuti",
     contentProcessingDesc: "Configura come vengono elaborati documenti e URL",
     docEngine: "Motore elaborazione documenti",

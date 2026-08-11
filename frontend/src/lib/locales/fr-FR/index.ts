@@ -812,6 +812,7 @@ export const frFR = {
     notConfigured: "Non configuré",
   },
   settings: {
+    saveSettings: "Enregistrer les paramètres",
     contentProcessing: "Traitement du contenu",
     contentProcessingDesc: "Configurez la manière dont les documents et les URL sont traités",
     docEngine: "Moteur de traitement de documents",
