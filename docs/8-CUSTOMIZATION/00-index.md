@@ -5164,8 +5164,16 @@ exit 0
 
 回归有效性：临时 stash `SettingsForm.tsx` 修复后"doc 为空也填充"与"未改动发 null"两条用例失败、另两条仍通过，证明测试真实覆盖该缺口。
 
-### 73.5 数据与未尽事宜
+### 73.5 测试隔离修复（避免污染生产 DB）
+
+- 首轮运行 `test_put_settings_*` 后实查 DB，发现 `tavily_api_key="tvly-kept"`、`firecrawl_api_key="fc-kept"`、`tavily_include_domains="example.com"`——测试值被写进了生产 `open_notebook:content_settings` 记录。
+- 根因：`conftest.py` 加载 `.env`，测试连真实 SurrealDB（127.0.0.1:8001）；PUT 测试用 `patch.object(settings, "update", AsyncMock())` 想挡住 `await settings.update()`，但 **pydantic 模型实例上 patch 一个继承来的非字段方法不生效**（类方法优先 / `__setattr__` 不挡），handler 的 `await settings.update()` 走了真实 `RecordModel.update → repo_upsert` → 写生产 DB。§61 既有 PUT 测试同款潜在 bug。
+- 修复：PUT 测试改用**类级** `patch.object(ContentSettings, "update", AsyncMock())`（挡类方法，所有实例生效）。验证：单独跑 `test_put_settings_omitted_fields_are_not_overwritten` 后 DB 保持空；全量 `tests/ -m "not e2e"` 后 DB 仍保持空。
+- 已清理本次污染（三字段重置为空串）。未来测试不应再写 content_settings。
+
+### 73.6 数据与未尽事宜
 
 - **密钥丢失**：Tavily/Firecrawl API key 与白名单已无 DB/env 备份，需用户在修复部署后于设置页重新录入。重新录入后：GET 显示掩码点（已配置指示），保存时新值正常落库（不再被空串覆盖）。
 - `default_content_processing_engine_url` 从 `firecrawl` 变 `auto` 是先前一次保存（用户选择）的结果，非 bug；用户若需 firecrawl 可在设置页重新选。
-- 未验证项：需重启 API + 前端后，浏览器登录态目检设置页：密钥字段显示掩码点、重新录入并保存后 GET 仍显示掩码点（未被清空）、改其它字段保存不抹掉密钥。
+- 实机已验证：重启 API 后 `GET /api/settings` 对空密钥返回 `""`（未配置），掩码路径生效；密钥配置后将返回 `********************`。
+- 未验证项：浏览器登录态目检设置页——重新录入密钥后显示掩码点、改其它字段保存不抹掉密钥。

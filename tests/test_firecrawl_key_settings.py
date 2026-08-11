@@ -107,7 +107,10 @@ class TestSettingsApiFirecrawlKey:
                 new_callable=AsyncMock,
                 return_value=settings,
             ),
-            patch.object(settings, "update", update),
+            # Class-level patch: instance-level patching of `update` does not
+            # shadow the inherited method on a pydantic model, so the real
+            # repo_upsert would otherwise write test values into the live DB.
+            patch.object(ContentSettings, "update", update),
         ):
             response = client.put(
                 "/api/settings",
@@ -128,7 +131,7 @@ class TestSettingsApiFirecrawlKey:
                 new_callable=AsyncMock,
                 return_value=settings,
             ),
-            patch.object(settings, "update", update),
+            patch.object(ContentSettings, "update", update),
         ):
             response = client.put(
                 "/api/settings", json={"firecrawl_api_key": ""}, headers=auth_headers
@@ -148,7 +151,7 @@ class TestSettingsApiFirecrawlKey:
                 new_callable=AsyncMock,
                 return_value=settings,
             ),
-            patch.object(settings, "update", update),
+            patch.object(ContentSettings, "update", update),
         ):
             response = client.put(
                 "/api/settings",
@@ -173,7 +176,7 @@ class TestSettingsApiFirecrawlKey:
                 new_callable=AsyncMock,
                 return_value=settings,
             ),
-            patch.object(settings, "update", update),
+            patch.object(ContentSettings, "update", update),
         ):
             # Only change an unrelated field; omit the secret fields entirely.
             response = client.put(
