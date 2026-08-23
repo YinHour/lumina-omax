@@ -5186,3 +5186,95 @@ exit 0
 - `frontend/src/app/(dashboard)/settings/components/SettingsForm.tsx` 提交按钮非 pending 态文案从 `t.navigation.settings` 改为新增键 `t.settings.saveSettings`；pending 态仍为 `t.common.saving`。
 - 9 个语言包 `settings` 区段新增 `saveSettings`：zh-CN「保存设置」、en-US「Save Settings」、zh-TW「儲存設定」、ja-JP「設定を保存」、fr-FR「Enregistrer les paramètres」、ru-RU「Сохранить настройки」、pt-BR「Salvar configurações」、it-IT「Salva impostazioni」、bn-IN「সেটিংস সংরক্ষণ করুন」。
 - 验证：`SettingsForm.test.tsx` 4 通过（既有 `/settings/i` 断言匹配 "Save Settings"）；全量 `npm test` 219 通过；`npm run lint` 0 错误；`npm run build` 通过。
+
+---
+
+## 75. 出网脱敏透明网关（新增 2026-08-23）
+
+### 75.1 背景与方案演进
+
+基于《Lumina™科研助手脱敏规则（试行版）》实现系统端自动脱敏。首轮方案为「静态语料改写」——在源处理管线 `content_process → save_source` 之间插入脱敏节点，落库 full_text、向量、KG、insight 全部基于脱敏后文本，并对存量源一次性重解析重嵌入。经一周调研与向用户说明后，用户难以接受「所有源重新解析一遍」，且静态改写破坏原名检索、产生新旧向量不一致。
+
+最终方案改为「**出网脱敏 / 回网还原**透明网关」：数据落库保持原文不动，仅在发往外部 LLM 供应商的边界上临时替换敏感词，模型返回后在渲染/存储前还原。脱敏被收缩到唯一真正需要保护的边界，零迁移、检索天然兼容、用户侧几乎无感。
+
+### 75.2 信任模型与决策
+
+- **防护目标**：防止敏感商业身份信息出网至外部 AI 模型供应商；库内数据（SurrealDB、上传原件）视为可信，保持原文。
+- **嵌入层**：外部但可接受（嵌入服务只收文本不回显），**不脱敏**——存量与新增向量全在原文空间，检索天然一致，零迁移。
+- **TTS**：不脱敏（信任边界）。
+- **图像/音频出网**：已知边界，不做文本脱敏（Vision 提示词文本部分仍脱敏，图片本身不脱）。
+- **人名识别**：出网前不能为每次调用跑识别 LLM（延迟不可接受且识别调用本身即出网泄露），故人名靠**管理员纯手工维护全局词典**；井号/电话/产品代号由正则自动发现并固化稳定别名。
+- **代号一致性**：别名一经分配永不复用（向量稳定性与跨文档一致性依赖）；井名正则归一化为「最后 1 个汉字+编号」（与规则文档宁218-1井/威204H2井的单字命名约定一致），避免前缀动词污染导致同一井产生多词条。
+- **代号对照表**：仅管理员可查（词典含敏感原文）。
+- **失效语义**：出网脱敏 fail-closed（启用后意外错误中断 LLM 调用，绝不静默泄露）；回网还原 fail-open（还原失败用户看到代号，方向安全）。
+
+### 75.3 架构
+
+四层，封装点现成且唯一（全系统所有 chat 类 LLM 经 `provision_langchain_model()` 产出）：
+
+1. **脱敏引擎** `open_notebook/ai/redaction_gateway.py`（纯同步）：词典替换（最长匹配优先、单遍同时替换防级联）+ 电话固化为 888888（不可逆）+ 井号/产品代号正则自动发现与归一化 + `StreamRestorer` 跨 chunk 缓冲状态机（别名跨 token 撕裂时按「尾缀是否为某别名的真前缀」holdback，flush 时落空为原文字面）。
+2. **异步服务** `RedactionService`：DB 加载词典（30s TTL 缓存，跨 API/worker 进程最终一致）+ 自动别名持久化（唯一索引竞争时回查复用胜者）+ 出网统计日志 + fail-closed/fail-open 语义。
+3. **模型包装器** `open_notebook/ai/redaction_wrapper.py`：`maybe_make_redaction_aware()` 动态子类化 `type(model)`（模式照抄 §67 `reasoning_chat.py` 的就地 `__class__` 交换），覆盖 `_generate/_agenerate/_stream/_astream` 四个核心方法——出网前深拷贝消息并替换文本块、回网后用合并引擎还原 `ChatResult`/`ChatGenerationChunk`；`bind_tools` 返回 `RunnableBinding` 包同一实例，类交换对工具绑定 survive。包装链顺序：reasoning 先、redaction 后（避免后续类交换覆盖）。
+4. **嵌入还原钩子** `open_notebook/utils/embedding.py::_restore_for_embedding`：在 `generate_embeddings` 入口对每段文本先还原别名——对原文/分块是 no-op，对 LLM 生成的别名形态检索词自动纠偏（Ask 策略节点、Research Agent 搜索工具的查询都经此统一覆盖）。
+
+### 75.4 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/domain/redaction.py` | **新增** `RedactionRule` ObjectModel + 类别常量 |
+| `open_notebook/database/migrations/32.surrealql` / `32_down.surrealql` | **新增** `redaction_rule` 表（original 唯一索引）+ 规则文档对照表 8 条种子 |
+| `open_notebook/ai/redaction_gateway.py` | **新增** 引擎 + 服务 + 流式还原器 |
+| `open_notebook/ai/redaction_wrapper.py` | **新增** 动态子类包装器 |
+| `open_notebook/ai/provision.py` | 两处 `provision_langchain_model*` 链中插入 `maybe_make_redaction_aware` |
+| `open_notebook/utils/embedding.py` | `generate_embeddings` 入口加 `_restore_for_embedding` |
+| `open_notebook/domain/content_settings.py` | 新增 `redaction_enabled` 字段 |
+| `api/models.py` | `SettingsResponse/Update` 加 `redaction_enabled` + 脱敏词典 CRUD schema |
+| `api/routers/settings.py` | GET/PUT 暴露 `redaction_enabled` + 改动后失效缓存 |
+| `api/routers/redaction.py` | **新增** 词典 CRUD（admin only，`require_admin`）|
+| `api/main.py` | 注册 redaction 路由 |
+| `frontend/src/lib/types/api.ts` | `SettingsResponse.redaction_enabled` + `RedactionRule*` 类型 |
+| `frontend/src/lib/api/redaction.ts` | **新增** 词典 API 模块 |
+| `frontend/src/lib/hooks/use-redaction-rules.ts` | **新增** TanStack Query hooks |
+| `frontend/src/lib/api/query-client.ts` | `redactionRules` query key |
+| `frontend/src/app/(dashboard)/settings/components/RedactionCard.tsx` | **新增** 管理员卡片（开关+词典表格+CRUD）|
+| `frontend/src/app/(dashboard)/settings/page.tsx` | 挂载 `RedactionCard` |
+| `frontend/src/app/(dashboard)/settings/components/RedactionCard.test.tsx` | **新增** 6 条组件测试 |
+| `frontend/src/lib/locales/*/index.ts` | 9 语言包 `settings.redaction` 区段（含类别子对象）|
+| `tests/test_redaction_gateway.py` | **新增** 39 条引擎/服务单测 |
+| `tests/test_redaction_wrapper.py` | **新增** 15 条包装器单测 |
+| `tests/test_embedding_restore_hook.py` | **新增** 4 条嵌入钩子单测 |
+| `tests/test_redaction_api.py` | **新增** 14 条 API（鉴权+CRUD+开关）测试 |
+
+### 75.5 验证
+
+```text
+.venv/bin/python -m pytest tests/test_redaction_gateway.py tests/test_redaction_wrapper.py tests/test_embedding_restore_hook.py tests/test_redaction_api.py -q
+72 passed
+
+.venv/bin/python -m pytest tests/ -m "not e2e" -q
+541 passed, 33 deselected
+
+.venv/bin/python -m ruff check open_notebook/ai/ api/ tests/test_redaction_*.py
+All checks passed
+
+cd frontend && NODE_OPTIONS=--no-experimental-webstorage npm test   # 225 passed | 9 skipped
+cd frontend && npm run lint   # 0 errors, 4 既有 warning
+cd frontend && npm run build   # exit 0
+```
+
+回归有效性：井名正则贪婪吞前缀动词（在威204H2井）导致 4 条测试初始失败，修复归一化后通过，证明测试真实覆盖。
+
+实机端到端（启用 `redaction_enabled=true`，真实 DeepSeek 模型）：
+- `provision_langchain_model` 返回 `RedactionAwareReasoningAwareChatOpenAI`，包装链生效。
+- ainvoke/astream 回答均还原为 `张三说，在兴305-2井的联系电话是888888，用的是FS-13。`——供应商看到 `工程师A/实验井C/减阻剂A`，电话按规则固化为 888888，非流式与流式还原一致。
+- 自动别名归一化落库：`兴305-2井 -> 实验井C`（A/B 被种子占用），归一化形态正确。
+- DB 端 `restore_text` 与 `_restore_for_embedding` 对别名形态查询正常还原；嵌入向量空间与原文一致，原名检索不受影响。
+
+### 75.6 边界与已知限制
+
+- **静默漏检**：词典/正则未覆盖的敏感词会无声出网（出网后置校验仅覆盖电话/井号模式）；靠出网统计日志发现 + 甲方对嵌入/TTS 已接受的同类风险口径。
+- **别名冲突**：语料中天然存在「工程师A」字样时回网还原会误伤；添加词典时语料预检缓解（后续可加管理端预检 API）。
+- **联网搜索**：Tavily 收到别名形态查询，含身份词的联网搜索可能无效，需在用户文档中说明。
+- **TTS**：播客音频会念出还原后的真名（信任边界决策；若换外部 TTS 供应商需单独加只脱敏不还原的包装）。
+- **嵌入还原的 DB 依赖**：`restore_text` 走 DB 加载词典路径，DB 抖动时降级为原文透传（搜索可能短暂退化，非泄露）；后续可加「DB 失败回退过期缓存」的弹性。
+- 测试进程 import `api.main` 会触发日志初始化写入共享 `logs/api.log`，注入的测试异常字符串会出现在该日志中（非生产故障）。

@@ -316,6 +316,7 @@ class SettingsResponse(BaseModel):
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
     firecrawl_api_key: Optional[str] = None
+    redaction_enabled: bool = False
 
 
 class SettingsUpdate(BaseModel):
@@ -328,6 +329,34 @@ class SettingsUpdate(BaseModel):
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
     firecrawl_api_key: Optional[str] = None
+    redaction_enabled: Optional[bool] = None
+
+
+# Redaction dictionary API models
+class RedactionRuleResponse(BaseModel):
+    id: str
+    original: str
+    alias: str
+    category: str
+    enabled: bool
+    source: str
+    note: Optional[str] = None
+
+
+class RedactionRuleCreate(BaseModel):
+    original: str = Field(..., min_length=1, max_length=500)
+    alias: str = Field(..., min_length=1, max_length=200)
+    category: str = Field("custom", pattern="^(company|address|person|phone|well|product|custom)$")
+    note: Optional[str] = None
+
+
+class RedactionRuleUpdate(BaseModel):
+    alias: Optional[str] = Field(None, min_length=1, max_length=200)
+    category: Optional[str] = Field(
+        None, pattern="^(company|address|person|phone|well|product|custom)$"
+    )
+    enabled: Optional[bool] = None
+    note: Optional[str] = None
 
 
 # Sources API models

@@ -39,6 +39,10 @@ class ContentSettings(RecordModel):
     tavily_include_domains: Optional[str] = Field(
         None, description="Tavily Search Include Domains (comma separated)"
     )
+    redaction_enabled: Optional[bool] = Field(
+        False,
+        description="Egress redaction gateway: mask sensitive terms before sending prompts to external LLM providers",
+    )
 
     @model_validator(mode="after")
     def set_defaults_from_env(self):

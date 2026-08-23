@@ -1,0 +1,24 @@
+-- Migration 32: Egress redaction dictionary (出网脱敏透明网关)
+-- Rules table for the redact-on-egress / restore-on-ingress gateway.
+-- Seed entries come from 《Lumina™科研助手脱敏规则（试行版）》对照表.
+
+DEFINE TABLE IF NOT EXISTS redaction_rule SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS original ON TABLE redaction_rule TYPE string;
+DEFINE FIELD IF NOT EXISTS alias ON TABLE redaction_rule TYPE string;
+DEFINE FIELD IF NOT EXISTS category ON TABLE redaction_rule TYPE string;
+DEFINE FIELD IF NOT EXISTS enabled ON TABLE redaction_rule TYPE bool DEFAULT true;
+DEFINE FIELD IF NOT EXISTS source ON TABLE redaction_rule TYPE string DEFAULT "manual";
+DEFINE FIELD IF NOT EXISTS note ON TABLE redaction_rule TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS created ON TABLE redaction_rule TYPE option<datetime> DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated ON TABLE redaction_rule TYPE option<datetime> DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS redaction_rule_original_idx ON TABLE redaction_rule COLUMNS original UNIQUE;
+
+CREATE redaction_rule SET original = "成都欧美克石油科技股份有限公司", alias = "某油田化学企业", category = "company", source = "manual", enabled = true;
+CREATE redaction_rule SET original = "欧美克", alias = "某企业", category = "company", source = "manual", enabled = true;
+CREATE redaction_rule SET original = "成都市双流区", alias = "成都某工业园区", category = "address", source = "manual", enabled = true;
+CREATE redaction_rule SET original = "张三", alias = "工程师A", category = "person", source = "manual", enabled = true;
+CREATE redaction_rule SET original = "李四", alias = "实验员B", category = "person", source = "manual", enabled = true;
+CREATE redaction_rule SET original = "宁218-1井", alias = "实验井A", category = "well", source = "manual", enabled = true;
+CREATE redaction_rule SET original = "威204H2井", alias = "实验井B", category = "well", source = "manual", enabled = true;
+CREATE redaction_rule SET original = "FS-13", alias = "减阻剂A", category = "product", source = "manual", enabled = true;

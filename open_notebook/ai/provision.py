@@ -7,6 +7,7 @@ from loguru import logger
 
 from open_notebook.ai.models import Model, model_manager
 from open_notebook.ai.reasoning_chat import maybe_make_reasoning_aware
+from open_notebook.ai.redaction_wrapper import maybe_make_redaction_aware
 from open_notebook.ai.usage_audit import attach_usage_callback
 from open_notebook.exceptions import ConfigurationError
 from open_notebook.utils import token_count
@@ -71,7 +72,9 @@ async def provision_langchain_model_with_info(
         )
 
     langchain_model = attach_usage_callback(
-        maybe_make_reasoning_aware(model.to_langchain()),
+        maybe_make_redaction_aware(
+            maybe_make_reasoning_aware(model.to_langchain())
+        ),
         model=model_record,
         credential=credential,
     )
@@ -138,7 +141,9 @@ async def provision_langchain_model(
         )
 
     return attach_usage_callback(
-        maybe_make_reasoning_aware(model.to_langchain()),
+        maybe_make_redaction_aware(
+            maybe_make_reasoning_aware(model.to_langchain())
+        ),
         model=model_record,
         credential=credential,
     )

@@ -85,6 +85,23 @@ async def mean_pool_embeddings(embeddings: List[List[float]]) -> List[float]:
     return mean.tolist()
 
 
+async def _restore_for_embedding(texts: List[str]) -> List[str]:
+    """Restore egress-redaction aliases back to original terms before embedding.
+
+    Chunk and full-text embeddings live in the original-term vector space, so
+    LLM-generated queries written in alias form (e.g. 工程师A) must be
+    normalized here; for original text this is a no-op. Never raises: on any
+    gateway issue the texts pass through unchanged.
+    """
+    from open_notebook.ai.redaction_gateway import redaction_service
+
+    try:
+        return [await redaction_service.restore_text(text) for text in texts]
+    except Exception as e:
+        logger.warning(f"Redaction restore before embedding failed, continuing: {e}")
+        return texts
+
+
 async def generate_embeddings(
     texts: List[str], command_id: Optional[str] = None
 ) -> List[List[float]]:
@@ -108,6 +125,8 @@ async def generate_embeddings(
     """
     if not texts:
         return []
+
+    texts = await _restore_for_embedding(texts)
 
     # Lazy import to avoid circular dependency
     from open_notebook.ai.models import model_manager

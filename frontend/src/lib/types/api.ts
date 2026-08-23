@@ -101,6 +101,40 @@ export interface SettingsResponse {
   tavily_api_key?: string | null
   tavily_include_domains?: string | null
   firecrawl_api_key?: string | null
+  redaction_enabled?: boolean
+}
+
+export type RedactionCategory =
+  | 'company'
+  | 'address'
+  | 'person'
+  | 'phone'
+  | 'well'
+  | 'product'
+  | 'custom'
+
+export interface RedactionRule {
+  id: string
+  original: string
+  alias: string
+  category: RedactionCategory | string
+  enabled: boolean
+  source: string
+  note?: string | null
+}
+
+export interface RedactionRuleCreate {
+  original: string
+  alias: string
+  category: RedactionCategory | string
+  note?: string | null
+}
+
+export interface RedactionRuleUpdate {
+  alias?: string
+  category?: RedactionCategory | string
+  enabled?: boolean
+  note?: string | null
 }
 
 export interface CreateNotebookRequest {

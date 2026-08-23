@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SettingsForm } from './components/SettingsForm'
+import { RedactionCard } from './components/RedactionCard'
 import { UserApprovalDashboard } from './components/UserApprovalDashboard'
 import { useSettings } from '@/lib/hooks/use-settings'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,7 @@ export default function SettingsPage() {
           }
         />
         <SettingsForm />
+        <RedactionCard />
         <UserApprovalDashboard />
       </PageContainer>
     </AppShell>

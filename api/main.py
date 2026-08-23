@@ -32,6 +32,7 @@ from api.routers import (
     notebooks,
     notes,
     podcasts,
+    redaction,
     search,
     settings,
     source_chat,
@@ -305,6 +306,7 @@ app.include_router(
     embedding_rebuild.router, prefix="/api/embeddings", tags=["embeddings"]
 )
 app.include_router(settings.router, prefix="/api", tags=["settings"])
+app.include_router(redaction.router, prefix="/api", tags=["redaction"])
 app.include_router(context.router, prefix="/api", tags=["context"])
 app.include_router(sources.router, prefix="/api", tags=["sources"])
 app.include_router(insights.router, prefix="/api", tags=["insights"])

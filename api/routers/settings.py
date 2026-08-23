@@ -36,6 +36,7 @@ async def get_settings():
             tavily_api_key=_mask_secret(settings.tavily_api_key),
             tavily_include_domains=settings.tavily_include_domains,
             firecrawl_api_key=_mask_secret(settings.firecrawl_api_key),
+            redaction_enabled=bool(settings.redaction_enabled),
         )
     except Exception as e:
         logger.error(f"Error fetching settings: {str(e)}")
@@ -91,6 +92,11 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.tavily_include_domains = settings_update.tavily_include_domains
         if settings_update.firecrawl_api_key is not None and settings_update.firecrawl_api_key != MASKED_SECRET:
             settings.firecrawl_api_key = settings_update.firecrawl_api_key
+        if settings_update.redaction_enabled is not None:
+            settings.redaction_enabled = settings_update.redaction_enabled
+            from open_notebook.ai.redaction_gateway import invalidate_redaction_cache
+
+            invalidate_redaction_cache()
 
         await settings.update()
 
@@ -104,6 +110,7 @@ async def update_settings(settings_update: SettingsUpdate):
             tavily_api_key=_mask_secret(settings.tavily_api_key),
             tavily_include_domains=settings.tavily_include_domains,
             firecrawl_api_key=_mask_secret(settings.firecrawl_api_key),
+            redaction_enabled=bool(settings.redaction_enabled),
         )
     except HTTPException:
         raise
