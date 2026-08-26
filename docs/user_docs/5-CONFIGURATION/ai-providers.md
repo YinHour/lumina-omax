@@ -62,3 +62,23 @@
 | 省钱 | Groq 或 Ollama |
 | 隐私优先 | Ollama 本地运行 |
 | 企业 | Azure OpenAI |
+
+---
+
+## Vision 模型（图片描述）
+
+Vision 模型用于自动描述文档中的图片内容（PDF/PPT/Excel 图表、独立图片源）。配置入口：**Settings → API Keys → 高级 → Vision Model**。
+
+经对比评测，当前推荐 **MiniMax-M3**：
+
+| 模型 | 主要表现 | 主要问题 |
+|------|----------|----------|
+| **MiniMax-M3**（推荐） | 综合描述、表格截图、领域提取最好 | 高峰期动态限流/500/520 |
+| Gemma 4 31B（本地 Ollama） | 可本地运行，隐私好 | 单图约 90 秒，吞吐低 |
+| Qwen 3.7 Plus | 部分图较丰富 | 推理泄漏、断裂 JSON |
+| Step 3.7 Flash | 速度最快 | 类型误判、定量臆测 |
+| Doubao Seed 2.0 Pro | 输出整洁 | 表格数据提取弱 |
+
+Vision 参数详见 [高级配置 — Vision 图片描述](advanced.md#vision-图片描述)。代码保留 OpenAI-compatible 多供应商能力，便于后续切换和回归评测。
+
+> **注意**：`num_ctx`/`num_predict` 是 Ollama 参数，云模型用 `max_tokens`，不能无差别传给所有供应商。

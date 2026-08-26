@@ -36,6 +36,9 @@
 ### 7. [API 配置](api-configuration.md)
 在设置界面配置 AI 提供商 API 密钥。
 
+### 8. [笔记本管理](../2-CORE-CONCEPTS/notebooks-sources-notes.md)
+聚合笔记本、密码保护、创建者权限与来源数量上限。
+
 ---
 
 ## 快速上手检查清单：15 分钟

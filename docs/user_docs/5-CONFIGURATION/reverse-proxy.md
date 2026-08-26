@@ -17,7 +17,7 @@ server {
     client_max_body_size 100M;
 
     location / {
-        proxy_pass http://lumina-omax:8502;
+        proxy_pass http://lumina-omax:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -32,8 +32,8 @@ server {
 
 ```caddy
 notebook.example.com {
-    reverse_proxy lumina-omax:8502
+    reverse_proxy lumina-omax:3000
 }
 ```
 
-Caddy 自动处理 HTTPS。只需代理一个端口（8502），Next.js 内部转发 API 请求。
+Caddy 自动处理 HTTPS。只需代理一个端口（3000），Next.js 内部转发 API 请求。

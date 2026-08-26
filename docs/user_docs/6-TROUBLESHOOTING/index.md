@@ -14,6 +14,8 @@
 | API 密钥无效 | [AI 与聊天问题](ai-chat-issues.md) |
 | 聊天不工作 | [AI 与聊天问题](ai-chat-issues.md) |
 | 聊天回复差 | [AI 与聊天问题](ai-chat-issues.md) |
+| 聊天超时/无响应 | [AI 与聊天问题](ai-chat-issues.md) |
+| 联网搜索卡死 | [AI 与聊天问题](ai-chat-issues.md) |
 | 无法上传文件 | [快速修复](quick-fixes.md) |
 | 搜索无结果 | [快速修复](quick-fixes.md) |
 | 播客生成失败 | [快速修复](quick-fixes.md) |

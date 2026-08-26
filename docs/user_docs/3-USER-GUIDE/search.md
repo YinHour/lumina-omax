@@ -1,496 +1,502 @@
-# Search Effectively - Finding What You Need
+# 搜索指南 — 找到你需要的内容
 
-Search is your gateway into your research. This guide covers two search modes and when to use each.
-
----
-
-## Quick-Start: Find Something
-
-### Simple Search
-
-```
-1. Go to your notebook
-2. Type in search box
-3. See results (both sources and notes)
-4. Click result to view source/note
-5. Done!
-
-That works for basic searches.
-But you can do much better...
-```
+搜索是你进入研究的入口。本指南涵盖两种搜索模式与何时使用每种。
 
 ---
 
-## Two Search Modes Explained
+## 快速开始：找点东西
 
-Lumiton·Omax has two fundamentally different search approaches.
-
-### Search Type 1: TEXT SEARCH (Keyword Matching)
-
-**How it works:**
-- You search for words: "transformer"
-- System finds chunks containing "transformer"
-- Ranked by relevance: frequency, position, context
-
-**Speed:** Very fast (instant)
-
-**When to use:**
-- You remember exact words or phrases
-- You're looking for specific terms
-- You want precise keyword matches
-- You need exact quotes
-
-**Example:**
-```
-Search: "attention mechanism"
-Results:
-  1. "The attention mechanism allows..." (perfect match)
-  2. "Attention and other mechanisms..." (partial match)
-  3. "How mechanisms work in attention..." (includes words separately)
-
-All contain "attention" AND "mechanism"
-Ranked by how close together they are
-```
-
-**What it finds:**
-- Exact phrases: "transformer model"
-- Individual words: transformer OR model (too broad)
-- Names: "Vaswani et al."
-- Numbers: "1994", "GPT-4"
-- Technical terms: "LSTM", "convolution"
-
-**What it doesn't find:**
-- Similar words: searching "attention" won't find "focus"
-- Synonyms: searching "large" won't find "big"
-- Concepts: searching "similarity" won't find "likeness"
-
----
-
-### Search Type 2: VECTOR SEARCH (Semantic/Concept Matching)
-
-**How it works:**
-- Your search converted to embedding (vector)
-- All chunks converted to embeddings
-- System finds most similar embeddings
-- Ranked by semantic similarity
-
-**Speed:** A bit slower (1-2 seconds)
-
-**When to use:**
-- You're exploring a concept
-- You don't know exact words
-- You want semantically similar content
-- You're discovering, not searching
-
-**Example:**
-```
-Search: "What's the mechanism for understanding in models?"
-(Notice: No chunk likely says exactly that)
-
-Results:
-  1. "Mechanistic interpretability allows understanding..." (semantic match)
-  2. "Feature attribution reveals how models work..." (conceptually similar)
-  3. "Attention visualization shows model decisions..." (same topic)
-
-None contain your exact words
-But all are semantically related
-```
-
-**What it finds:**
-- Similar concepts: "understanding" + "interpretation" + "explainability" (all related)
-- Paraphrases: "big" and "large" (same meaning)
-- Related ideas: "safety" relates to "alignment" (connected concepts)
-- Analogies: content about biological learning when searching "learning"
-
-**What it doesn't find:**
-- Exact keywords: if you search a rare word, vector search might miss it
-- Specific numbers: "1994" vs "1993" are semantically different
-- Technical jargon: "LSTM" and "RNN" are different even if related
-
----
-
-## Decision: Text Search vs. Vector Search?
+### 简单搜索
 
 ```
-Question: "Do I remember the exact words?"
+1. 进入笔记本
+2. 在搜索框输入
+3. 查看结果（来源和笔记都显示）
+4. 点击结果查看来源/笔记
+5. 完成！
 
-→ YES: Use TEXT SEARCH
-   Example: "I remember the paper said 'attention is all you need'"
-
-→ NO: Use VECTOR SEARCH
-   Example: "I'm looking for content about how models process information"
-
-→ UNSURE: Try TEXT SEARCH first (faster)
-         If no results, try VECTOR SEARCH
-
-Text search: "I know what I'm looking for"
-Vector search: "I'm exploring an idea"
+这对基本搜索有效。
+但你还可以做得更好...
 ```
 
 ---
 
-## Step-by-Step: Using Each Search
+## 两种搜索模式解释
 
-### Text Search
+Lumiton·Omax 有两种根本不同的搜索方式。
+
+### 搜索类型 1：文本搜索（关键词匹配）
+
+**工作原理：**
+- 你搜索词：「transformer」
+- 系统找包含「transformer」的片段
+- 按相关性排名：词频、位置、上下文
+
+**速度：**非常快（瞬时）
+
+**何时使用：**
+- 你记得确切的词或短语
+- 你在找特定术语
+- 你想要精确的关键词匹配
+- 你需要精确引用
+
+**示例：**
+```
+搜索：「attention mechanism」
+结果：
+  1. 「The attention mechanism allows...」（完美匹配）
+  2. 「Attention and other mechanisms...」（部分匹配）
+  3. 「How mechanisms work in attention...」（含分开的词）
+
+都包含「attention」和「mechanism」
+按它们距离多近排名
+```
+
+**能找到：**
+- 精确短语：「transformer model」
+- 单个词：transformer 或 model（太宽）
+- 名称：「Vaswani et al.」
+- 数字：「1994」「GPT-4」
+- 技术术语：「LSTM」「convolution」
+
+**找不到：**
+- 相似词：搜「attention」找不到「focus」
+- 同义词：搜「large」找不到「big」
+- 概念：搜「similarity」找不到「likeness」
+
+---
+
+### 搜索类型 2：向量搜索（语义/概念匹配）
+
+**工作原理：**
+- 你的搜索转为嵌入（向量）
+- 所有片段转为嵌入
+- 系统找最相似的嵌入
+- 按语义相似度排名
+
+**速度：**稍慢（1-2 秒）
+
+**何时使用：**
+- 你在探索一个概念
+- 你不知道确切词语
+- 你想要语义相似的内容
+- 你在发现，而非搜索
+
+**示例：**
+```
+搜索：「模型理解语言的机制是什么？」
+（注意：没有片段会说这一模一样的话）
+
+结果：
+  1. 「Mechanistic interpretability allows understanding...」（语义匹配）
+  2. 「Feature attribution reveals how models work...」（概念相似）
+  3. 「Attention visualization shows model decisions...」（同主题）
+
+都不含你的确切词语
+但都语义相关
+```
+
+**能找到：**
+- 相似概念：「understanding」+「interpretation」+「explainability」（都相关）
+- 释义：「big」和「large」（同义）
+- 相关想法：「safety」关联「alignment」（相连概念）
+- 类比：搜「learning」时找到生物学习内容
+
+**找不到：**
+- 精确关键词：搜罕见词，向量搜索可能漏掉
+- 特定数字：「1994」与「1993」语义不同
+- 技术行话：「LSTM」和「RNN」即使相关也是不同的
+
+---
+
+## 决策：文本搜索 vs 向量搜索？
 
 ```
-1. Go to search box
-2. Type your keywords: "transformer", "attention", "2017"
-3. Press Enter
-4. Results appear (usually instant)
-5. Click result to see context
+问题：「我记得确切词语吗？」
 
-Results show:
-  - Which source contains it
-  - How many times it appears
-  - Relevance score
-  - Preview of surrounding text
-```
+→ 是：用文本搜索
+   示例：「我记得论文说 'attention is all you need'」
 
-### Vector Search
+→ 否：用向量搜索
+   示例：「我在找关于模型如何处理信息的内容」
 
-```
-1. Go to search box
-2. Type your concept: "How do models understand language?"
-3. Choose "Vector Search" from dropdown
-4. Press Enter
-5. Results appear (1-2 seconds)
-6. Click result to see context
+→ 不确定：先试文本搜索（更快）
+          无结果再试向量搜索
 
-Results show:
-  - Semantically related chunks
-  - Similarity score (higher = more related)
-  - Preview of surrounding text
-  - Different sources mixed together
+文本搜索：「我知道我在找什么」
+向量搜索：「我在探索一个想法」
 ```
 
 ---
 
-## The Ask Feature (Automated Search)
+## 逐步：使用每种搜索
 
-Ask is different from simple search. It automatically searches, synthesizes, and answers.
-
-### How Ask Works
-
-Ask delivers answers in **real-time streaming**, showing each stage as it progresses:
+### 文本搜索
 
 ```
-Stage 1: QUESTION UNDERSTANDING
-  "Compare the approaches in my papers"
-  → System: "This asks for comparison"
+1. 进入搜索框
+2. 输入关键词：「transformer」「attention」「2017」
+3. 回车
+4. 结果出现（通常瞬时）
+5. 点击结果查看上下文
 
-Stage 2: SEARCH STRATEGY (streaming)
-  → AI thinks through the strategy in real-time
-  → You see its reasoning unfold
-
-Stage 3: PARALLEL SEARCHES
-  → Search 1: "Approach in paper A"
-  → Search 2: "Approach in paper B"
-  (Multiple searches happen at once, using both Vector Search + Knowledge Graph)
-
-Stage 4: ANALYSIS & SYNTHESIS (streaming)
-  → Per-result analysis: "Based on paper A, the approach is..."
-  → Per-result analysis: "Based on paper B, the approach is..."
-  → Final answer streams token-by-token (typewriter effect)
-
-Result: Comprehensive answer, with thinking process and final answer rendered separately
+结果显示：
+  - 哪个来源包含
+  - 出现多少次
+  - 相关性评分
+  - 周围文本预览
 ```
 
-The Ask workflow combines **Vector Search** (semantic similarity) with **Knowledge Graph** (graph-based entity relationships) in parallel — a **Hybrid RAG** architecture that finds both semantically similar content and structurally related concepts from your research corpus.
+### 向量搜索
 
-### Retrieval Coverage
+```
+1. 进入搜索框
+2. 输入概念：「模型如何理解语言？」
+3. 从下拉选择「向量搜索」
+4. 回车
+5. 结果出现（1-2 秒）
+6. 点击结果查看上下文
 
-Ask shows retrieval coverage metadata with every answer:
+结果显示：
+  - 语义相关片段
+  - 相似度评分（越高越相关）
+  - 周围文本预览
+  - 不同来源混合
+```
 
-- **Total sources** — all sources currently stored in the knowledge base
-- **Searchable sources** — sources that have embeddings and can participate in semantic retrieval
-- **Sources retrieved** — unique source records actually matched by this Ask run
+---
 
-Use these numbers to judge answer coverage. If "Sources retrieved" is lower than "Total sources" or "Searchable sources", the answer is based on a retrieved subset and should not be treated as proof that every file was examined.
+## Ask 功能（自动搜索）
 
-### Ask History
+Ask 与简单搜索不同。它自动搜索、综合并回答。
 
-Completed Ask answers are saved in the Ask History panel in the browser. Opening a history entry restores the question, final answer, and retrieval coverage so you can review prior global questions without rerunning the model.
+### Ask 如何工作
 
-You can **stop Ask mid-generation** by clicking the Stop button. Already-generated content is preserved.
+Ask 以**实时流式**交付答案，逐阶段展示进度：
 
-### When to Use Ask vs. Simple Search
+```
+阶段 1：问题理解
+  「比较我论文中的方法」
+  → 系统：「这要求比较」
 
-| Task | Use | Why |
+阶段 2：搜索策略（流式）
+  → AI 实时思考策略
+  → 你看到推理展开
+
+阶段 3：并行搜索
+  → 搜索 1：「论文 A 的方法」
+  → 搜索 2：「论文 B 的方法」
+  （多个搜索同时进行，同时用向量搜索 + 知识图谱）
+
+阶段 4：分析与综合（流式）
+  → 逐结果分析：「基于论文 A，方法是...」
+  → 逐结果分析：「基于论文 B，方法是...」
+  → 最终答案逐 token 流式（打字机效果）
+
+结果：综合答案，思考过程与最终答案分开渲染
+```
+
+Ask 工作流结合**向量搜索**（语义相似度）与**知识图谱**（基于图的实体关系）并行——一种 **Hybrid RAG** 架构，既找语义相似内容，也找结构相关的概念。
+
+### 检索覆盖统计
+
+每个 Ask 答案都附带检索覆盖元数据：
+
+- **来源总数** — 知识库中当前所有来源
+- **可检索来源** — 已生成嵌入、可参与语义检索的来源
+- **本次命中来源** — 本次 Ask 实际匹配的唯一来源记录
+
+用这些数字判断答案覆盖。若「本次命中来源」低于「来源总数」或「可检索来源」，答案基于检索子集，不应视为每个文件都被检查过。
+
+> 最终回答 prompt 明确使用覆盖统计，不会把「本次命中来源数」误说成「知识库总来源数」。
+
+### Ask 历史
+
+完成的 Ask 答案保存在浏览器的 **Ask 历史面板**。打开历史条目可恢复问题、最终答案和检索覆盖，无需重跑模型即可回顾之前的全局提问。
+
+你可以**中途停止 Ask**——点击 Stop 按钮。已生成内容保留。
+
+### 范围说明
+
+> **心跳与超时**：笔记本聊天（`/chat/execute`）已引入 SSE 心跳和超时保护。Ask（`/ask`）和源聊天（`/source/{id}/chat`）**暂未引入**心跳机制。Ask 长链路目前依赖前端等待状态文案和 SSE 事件，无首字节前的心跳。如 Ask 长时间无响应，可尝试停止后重新提问。
+
+### 何时用 Ask vs 简单搜索
+
+| 任务 | 用 | 原因 |
 |------|-----|-----|
-| "Find the quote about X" | **TEXT SEARCH** | Need exact words |
-| "What does source A say about X?" | **TEXT SEARCH** | Direct, fast answer |
-| "Find content about X" | **VECTOR SEARCH** | Semantic discovery |
-| "Compare A and B" | **ASK** | Comprehensive synthesis |
-| "What's the big picture?" | **ASK** | Full analysis needed |
-| "How do these sources relate?" | **ASK** | Cross-source synthesis |
-| "I remember something about X" | **TEXT SEARCH** | Recall memory |
-| "I'm exploring the topic of X" | **VECTOR SEARCH** | Discovery mode |
+| 「找关于 X 的引用」 | **文本搜索** | 需要精确词语 |
+| 「来源 A 对 X 怎么说？」 | **文本搜索** | 直接、快速 |
+| 「找关于 X 的内容」 | **向量搜索** | 语义发现 |
+| 「比较 A 和 B」 | **ASK** | 综合合成 |
+| 「全局图景？」 | **ASK** | 需要完整分析 |
+| 「这些来源如何关联？」 | **ASK** | 跨来源综合 |
+| 「我记得关于 X 的内容」 | **文本搜索** | 回忆记忆 |
+| 「我在探索 X 主题」 | **向量搜索** | 发现模式 |
 
 ---
 
-## Advanced Search Strategies
+## 高级搜索策略
 
-### Strategy 1: Simple Search with Follow-Up
-
-```
-1. Text search: "attention mechanism"
-   Results: 50 matches
-
-2. Too many. Follow up with vector search:
-   "Why is attention useful?" (concept search)
-   Results: Most relevant papers/notes
-
-3. Better results with less noise
-```
-
-### Strategy 2: Ask for Comprehensive, Then Search for Details
+### 策略 1：简单搜索 + 追问
 
 ```
-1. Ask: "What are the main approaches to X?"
-   Result: Comprehensive answer about A, B, C
+1. 文本搜索：「attention mechanism」
+   结果：50 条匹配
 
-2. Use that to identify specific sources
+2. 太多。用向量搜索追问：
+   「为什么 attention 有用？」（概念搜索）
+   结果：最相关的论文/笔记
 
-3. Text search in those specific sources:
-   "Why did they choose method X?"
-   Result: Detailed information
+3. 更少噪音、更好结果
 ```
 
-### Strategy 3: Vector Search for Discovery, Text for Verification
+### 策略 2：先 Ask 综合，再搜索细节
 
 ```
-1. Vector search: "How do transformers generalize?"
-   Results: Related conceptual papers
+1. Ask：「X 的主要方法有哪些？」
+   结果：关于 A、B、C 的综合答案
 
-2. Skim to understand landscape
+2. 用它识别具体来源
 
-3. Text search in promising sources:
-   "generalization", "extrapolation", "transfer"
-   Results: Specific passages to read carefully
+3. 在这些具体来源中文本搜索：
+   「为什么选方法 X？」
+   结果：详细信息
 ```
 
-### Strategy 4: Combine Search with Chat
+### 策略 3：向量搜索发现，文本搜索验证
 
 ```
-1. Vector search: "What's new in AI 2026?"
-   Results: Latest papers
+1. 向量搜索：「transformer 如何泛化？」
+   结果：相关概念论文
 
-2. Go to Chat
-3. Add those papers to context
-4. Ask detailed follow-up questions
-5. Get deep analysis of results
+2. 浏览了解全局
+
+3. 在有潜力的来源中文本搜索：
+   「generalization」「extrapolation」「transfer」
+   结果：仔细阅读的具体段落
+```
+
+### 策略 4：结合搜索与 Chat
+
+```
+1. 向量搜索：「2026 年 AI 有什么新？」
+   结果：最新论文
+
+2. 进入 Chat
+3. 把这些论文加入上下文
+4. 提详细追问
+5. 深度分析结果
 ```
 
 ---
 
-## Search Quality Issues & Fixes
+## 搜索质量问题与修复
 
-### Getting No Results
+### 无结果
 
-| Problem | Cause | Solution |
+| 问题 | 原因 | 解决 |
 |---------|-------|----------|
-| Text search: no results | Word doesn't appear | Try vector search instead |
-| Vector search: no results | Concept not in content | Try broader search term |
-| Both empty | Content not in notebook | Add sources to notebook |
-| | Sources not processed | Wait for processing to complete |
+| 文本搜索：无结果 | 词未出现 | 改用向量搜索 |
+| 向量搜索：无结果 | 概念不在内容中 | 试更宽的搜索词 |
+| 两者都空 | 内容不在笔记本 | 给笔记本加来源 |
+| | 来源未处理 | 等处理完成 |
 
-### Getting Too Many Results
+### 结果太多
 
-| Problem | Cause | Solution |
+| 问题 | 原因 | 解决 |
 |---------|-------|----------|
-| 1000+ results | Search too broad | Be more specific |
-| | All sources | Filter by source |
-| | Keyword matches rare words | Use vector search instead |
+| 1000+ 结果 | 搜索太宽 | 更具体 |
+| | 全部来源 | 按来源筛选 |
+| | 关键词匹配罕见词 | 改用向量搜索 |
 
-### Getting Wrong Results
+### 结果错误
 
-| Problem | Cause | Solution |
+| 问题 | 原因 | 解决 |
 |---------|-------|----------|
-| Results irrelevant | Search term has multiple meanings | Provide more context |
-| | Using text search for concepts | Try vector search |
-| Different meaning | Homonym (word means multiple things) | Add context (e.g., "attention mechanism") |
+| 结果不相关 | 搜索词多义 | 提供更多上下文 |
+| | 用文本搜索找概念 | 试向量搜索 |
+| | 不同含义 | 同形异义词 | 加上下文（如「attention mechanism」） |
 
-### Getting Low Quality Results
+### 结果质量低
 
-| Problem | Cause | Solution |
+| 问题 | 原因 | 解决 |
 |---------|-------|----------|
-| Results don't match intent | Vague search term | Be specific ("Who invented X?" vs "X") |
-| | Concept not well-represented | Add more sources on that topic |
-| | Vector embedding not trained on domain | Use text search as fallback |
+| 结果不符意图 | 搜索词模糊 | 更具体（「谁发明了 X？」vs「X」） |
+| | 概念代表不足 | 加更多该主题来源 |
+| | 向量嵌入未在领域训练 | 用文本搜索兜底 |
 
 ---
 
-## Tips for Better Searches
+## 更好搜索的技巧
 
-### For Text Search
-1. **Be specific** — "attention mechanism" not just "attention"
-2. **Use exact phrases** — Put quotes around: "attention is all you need"
-3. **Include context** — "LSTM vs attention" not just "attention"
-4. **Use technical terms** — These are usually more precise
-5. **Try synonyms** — If first search fails, try related terms
+### 文本搜索
+1. **要具体** — 「attention mechanism」不只是「attention」
+2. **用精确短语** — 加引号：「attention is all you need」
+3. **含上下文** — 「LSTM vs attention」不只是「attention」
+4. **用技术术语** — 通常更精确
+5. **试同义词** — 第一次失败试相关词
 
-### For Vector Search
-1. **Ask a question** — "What's the best way to X?" is better than "best way"
-2. **Use natural language** — Explain what you're looking for
-3. **Be specific about intent** — "Compare X and Y" not "X and Y"
-4. **Include context** — "In machine learning, how..." vs just "how..."
-5. **Think conceptually** — What idea are you exploring?
+### 向量搜索
+1. **提问** — 「做 X 的最好方法是什么？」比「最好方法」好
+2. **用自然语言** — 解释你在找什么
+3. **具体说意图** — 「比较 X 和 Y」不只是「X 和 Y」
+4. **含上下文** — 「在机器学习中，如何...」vs 只「如何...」
+5. **概念性思考** — 你在探索什么想法？
 
-### General Tips
-1. **Start broad, then narrow** — "AI papers" → "transformers" → "attention mechanism"
-2. **Try both search types** — Each finds different things
-3. **Use Ask for complex questions** — Don't just search
-4. **Save good results as notes** — Create knowledge base
-5. **Filter by source if needed** — "Search in Paper A only"
-
----
-
-## Search Examples
-
-### Example 1: Finding a Specific Fact
-
-**Goal:** "Find the date the transformer was introduced"
-
-```
-Step 1: Text search
-  "transformer 2017" (or year you remember)
-
-If that works: Done!
-
-If no results: Try
-  "attention is all you need" (famous paper title)
-
-Check result for exact date
-```
-
-### Example 2: Exploring a Concept
-
-**Goal:** "Find content about alignment interpretability"
-
-```
-Step 1: Vector search
-  "How do we make AI interpretable?"
-
-Results: Papers on interpretability, transparency, alignment
-
-Step 2: Review results
-  See which papers are most relevant
-
-Step 3: Deep dive
-  Go to Chat, add top 2-3 papers
-  Ask detailed questions about alignment
-```
-
-### Example 3: Comprehensive Answer
-
-**Goal:** "How do different approaches to AI safety compare?"
-
-```
-Step 1: Ask
-  "Compare the main approaches to AI safety in my sources"
-
-Result: Comprehensive analysis comparing approaches
-
-Step 2: Identify sources
-  From answer, see which papers were most relevant
-
-Step 3: Deep dive
-  Text search in those papers:
-  "limitations", "critiques", "open problems"
-
-Step 4: Save as notes
-  Create comparison note from Ask result
-```
-
-### Example 4: Finding Pattern
-
-**Goal:** "Find all papers mentioning transformers"
-
-```
-Step 1: Text search
-  "transformer"
-
-Results: All papers mentioning "transformer"
-
-Step 2: Vector search
-  "neural network architecture for sequence processing"
-
-Results: Papers that don't say "transformer" but discuss similar concept
-
-Step 3: Combine
-  Union of text + vector results shows full landscape
-
-Step 4: Analyze
-  Go to Chat with all results
-  Ask: "What's common across all these?"
-```
+### 通用
+1. **先宽后窄** — 「AI 论文」→「transformers」→「attention mechanism」
+2. **两种都试** — 各找不同的东西
+3. **复杂问题用 Ask** — 不要只搜索
+4. **好结果存为笔记** — 创建知识库
+5. **需要时按来源筛选** — 「只在论文 A 中搜索」
 
 ---
 
-## Search in the Workflow
+## 搜索示例
 
-How search fits with other features:
+### 示例 1：找具体事实
 
-```
-SOURCES
-  ↓
-SEARCH (find what matters)
-  ├─ Text search (precise)
-  ├─ Vector search (exploration)
-  └─ Ask (comprehensive)
-  ↓
-CHAT (explore with follow-ups)
-  ↓
-TRANSFORMATIONS (batch extract)
-  ↓
-NOTES (save insights)
-```
-
-### Workflow Example
+**目标：**「找 transformer 引入的日期」
 
 ```
-1. Add 10 papers to notebook
+步骤 1：文本搜索
+  「transformer 2017」（或你记得的年份）
 
-2. Search: "What's the state of the art?"
-   (Vector search explores landscape)
+如果有效：完成！
 
-3. Ask: "Compare these 3 approaches"
-   (Comprehensive synthesis)
+如果无结果：试
+  「attention is all you need」（著名论文标题）
 
-4. Chat: Deep questions about winner
-   (Follow-up exploration)
+检查结果中的确切日期
+```
 
-5. Save best insights as notes
-   (Knowledge capture)
+### 示例 2：探索概念
 
-6. Transform remaining papers
-   (Batch extraction for later)
+**目标：**「找关于对齐可解释性的内容」
 
-7. Create podcast from notes + sources
-   (Share findings)
+```
+步骤 1：向量搜索
+  「我们如何让 AI 可解释？」
+
+结果：可解释性、透明度、对齐的论文
+
+步骤 2：查看结果
+  看哪些论文最相关
+
+步骤 3：深挖
+  进入 Chat，加 2-3 篇论文
+  提关于对齐的详细问题
+```
+
+### 示例 3：综合答案
+
+**目标：**「不同 AI 安全方法如何比较？」
+
+```
+步骤 1：Ask
+  「比较我来源中 AI 安全的主要方法」
+
+结果：比较方法的综合分析
+
+步骤 2：识别来源
+  从答案看哪些论文最相关
+
+步骤 3：深挖
+  在这些论文中文本搜索：
+  「limitations」「critiques」「open problems」
+
+步骤 4：存为笔记
+  从 Ask 结果创建比较笔记
+```
+
+### 示例 4：找模式
+
+**目标：**「找所有提到 transformer 的论文」
+
+```
+步骤 1：文本搜索
+  「transformer」
+
+结果：所有提到「transformer」的论文
+
+步骤 2：向量搜索
+  「用于序列处理的神经网络架构」
+
+结果：不说「transformer」但讨论相似概念的论文
+
+步骤 3：组合
+  文本 + 向量结果的并集显示全局
+
+步骤 4：分析
+  进入 Chat 带所有结果
+  问：「这些有什么共同点？」
 ```
 
 ---
 
-## Summary: Know Your Search
+## 搜索在工作流中
 
-**TEXT SEARCH** — "I know what I'm looking for"
-- Fast, precise, keyword-based
-- Use when you remember exact words/phrases
-- Best for: Finding specific facts, quotes, technical terms
-- Speed: Instant
+搜索如何与其他功能配合：
 
-**VECTOR SEARCH** — "I'm exploring an idea"
-- Slow-ish, concept-based, semantic
-- Use when you're discovering connections
-- Best for: Concept exploration, related ideas, synonyms
-- Speed: 1-2 seconds
+```
+来源
+  ↓
+搜索（找重要的）
+  ├─ 文本搜索（精确）
+  ├─ 向量搜索（探索）
+  └─ Ask（综合）
+  ↓
+Chat（带追问探索）
+  ↓
+转换（批量提取）
+  ↓
+笔记（保存洞察）
+```
 
-**ASK** — "I want a comprehensive answer"
-- Auto-searches, auto-analyzes, synthesizes
-- Use for complex questions needing multiple sources
-- Best for: Comparisons, big-picture questions, synthesis
-- Speed: 10-30 seconds
+### 工作流示例
 
-Pick the right tool for your search goal, and you'll find what you need faster.
+```
+1. 给笔记本加 10 篇论文
+
+2. 搜索：「有什么最新进展？」
+   （向量搜索探索全局）
+
+3. Ask：「比较这 3 种方法」
+   （综合合成）
+
+4. Chat：对赢家提深问题
+   （追问探索）
+
+5. 把最佳洞察存为笔记
+   （知识捕获）
+
+6. 转换剩余论文
+   （批量提取供后续）
+
+7. 从笔记 + 来源创建播客
+   （分享发现）
+```
+
+---
+
+## 总结：了解你的搜索
+
+**文本搜索** — 「我知道我在找什么」
+- 快、精确、基于关键词
+- 记得确切词语/短语时用
+- 最适合：找具体事实、引用、技术术语
+- 速度：瞬时
+
+**向量搜索** — 「我在探索一个想法」
+- 稍慢、基于概念、语义化
+- 发现联系时用
+- 最适合：概念探索、相关想法、同义词
+- 速度：1-2 秒
+
+**ASK** — 「我想要一个综合答案」
+- 自动搜索、自动分析、综合
+- 复杂问题需多来源时用
+- 最适合：比较、全局问题、综合
+- 速度：10-30 秒
+
+为你的搜索目标选对工具，你会更快找到所需。

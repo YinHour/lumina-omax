@@ -110,6 +110,19 @@ curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:5055/api/notebooks
 ```
 
+### Admin Password for Destructive Source Operations
+
+Deleting a source that is referenced by multiple notebooks requires admin password verification. The check is enforced **server-side** via the `X-Admin-Password` header against `OPEN_NOTEBOOK_PASSWORD`:
+
+```bash
+curl -X DELETE "http://localhost:5055/api/sources/{id}" \
+  -H "X-Admin-Password: $OPEN_NOTEBOOK_PASSWORD"
+```
+
+- Frontend no longer holds `NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD`; deletion validation is unified to the backend `OPEN_NOTEBOOK_PASSWORD` to avoid mismatched values.
+- Sources you created and that are not referenced by other notebooks can be deleted without a password.
+- Sources created by others can only be "removed" (unlinked), not physically deleted.
+
 ### Unprotected Endpoints
 
 These endpoints bypass authentication:
@@ -279,7 +292,7 @@ services:
     image: lfnovo/open_notebook:v1-latest
     pull_policy: always
     ports:
-      - "127.0.0.1:8502:8502"  # Bind to localhost only
+      - "127.0.0.1:3000:3000"  # Bind to localhost only
     environment:
       - OPEN_NOTEBOOK_PASSWORD=your_secure_password
     security_opt:
@@ -299,7 +312,7 @@ services:
 sudo ufw allow ssh
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw deny 8502/tcp   # Block direct access
+sudo ufw deny 3000/tcp   # Block direct access
 sudo ufw deny 5055/tcp   # Block direct API access
 sudo ufw enable
 
@@ -307,7 +320,7 @@ sudo ufw enable
 iptables -A INPUT -p tcp --dport 22 -j ACCEPT
 iptables -A INPUT -p tcp --dport 80 -j ACCEPT
 iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-iptables -A INPUT -p tcp --dport 8502 -j DROP
+iptables -A INPUT -p tcp --dport 3000 -j DROP
 iptables -A INPUT -p tcp --dport 5055 -j DROP
 ```
 

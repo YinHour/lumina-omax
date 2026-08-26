@@ -1,482 +1,459 @@
-# Adding Sources - Getting Content Into Your Notebook
+# 添加来源 — 将内容导入笔记本
 
-Sources are the raw materials of your research. This guide covers how to add different types of content.
-
----
-
-## Quick-Start: Add Your First Source
-
-### Option 1: Upload a File (PDF, Word, etc.)
-
-```
-1. In your notebook, click "Add Source"
-2. Select "Upload File"
-3. Choose a file from your computer
-4. Click "Upload"
-5. Wait 30-60 seconds for processing
-6. Done! Source appears in your notebook
-```
-
-### Option 2: Add a Web Link
-
-```
-1. Click "Add Source"
-2. Select "Web Link"
-3. Paste URL: https://example.com/article
-4. Click "Add"
-5. Wait for processing (usually faster than files)
-6. Done!
-```
-
-### Option 3: Paste Text
-
-```
-1. Click "Add Source"
-2. Select "Text"
-3. Paste or type your content
-4. Click "Save"
-5. Done! Immediately available
-```
+来源（Sources）是你研究的原材料。本指南涵盖如何添加不同类型的内容，以及如何在笔记本中管理它们。
 
 ---
 
-## Supported File Types
+## 快速开始：添加你的第一个来源
 
-### Documents
-- **PDF** (.pdf) — Best support, including scanned PDFs with OCR
-- **Word** (.docx, .doc) — Full support; legacy `.doc` files are converted through LibreOffice before extraction
-- **PowerPoint** (.pptx, .ppt) — Slides are converted through LibreOffice before extraction
-- **Excel** (.xlsx, .xls, .xlsm) — Spreadsheet data; legacy `.xls` files are converted to `.xlsx` so rows and columns stay readable
-- **EPUB** (.epub) — eBook files
-- **Markdown** (.md, .txt) — Plain text formats
-- **HTML** (.html, .htm) — Web page files
+### 方式 1：上传文件（PDF、Word 等）
 
-**File size limits:** Up to ~100MB (varies by system)
+```
+1. 在笔记本内点击「添加来源」
+2. 选择「上传文件」
+3. 从电脑选择文件
+4. 点击「上传」
+5. 等待 30-60 秒处理
+6. 完成！来源出现在笔记本中
+```
 
-**Processing time:** 10 seconds - 2 minutes (depending on length and file type)
+### 方式 2：添加网页链接
 
-**Excel cleanup:** Spreadsheet extraction removes fully blank rows and fully blank columns from generated Markdown tables. Columns with any value in any row are preserved.
+```
+1. 点击「添加来源」
+2. 选择「网页链接」
+3. 粘贴 URL：https://example.com/article
+4. 点击「添加」
+5. 等待处理（通常比文件快）
+6. 完成！
+```
 
-### Audio & Video
-- **Audio**: MP3, WAV, M4A, OGG, FLAC (~30 seconds - 3 minutes per hour)
-- **Video**: MP4, AVI, MOV, MKV, WebM (~3-10 minutes per hour)
-- **YouTube**: Direct URL support
-- **Podcasts**: RSS feed URL
+### 方式 3：粘贴文本
 
-**Automatic transcription**: Audio/video is transcribed to text automatically. This requires enabling speech-to-text in settings.
-
-### Web Content
-- **Articles**: Blog posts, news articles, Medium
-- **YouTube**: Full videos or playlists
-- **PDFs online**: Direct PDF links
-- **News**: News site articles
-
-**Just paste the URL** in "Web Link" section.
-
-### What Doesn't Work
-- Paywalled content (WSJ, FT, etc.) — Can't extract
-- Password-protected PDFs — Can't open
-- Pure image files (.jpg, .png) — Except scanned PDFs which have OCR
-- Very large files (>100MB) — Timeout
-- Academic database pages that require human verification or anti-bot challenges, such as many ScienceDirect, OnePetro, and ACS article pages
+```
+1. 点击「添加来源」
+2. 选择「文本」
+3. 粘贴或输入内容
+4. 点击「保存」
+5. 完成！立即可用
+```
 
 ---
 
-## What Happens When You Add a Source
+## 支持的文件类型
 
-The system automatically does four things:
+### 文档
+- **PDF**（.pdf）— 最佳支持，含扫描版 PDF 的 OCR
+- **Word**（.docx、.doc）— 完整支持；旧版 `.doc` 通过 LibreOffice 转换后再提取
+- **PowerPoint**（.pptx、.ppt）— 幻灯片通过 LibreOffice 转换后再提取
+- **Excel**（.xlsx、.xls、.xlsm）— 表格数据；旧版 `.xls` 会先转换为 `.xlsx` 以保留行列结构；`.xlsm` 含宏的表格同样支持
+- **EPUB**（.epub）— 电子书
+- **Markdown / 纯文本**（.md、.txt）— 纯文本格式
+- **HTML**（.html、.htm）— 网页文件
 
-```
-1. EXTRACT TEXT
-   File/URL → Readable text
-   (PDFs get OCR if scanned)
-   (Videos get transcribed if enabled)
+**文件大小上限：**约 100MB（视系统配置而定）
 
-2. BREAK INTO CHUNKS
-   Long text → ~500-word pieces
-   (So search finds specific parts, not whole document)
+**处理时长：**10 秒 - 2 分钟（取决于长度与文件类型）
 
-3. CREATE EMBEDDINGS
-   Each chunk → Vector representation
-   (Enables semantic/concept search)
+**Excel 清理：**表格提取会自动删除全空行和全空列；任意行存在值的列都会保留。单元格内换行以 `<br>` 保留语义，避免破坏 Markdown 表格结构。
 
-4. INDEX & STORE
-   Everything → Database
-   (Ready to search and retrieve)
-```
+### 独立图片源
 
-**Time to use:** After the progress bar completes, the source is ready immediately. Embeddings are created in the background.
+如果你直接上传图片作为来源（`.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.bmp`、`.tif`、`.tiff`、`.img`），系统会：
+
+1. **跳过文本抽取** — 图片源不走 content-core 文本提取
+2. **原图置顶展示** — 来源详情页顶部先显示原图，下方再显示描述文本
+3. **Vision 描述注入** — 将图片复制到 `data/uploads/images/{source_id}/`，调用 Vision 模型生成描述，合并进 `Source.full_text`
+4. **TIFF 预览转换** — 浏览器无法直接渲染 TIFF，系统提供 `/sources/{id}/preview` 端点将 `.tif/.tiff` 转为 PNG 预览，原始下载仍保留 TIFF
+
+即使未配置 Vision 模型，图片源也不会因正文为空而失败，会写入「未配置 Vision 模型」的占位说明，后续嵌入与知识图谱抽取继续复用 `full_text` 流程。
+
+### 音视频
+- **音频**：MP3、WAV、M4A、OGG、FLAC（每小时约 30 秒 - 3 分钟）
+- **视频**：MP4、AVI、MOV、MKV、WebM（每小时约 3-10 分钟）
+- **YouTube**：直接 URL 支持
+- **播客**：RSS feed URL
+
+**自动转录**：音频/视频会自动转录为文本。需在设置中启用语音转文字（speech-to-text）。
+
+### 网页内容
+- **文章**：博客、新闻、Medium
+- **YouTube**：完整视频或播放列表
+- **在线 PDF**：直接 PDF 链接
+- **新闻**：新闻网站文章
+
+只需在「网页链接」中粘贴 URL 即可。
+
+### 不支持的内容
+- 付费墙内容（WSJ、FT 等）— 无法提取
+- 密码保护的 PDF — 无法打开
+- 需要人工验证或反爬挑战的学术数据库页面，如多数 ScienceDirect、OnePetro、ACS 文章页 — **推荐上传下载后的 PDF 或粘贴正文**，而不是直接导入 URL
+- 超大文件（>100MB）— 超时
 
 ---
 
-## Content Processing Engines
+## 添加来源后发生了什么
 
-Lumina·Omax supports multiple content extraction engines, optimized for different document types:
+系统自动完成四步：
 
-| Engine | Best For | Characteristics |
-|--------|----------|-----------------|
-| **MinerU** (default) | Chinese PDFs, complex layouts | Best for Chinese-language documents, strong table/formula recognition |
-| **Docling** | English PDFs, general documents | Strong OCR, hierarchical structure extraction |
-| **Simple** | Plain text, Markdown | Fastest, no heavy dependencies |
+```
+1. 提取文本
+   文件/URL → 可读文本
+   （扫描 PDF 走 OCR；视频走转录）
 
-### Engine Selection
+2. 分块
+   长文本 → 约 500 词的片段
+   （让搜索命中具体段落而非整篇）
 
-The content processing engine is configured via environment variable:
+3. 生成嵌入
+   每个片段 → 向量表示
+   （支持语义/概念检索）
+
+4. 索引并存储
+   全部 → 数据库
+   （可供搜索与检索）
+```
+
+**可用时机：**进度条完成后来源立即可用。嵌入在后台持续生成。
+
+---
+
+## 内容处理引擎
+
+Lumina·Omax 支持多种内容提取引擎，针对不同文档类型优化：
+
+| 引擎 | 最适合 | 特点 |
+|------|--------|------|
+| **MinerU**（默认） | 中文 PDF、复杂排版 | 中文场景最优，强表格/公式识别 |
+| **Docling** | 英文 PDF、通用文档 | 强 OCR、层级结构提取 |
+| **Simple** | 纯文本、Markdown | 最快，无重依赖 |
+
+### 引擎选择
+
+内容处理引擎通过环境变量配置：
 
 ```bash
-# .env or docker.env
-CCORE_DOCUMENT_ENGINE=mineru   # Default for Chinese documents
-# CCORE_DOCUMENT_ENGINE=docling  # For English-centric workloads
+# .env 或 docker.env
+CCORE_DOCUMENT_ENGINE=mineru   # 中文文档默认
+# CCORE_DOCUMENT_ENGINE=docling  # 英文为主的工作负载
+# CCORE_DOCUMENT_ENGINE=simple   # 纯文本
 ```
 
-Engines can also be changed per-notebook via **Settings → Processing**.
+MinerU 失败时会自动降级到 Simple 引擎。
 
-### Image Description (Vision LLM)
+### MinerU 专用设置
 
-For documents containing images (PDFs, PowerPoint, Excel), Lumina·Omax automatically:
-
-1. Extracts embedded images from the document
-2. Sends each image to the configured **Vision Model** for AI description
-3. Injects descriptions as `## Figure Descriptions` into the source text
-4. Descriptions are included in vector embeddings, making image content searchable
-
-To enable this feature, configure a Vision Model in **Settings → API Keys → Advanced**.
-
----
-
-## File Deduplication
-
-When uploading files, the system checks for duplicates based on **original filename**:
-
-- If a file with the same name already exists in the notebook, you'll be warned
-- Filename matching ignores case and leading/trailing spaces
-- Duplicate check runs before upload to save processing time
-- Files are stored with UUID names for internal consistency, but the original filename is preserved for display and deduplication
-- Downloaded files retain their original filenames
-- If you continue uploading a duplicate, the display title may include a timestamp so the two source records can be distinguished
-
----
-
-## Step-by-Step for Different Types
-
-### PDFs
-
-**Best practices:**
-```
-Clean PDFs:
-  1. Upload → Done
-  2. Processing time: ~30-60 seconds
-
-Scanned/Image PDFs:
-  1. Upload same way
-  2. System auto-detects and uses OCR
-  3. Processing time: ~2-3 minutes
-  4. (Higher, due to OCR overhead)
-
-Large PDFs (50+ pages):
-  1. Consider splitting into smaller files
-  2. Or upload as-is (system handles it)
-  3. Processing time scales with size
-```
-
-**Common issues:**
-- "Can't extract text" → PDF is corrupted or has copy protection
-- Solution: Try opening in Adobe. If it won't, the PDF is likely protected.
-
-### Web Links / Articles
-
-**Best practices:**
-```
-1. Copy full URL from browser: https://example.com/article-title
-2. Paste in "Web Link"
-3. Click Add
-4. Wait for extraction
-
-Processing time: Usually 5-15 seconds
-```
-
-**What works:**
-- Standard web articles
-- Blog posts
-- News articles
-- Wikipedia pages
-- Medium posts
-- Substack articles
-
-**What doesn't work:**
-- Twitter threads (unreliable)
-- Paywalled articles (can't access)
-- JavaScript-heavy sites (content not extracted)
-- Academic database pages that require human verification or anti-bot challenges, such as many ScienceDirect, OnePetro, and ACS article pages
-
-**Pro tip:** If it doesn't work, copy the article text and paste as "Text" instead.
-For anti-bot academic sites, upload the downloaded PDF or paste the article text instead of importing the URL directly.
-
-### Audio Files
-
-**Best practices:**
-```
-1. Ensure speech-to-text is enabled in Settings
-2. Upload MP3, WAV, or M4A file
-3. System automatically transcribes to text
-4. Processing time: ~1 minute per 5 minutes of audio
-
-Example:
-  - 1-hour podcast → 12 minutes processing
-  - 10-minute recording → 2 minutes processing
-```
-
-**Quality matters:**
-- Clear audio: Fast transcription
-- Muffled/noisy audio: Slower, less accurate transcription
-- Background noise: Try to minimize before uploading
-
-**Tip:** If audio quality is poor, the AI might misinterpret content. You can manually correct transcription if needed.
-
-### YouTube Videos
-
-**Best practices:**
-```
-Two ways to add:
-
-Method 1: Direct URL
-  1. Copy YouTube URL: https://www.youtube.com/watch?v=...
-  2. Paste in "Web Link"
-  3. Click Add
-  4. System extracts captions (if available) + transcript
-
-Method 2: Playlist
-  1. Paste playlist URL
-  2. System adds all videos as separate sources
-  3. Each video processed separately
-  4. Takes longer (multiple videos)
-```
-
-**What's extracted:**
-- Captions/subtitles (if available)
-- Transcription (if captions aren't available)
-- Basic metadata (title, channel, length)
-
-**Processing:**
-- 10-minute video: ~2-3 minutes
-- 1-hour video: ~10-15 minutes
-
-### Text / Paste Content
-
-**Best practices:**
-```
-1. Select "Text" when adding source
-2. Paste or type content
-3. System processes immediately
-4. No wait time needed
-
-Good for:
-  - Notes you want to reference
-  - Quotes from books
-  - Transcripts you have handy
-  - Quick research snippets
+```bash
+MINERU_TABLE_ENABLE=true                  # 增强表格识别
+HF_ENDPOINT=https://hf-mirror.com         # 国内镜像加速
+MINERU_MODEL_SOURCE=modelscope            # 模型源
 ```
 
 ---
 
-## Managing Your Sources
+## Vision 图片描述
 
-### Viewing Source Details
+对于含图的文档（PDF、PowerPoint、Excel）以及独立图片源，Lumina·Omax 会自动：
 
-```
-Click on source → See:
-  - Original file name/title
-  - When it was added
-  - Size and format
-  - Processing status
-  - Number of chunks
-```
+1. 抽取文档中的内嵌图片
+2. 为每张图片附带上下文（页码、sheet 名、单元格、附近正文、图片尺寸）
+3. 调用配置的 **Vision Model** 生成结构化描述
+4. 以 `## Figure Descriptions` 注入来源文本
+5. 描述纳入向量嵌入，使图片内容可被语义搜索
 
-### Organizing with Metadata
+需在 **设置 → API Keys → 高级** 配置 Vision Model。
 
-You can add to each source:
-- **Title**: Better name than original filename
-- **Tags**: Category labels ("primary research", "background", "competitor analysis")
-- **Description**: A few notes about what it contains
+### 图片类型识别
 
-**Why this matters:**
-- Makes sources easier to find
-- Helps when contextualizing for Chat
-- Useful for organizing large notebooks
+Vision 描述会区分图片类型并给出针对性分析：
 
-### Searching Within Sources
+| 图片类型 | 说明 |
+|----------|------|
+| `hpht_curve` | HPHT 曲线 |
+| `analytical_spectrum` | 分析光谱 |
+| `lab_photo` | 实验照片 |
+| `performance_comparison` | 性能对比 |
+| `mechanism_schematic` | 机理示意图 |
+| `embedded_table_or_screenshot` | 内嵌表格或截图 |
+| `unknown` | 未识别类型 |
 
-```
-After sources are added, you can:
+### 质量控制策略
 
-Text search: "Find exact phrase"
-Vector search: "Find conceptually similar"
+- **低清晰度图片**：仍尽量描述可辨识内容，不直接跳过
+- **低置信度**：保留实物状态、曲线趋势等定性事实，过滤不可靠的定量数值
+- **Vision 完全失败**：保留原图，使用面向用户的简短提示，不暴露 `invalid_json`、`reasoning_leakage` 等内部状态
+- **单图失败不阻塞**：单张图片失败只生成该图的降级描述，不阻断整份文档解析
 
-Both search across all sources in notebook.
-Results show:
-  - Which source
-  - Which section
-  - Relevance score
-```
+### 推荐模型
 
----
+经对比评测，当前 Vision LLM 推荐 **MiniMax-M3**（综合描述、复合表格截图和领域信息提取最佳）。代码保留 OpenAI-compatible 多供应商能力，便于切换。
 
-## Context Management: How Sources Get Used
+| 模型 | 主要表现 | 主要问题 |
+|------|----------|----------|
+| MiniMax-M3 | 综合描述、表格截图、领域提取最好 | 高峰期动态限流/500/520 |
+| Gemma 4 31B（本地 Ollama） | 可本地运行，隐私好 | 单图约 90 秒，吞吐低 |
+| Qwen 3.7 Plus | 部分图较丰富 | 推理泄漏、断裂 JSON |
+| Step 3.7 Flash | 速度最快 | 类型误判、定量臆测 |
+| Doubao Seed 2.0 Pro | 输出整洁 | 表格数据提取弱 |
 
-You control how AI accesses sources:
+### 并发、超时与重试
 
-### Three Levels (for Chat)
+外部 Vision API 的 5xx 视为可恢复故障，可通过环境变量调优（详见 [配置指南](../5-CONFIGURATION/environment-reference.md)）：
 
-**Full Content:**
-```
-AI sees: Complete source text
-Cost: 100% of tokens
-Use when: Analyzing in detail, need precise citations
-Example: "Analyze this methodology paper closely"
-```
-
-**Summary Only:**
-```
-AI sees: AI-generated summary (not full text)
-Cost: ~10-20% of tokens
-Use when: Background material, reference context
-Example: "Use this as context but focus on the main source"
-```
-
-**Not in Context:**
-```
-AI sees: Nothing (excluded)
-Cost: 0 tokens
-Use when: Confidential, not relevant, or archived
-Example: "Keep this in notebook but don't use in this conversation"
-```
-
-### How to Set Context (in Chat)
-
-```
-1. Go to Chat
-2. Click "Select Context Sources"
-3. For each source:
-   - Toggle ON/OFF (include/exclude)
-   - Choose level (Full/Summary/Excluded)
-4. Click "Save"
-5. Now chat uses these settings
-```
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `VISION_CONCURRENCY` | 2 | Vision 并发数（MiniMax 建议 2） |
+| `VISION_TIMEOUT_SECONDS` | 120 | 单图调用超时 |
+| `VISION_MAX_RETRIES` | 2 | 最大重试次数 |
+| `VISION_RETRY_BASE_DELAY_SECONDS` | 3 | 指数退避基数 |
 
 ---
 
-## Common Mistakes
+## 文件去重
 
-| Mistake | What Happens | How to Fix |
-|---------|--------------|-----------|
-| Upload 200 sources at once | System gets slow, processing stalls | Add 10-20 at a time, wait for processing |
-| Use full content for all sources | Token usage skyrockets, expensive | Use "Summary" or "Excluded" for background material |
-| Add huge PDFs without splitting | Processing is slow, search results less precise | Consider splitting large PDFs into chapters |
-| Forget source titles | Can't distinguish between similar sources | Rename sources with descriptive titles right after uploading |
-| Don't tag sources | Hard to find and organize later | Add tags immediately: "primary", "background", etc. |
-| Mix languages in one source | Transcription/embedding quality drops | Keep each language in separate sources |
-| Use same source multiple times | Takes up space, creates confusion | Add once; reuse in multiple chats/notebooks |
+上传文件时基于 **原始文件名（original_filename）** 检查重复：
+
+- 笔记本中已存在同名文件时会给出警告
+- 文件名匹配**大小写不敏感**并**忽略首尾空格**
+- 重复检查在上传前执行，节省处理时间
+- 文件以 UUID 命名存储，但原始文件名保留用于展示与查重
+- 下载文件时还原原始文件名
+- 若继续上传重复文件，展示标题可能含时间戳以区分两条来源记录
+- 后台处理完成重新保存 `Asset` 时会保留既有 `original_filename`，避免 `.xlsx/.docx` 等经处理后丢失原始名导致查重失效
 
 ---
 
-## Processing Status & Troubleshooting
+## 笔记本内来源筛选（本次聊天引用范围）
 
-### What the Status Indicators Mean
+打开笔记本后，来源栏支持**按本次聊天引用范围筛选**：
+
+- 筛选匹配标题、文件路径、URL、来源笔记本名、上传者
+- 筛选框下方提供「全选 / 取消全选」，**仅作用于当前筛选结果**
+- 来源栏右上角三点菜单仍保留对全部来源的批量上下文模式设置
+- 聊天请求通过 `context_config` 显式传递每个来源的上下文模式：选中=完整内容，未选=不参考
+
+> **边界**：这不是来源成员管理。取消选择后，来源仍留在笔记本中，只是不参与当前聊天上下文。
+
+---
+
+## 添加现有来源
+
+「添加现有来源」弹窗从全量来源加载候选，但：
+
+- **仅展示已嵌入（embedded）的来源** — 未完成嵌入的来源不在列表出现，也不显示禁选原因，避免看到不可操作项
+- 知识图谱（KG）状态不参与此规则；只要完成嵌入即可选
+- 全选、搜索、手动勾选都只作用于已嵌入且未在当前笔记本中的来源
+
+---
+
+## 来源数量上限
+
+单个笔记本允许的来源总数上限为设置项，**默认 50**，管理员可在 **设置 → 文件管理** 调整（范围 1-200）：
+
+- 添加新来源时按「当前笔记本已有数 + 本次新增数」判断是否超限
+- 添加新来源窗口在无剩余槽位时直接提示「此笔记本的来源数已达到上限」
+- 添加现有来源时按剩余槽位限制单选和全选
+- 非法或缺失的设置值在前端回退到 50，避免旧缓存导致无限制添加
+
+---
+
+## 删除来源三规则
+
+删除来源的行为按所有权与引用情况区分：
+
+| 场景 | 来源卡片 | 弹窗 | 后端 |
+|------|:---:|------|------|
+| 自己创建 + 未被其他笔记本引用 | 显示「删除」 | 简单确认，无密码 | `ref_count = 1`，放行 |
+| 别人的源 | 仅显示「移除」 | 不触发删除 | 前端不展示删除按钮 |
+| 自己创建 + 被多笔记本引用 | 显示「删除」 | 需管理员密码 | `ref_count > 1`，校验 `X-Admin-Password` |
+
+- **别人的源**：在笔记本内仅能「移除」（解除关联），不触发物理删除
+- **多笔记本引用**：删除时需输入管理员密码（`OPEN_NOTEBOOK_PASSWORD`），通过 `X-Admin-Password` header 发送到后端校验
+- 删除来源会同时清理悬空引用（`DELETE reference WHERE in = $source_id`），防止其他笔记本加载报错
+
+> **管理员密码统一**：前端不再持有 `NEXT_PUBLIC_MASTER_NOTEBOOK_PASSWORD`，删除校验统一走后端 `OPEN_NOTEBOOK_PASSWORD`，避免两个值不一致导致密码无效。
+
+---
+
+## 来源详情页与下载
+
+### Sticky 工具区
+
+来源详情页（`/sources/{id}`）的标题、关闭按钮、三点菜单、源对话按钮和「内容 / 见解 / 详情」Tabs 统一放入**同一个 sticky 工具区**，长内容滚动到底部时仍可操作。
+
+- 笔记本源列表点击来源 → 进入完整来源详情页（不再通过来源 modal 查看长内容）
+- 来源 modal 仍保留固定高度和内部滚动，避免其他 URL modal 入口裁切内容
+- 弹窗模式下，关闭按钮渲染在动作区，与三点菜单同一布局来源
+
+### 解析结果下载
+
+来源详情页提供两种下载入口：
+
+| 下载类型 | 内容 | 说明 |
+|----------|------|------|
+| **Markdown** | `Source.full_text` | UTF-8 Markdown，文件名用清理后的来源标题 |
+| **ZIP 包** | 来源标题.md + images/ | 含全部抽取图片；Markdown 中的 `/api/uploads/images/{source_id}/...` 重写为 `images/...`，解压后可直接用 Markdown Preview 查看带图文档 |
+
+---
+
+## 上下文管理：来源如何被使用
+
+你控制 AI 如何访问来源：
+
+### 三个级别（用于 Chat）
+
+**完整内容：**
+```
+AI 看到：完整来源文本
+成本：100% token
+适用：详细分析、精确引用
+示例：「仔细分析这篇方法学论文」
+```
+
+**仅摘要：**
+```
+AI 看到：AI 生成的摘要（非全文）
+成本：约 10-20% token
+适用：背景材料、参考上下文
+示例：「作为上下文但聚焦主来源」
+```
+
+**不参考：**
+```
+AI 看到：无（排除）
+成本：0 token
+适用：机密、不相关、已归档
+示例：「保留在笔记本但不参与本次对话」
+```
+
+### 如何设置上下文（在 Chat 中）
 
 ```
-🟡 Processing
-  → Source is being extracted and embedded
-  → Wait 30 seconds - 3 minutes depending on size
-  → Don't use in Chat yet
-
-🟢 Ready
-  → Source is processed and searchable
-  → Can use immediately in Chat
-  → Can apply transformations
-
-🔴 Error
-  → Something went wrong
-  → Common reasons:
-    - Unsupported file format
-    - File too large or corrupted
-    - Network timeout
-
-⚪ Not in Context
-  → Source added but excluded from Chat
-  → Still searchable, not sent to AI
+1. 进入 Chat
+2. 点击「选择上下文来源」
+3. 对每个来源：
+   - 切换 开/关（包含/排除）
+   - 选择级别（完整/摘要/不参考）
+4. 点击「保存」
+5. 此后聊天使用这些设置
 ```
 
-### Common Errors & Solutions
-
-**"Unsupported file type"**
-- You tried to upload a format not in the list (e.g., `.webp` image)
-- Solution: Convert to supported format (PDF for documents, MP3 for audio)
-
-**"Processing timeout"**
-- Very large file (>100MB) or very long audio
-- Solution: Split into smaller pieces or try uploading again
-
-**"Transcription failed"**
-- Audio quality too poor or language not detected
-- Solution: Re-record with better quality, or paste text transcript manually
-
-**"Web link won't extract"**
-- Website blocks automated access or uses JavaScript for content
-- Solution: Copy the article text and paste as "Text" instead
+> **新来源默认参考全文**：新增来源后默认加入「完整内容」上下文，而不是仅引用见解。
 
 ---
 
-## Tips for Best Results
+## 常见错误
 
-### For PDFs
-- Clean, digital PDFs work best
-- Remove copy protection if present (legally)
-- Scanned PDFs work but take longer
-
-### For Web Articles
-- Use full URL including domain
-- Avoid cookie/popup-laden sites
-- If extraction fails, copy-paste text instead
-
-### For Audio
-- Clear, well-recorded audio transcribes better
-- Remove background noise if possible
-- YouTube videos usually have good transcriptions built-in
-
-### For Large Documents
-- Consider splitting into smaller sources
-- Gives more precise search results
-- Processing is faster for smaller pieces
-
-### For Organization
-- Name sources clearly (not "document_2.pdf")
-- Add tags immediately after uploading
-- Use descriptions for complex documents
+| 错误 | 后果 | 修复 |
+|------|------|------|
+| 一次上传 200 条来源 | 系统变慢，处理停滞 | 每批 10-20 条，等待处理完成 |
+| 全部来源用完整内容 | token 飙升，成本高 | 背景材料用「摘要」或「不参考」 |
+| 不拆分大 PDF 上传 | 处理慢，搜索结果不精确 | 考虑按章节拆分大 PDF |
+| 不设来源标题 | 相似来源无法区分 | 上传后立即重命名为描述性标题 |
+| 不加标签 | 后续难查找整理 | 立即加标签：「首要」「背景」等 |
+| 一个来源混多语言 | 转录/嵌入质量下降 | 每种语言独立来源 |
+| 同一来源重复添加 | 占空间、造成混乱 | 添加一次；在多个 chat/笔记本复用 |
 
 ---
 
-## What Comes After: Using Your Sources
+## 处理状态与故障排查
 
-Once you've added sources, you can:
+### 状态指示含义
 
-- **Chat** → Ask questions (see [Chat Effectively](chat-effectively.md))
-- **Search** → Find specific content (see [Search Effectively](search.md))
-- **Transformations** → Extract structured insights (see [Working with Notes](working-with-notes.md))
-- **Ask** → Get comprehensive answers (see [Search Effectively](search.md))
-- **Podcasts** → Turn into audio (see [Creating Podcasts](creating-podcasts.md))
+```
+🟡 处理中
+   → 正在提取和嵌入
+   → 等待 30 秒 - 3 分钟（视大小）
+   → 暂不要在 Chat 中使用
+
+🟢 就绪
+   → 已处理，可搜索
+   → 可立即在 Chat 使用
+   → 可应用转换
+
+🔴 错误
+   → 出了问题
+   → 常见原因：
+     - 不支持的文件格式
+     - 文件过大或损坏
+     - 网络超时
+
+⚪ 不参考
+   → 已添加但排除出 Chat
+   → 仍可搜索，不发送给 AI
+```
+
+### 常见错误与解决方案
+
+**「不支持的文件类型」**
+- 尝试上传不在支持列表的格式（如 `.webp` 图片单独上传，需走图片源路径）
+- 解决：转换为支持格式（文档转 PDF，音频转 MP3）
+
+**「处理超时」**
+- 文件过大（>100MB）或音频过长
+- 解决：拆分为更小片段或重新上传
+
+**「转录失败」**
+- 音频质量差或语言未识别
+- 解决：重新录制更清晰的音频，或手动粘贴文本转录
+
+**「网页链接无法提取」**
+- 网站阻止自动访问或用 JavaScript 渲染内容
+- 解决：复制文章文本，改用「文本」粘贴
 
 ---
 
-## Summary Checklist
+## 最佳实践
 
-Before adding sources, confirm:
+### PDF
+- 干净的数字 PDF 效果最好
+- 如有复制保护请先移除（合法前提下）
+- 扫描 PDF 可用但更慢
 
-- [ ] File is in supported format
-- [ ] File is under 100MB (or splitting large ones)
-- [ ] Web links are full URLs (not shortened)
-- [ ] Audio files have clear speech (if transcription-dependent)
-- [ ] You've named source clearly
-- [ ] You've added tags for organization
-- [ ] You understand context levels (Full/Summary/Excluded)
+### 网页文章
+- 使用含域名的完整 URL
+- 避免充满 cookie/弹窗的站点
+- 提取失败时改用粘贴文本
 
-Done! Sources are now ready for Chat, Search, Transformations, and more.
+### 音频
+- 清晰、录制良好的音频转录更准
+- 尽量去除背景噪音
+- YouTube 视频通常自带优质转录
+
+### 大文档
+- 考虑拆分为更小来源
+- 搜索结果更精确
+- 小片段处理更快
+
+### 组织
+- 来源命名清晰（不要 `document_2.pdf`）
+- 上传后立即加标签
+- 复杂文档加描述
+
+---
+
+## 接下来：使用你的来源
+
+添加来源后，你可以：
+
+- **Chat** → 提问（见 [高效聊天](chat-effectively.md)）
+- **搜索** → 查找具体内容（见 [搜索指南](search.md)）
+- **转换** → 提取结构化洞察（见 [笔记管理](working-with-notes.md)）
+- **Ask** → 获取综合答案（见 [搜索指南](search.md)）
+- **播客** → 转为音频（见 [创建播客](creating-podcasts.md)）
+
+---
+
+## 总结清单
+
+添加来源前确认：
+
+- [ ] 文件为支持格式
+- [ ] 文件小于 100MB（或已拆分大文件）
+- [ ] 网页链接为完整 URL（非短链）
+- [ ] 音频文件语音清晰（依赖转录时）
+- [ ] 来源已清晰命名
+- [ ] 已加标签便于组织
+- [ ] 理解上下文级别（完整/摘要/不参考）
+
+完成！来源现已就绪，可供 Chat、搜索、转换等使用。
