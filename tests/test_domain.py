@@ -404,6 +404,19 @@ class TestContentSettings:
         with pytest.raises(ValidationError):
             ContentSettings(source_batch_limit=201)
 
+    def test_content_settings_tavily_max_calls_default(self):
+        """Tavily per-answer search limit defaults to 5."""
+        settings = ContentSettings()
+        assert settings.tavily_search_max_calls == 5
+
+    def test_content_settings_rejects_invalid_tavily_max_calls(self):
+        """Tavily per-answer search limit must stay within 1-20."""
+        with pytest.raises(ValidationError):
+            ContentSettings(tavily_search_max_calls=0)
+
+        with pytest.raises(ValidationError):
+            ContentSettings(tavily_search_max_calls=21)
+
 
 # ============================================================================
 # TEST SUITE 9: Episode Profile Validation

@@ -1016,6 +1016,8 @@ export const enUS = {
     tavilyIncludeDomains: "Whitelist Domains",
     tavilyIncludeDomainsPlaceholder: "e.g. nature.com, sciencedirect.com",
     tavilyHelp: "Tavily Search API allows the assistant to search the web for real-time information.",
+    tavilyMaxCalls: "Max web searches per answer",
+    tavilyMaxCallsHelp: "Maximum Tavily web searches allowed within a single answer (1-20, default 5). Higher values improve coverage but increase answer latency and API usage.",
     redaction: {
       title: "Content Redaction (Egress Protection)",
       description: "Sensitive terms are replaced before data leaves for external AI providers and restored on return; stored content stays untouched",

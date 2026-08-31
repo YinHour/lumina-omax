@@ -39,6 +39,12 @@ class ContentSettings(RecordModel):
     tavily_include_domains: Optional[str] = Field(
         None, description="Tavily Search Include Domains (comma separated)"
     )
+    tavily_search_max_calls: int = Field(
+        5,
+        ge=1,
+        le=20,
+        description="Maximum Tavily web search calls per chat answer",
+    )
     redaction_enabled: Optional[bool] = Field(
         False,
         description="Egress redaction gateway: mask sensitive terms before sending prompts to external LLM providers",

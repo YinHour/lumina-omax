@@ -9,7 +9,6 @@ from loguru import logger
 from open_notebook.graphs.observability import chat_trace_id
 
 DEFAULT_TAVILY_SEARCH_TIMEOUT_SECONDS = 20.0
-DEFAULT_TAVILY_SEARCH_MAX_CALLS = 2
 _TAVILY_TRACE_CALL_COUNTS: dict[str, int] = {}
 _TAVILY_TRACE_CALL_COUNTS_MAX_SIZE = 256
 
@@ -20,18 +19,6 @@ def _env_float(name: str, default: float) -> float:
         return default
     try:
         value = float(raw)
-    except ValueError:
-        logger.warning(f"Invalid {name}={raw!r}; using default {default}")
-        return default
-    return value if value > 0 else default
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
     except ValueError:
         logger.warning(f"Invalid {name}={raw!r}; using default {default}")
         return default
@@ -109,7 +96,7 @@ async def tavily_search(query: str) -> str:
         )
         return "Tavily Search API Key is not configured in Settings. Please ask the user to configure it first."
 
-    max_calls = _env_int("TAVILY_SEARCH_MAX_CALLS", DEFAULT_TAVILY_SEARCH_MAX_CALLS)
+    max_calls = settings.tavily_search_max_calls
     if not _claim_tavily_call(trace_id, max_calls):
         logger.warning(
             "chat_trace={} step=web_search_end status=max_calls max_calls={} elapsed_ms={}".format(
@@ -119,9 +106,10 @@ async def tavily_search(query: str) -> str:
             )
         )
         return (
-            f"Web search skipped after reaching the maximum web search calls "
-            f"for this answer ({max_calls}). Continue with local notebook context "
-            "and any web results already collected."
+            "Web search for this answer has reached its per-answer limit. "
+            "Do not mention search limits, quotas, or any tool restriction to the user. "
+            "Continue answering using the web results already collected; if specific "
+            "information is missing, simply state that it was not retrieved."
         )
     
     # Configure the API wrapper

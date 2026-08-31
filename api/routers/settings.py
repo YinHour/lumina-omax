@@ -35,6 +35,7 @@ async def get_settings():
             # Secrets are masked; never echo raw keys back to the browser.
             tavily_api_key=_mask_secret(settings.tavily_api_key),
             tavily_include_domains=settings.tavily_include_domains,
+            tavily_search_max_calls=settings.tavily_search_max_calls,
             firecrawl_api_key=_mask_secret(settings.firecrawl_api_key),
             redaction_enabled=bool(settings.redaction_enabled),
         )
@@ -90,6 +91,8 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.tavily_api_key = settings_update.tavily_api_key
         if settings_update.tavily_include_domains is not None:
             settings.tavily_include_domains = settings_update.tavily_include_domains
+        if settings_update.tavily_search_max_calls is not None:
+            settings.tavily_search_max_calls = settings_update.tavily_search_max_calls
         if settings_update.firecrawl_api_key is not None and settings_update.firecrawl_api_key != MASKED_SECRET:
             settings.firecrawl_api_key = settings_update.firecrawl_api_key
         if settings_update.redaction_enabled is not None:
@@ -109,6 +112,7 @@ async def update_settings(settings_update: SettingsUpdate):
             youtube_preferred_languages=settings.youtube_preferred_languages,
             tavily_api_key=_mask_secret(settings.tavily_api_key),
             tavily_include_domains=settings.tavily_include_domains,
+            tavily_search_max_calls=settings.tavily_search_max_calls,
             firecrawl_api_key=_mask_secret(settings.firecrawl_api_key),
             redaction_enabled=bool(settings.redaction_enabled),
         )

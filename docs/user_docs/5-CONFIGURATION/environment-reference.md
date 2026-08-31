@@ -75,7 +75,7 @@
 |------|--------|------|
 | `TAVILY_API_KEY` | 无 | Tavily API 密钥（也在 Settings → Web Search 配置） |
 | `TAVILY_INCLUDE_DOMAINS` | 无 | 白名单域名 |
-| `TAVILY_SEARCH_MAX_CALLS` | 2 | 每个 chat trace 最多 Tavily 调用次数 |
+| `tavily_search_max_calls`（设置项） | 5 | 单次回答最多 Tavily 调用次数（设置页「联网搜索」可调，1-20） |
 
 ---
 

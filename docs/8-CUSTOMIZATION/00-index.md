@@ -5278,3 +5278,52 @@ cd frontend && npm run build   # exit 0
 - **TTS**：播客音频会念出还原后的真名（信任边界决策；若换外部 TTS 供应商需单独加只脱敏不还原的包装）。
 - **嵌入还原的 DB 依赖**：`restore_text` 走 DB 加载词典路径，DB 抖动时降级为原文透传（搜索可能短暂退化，非泄露）；后续可加「DB 失败回退过期缓存」的弹性。
 - 测试进程 import `api.main` 会触发日志初始化写入共享 `logs/api.log`，注入的测试异常字符串会出现在该日志中（非生产故障）。
+
+---
+
+## 76. Tavily 单回答搜索上限改为可设置项 + 降级文案修正（新增 2026-08-28）
+
+### 76.1 背景
+
+用户报告快速提问对话中出现「由于本轮搜索配额已用尽」表述。日志还原（trace `4db2ae3b4efc`）：模型在一次回答中连续发起 4 次 Tavily 搜索，前 2 次成功（result_count=5），第 3、4 次被 `TAVILY_SEARCH_MAX_CALLS=2` 上限拦截（`status=max_calls`），模型把工具返回的英文降级文本自行转述为「配额已用尽」——系统无「配额」概念，实为单回答调用上限（§21.4 设计），且默认 2 明显偏小、不符合一般使用实际。
+
+### 76.2 行为决策
+
+- **上限改为设置项**：`ContentSettings.tavily_search_max_calls`，默认 **5**，范围 1-20；管理员在设置页「联网搜索」卡片调整；`TAVILY_SEARCH_MAX_CALLS` 环境变量废弃（`.env`/`.env.example` 均未设置过该变量，零迁移负担）。
+- **读取路径**：`tools.py::tavily_search` 复用既有 `ContentSettings.get_instance()` 实例读 `tavily_search_max_calls`（零额外查询）；`_env_int` 与 `DEFAULT_TAVILY_SEARCH_MAX_CALLS` 常量删除（仅此一处使用）。
+- **降级文案修正**：max_calls 拦截时返回文本改为指示模型「不要向用户提及任何搜索限制/配额，基于已获结果继续回答；信息缺失直接说明未获取到」，从源头消除「配额用尽」式误转述（LLM 服从非 100%，残余风险已知）。
+- **旧数据兼容**：`RecordModel._load_from_db` 逐字段 `object.__setattr__` 覆盖，DB 记录缺新字段时自动落 Pydantic 默认值 5，无需迁移。
+- **research 模式同享**：科研 Agent 复用同一工具，单 trace 联网搜索上限同样生效（外溢非回归）。
+
+### 76.3 已知副作用（已向用户说明）
+
+- Tavily 月度配额消耗加速（免费档 1000/月，默认 2→5 最坏 ×2.5）；回答延迟增加（单次 ~6.6s，5 次串行最坏 +33s，仍在 `CHAT_LLM_TIMEOUT_SECONDS=240` 内）；直改 DB 的越界值不受 `_load_from_db` 校验（正常路径全部经 API `SettingsUpdate(ge=1, le=20)` 拦截）。
+- 发现既有债务：`api/settings_service.py` 无任何引用方（死代码）且构造 `ContentSettings` 时已缺 `redaction_enabled`——本轮不动，留观察。
+
+### 76.4 文件索引
+
+| 文件 | 改动 |
+|------|------|
+| `open_notebook/domain/content_settings.py` | 新增 `tavily_search_max_calls`（默认 5，ge=1 le=20） |
+| `api/models.py` | `SettingsResponse` / `SettingsUpdate` 加 `tavily_search_max_calls` |
+| `api/routers/settings.py` | GET/PUT 三处透传新字段 |
+| `open_notebook/graphs/tools.py` | max_calls 读 settings 值；降级文案改为「不提限制」指示；删 `_env_int` 与常量 |
+| `frontend/src/lib/types/api.ts` | `SettingsResponse.tavily_search_max_calls?: number` |
+| `frontend/src/app/(dashboard)/settings/components/SettingsForm.tsx` | zod schema / 默认值 5 / 回填 `?? 5` / Web Search 卡片数字输入（min 1 max 20） |
+| `frontend/src/lib/locales/en-US/index.ts` / `zh-CN/index.ts` | 新增 `settings.tavilyMaxCalls` / `tavilyMaxCallsHelp`（其余 7 locale 走 en-US fallback，与既有约定一致） |
+| `tests/test_tavily_search_timeout.py` | FakeSettings 加字段；上限测试改从 settings 取值；断言更新为新文案（per-answer limit / do not mention） |
+| `tests/test_domain.py` | 新增默认值 5 与 1-20 范围校验测试 |
+| `docs/user_docs/*`（5 处） | environment-reference / advanced / ai-chat-issues / chat-effectively（2 处）/ faq 同步为设置项口径 |
+
+### 76.5 验证
+
+```text
+.venv/bin/python -m pytest tests/test_tavily_search_timeout.py tests/test_domain.py::TestContentSettings -q
+6 passed
+
+.venv/bin/python -m ruff check open_notebook/graphs/tools.py open_notebook/domain/content_settings.py api/models.py api/routers/settings.py tests/test_tavily_search_timeout.py tests/test_domain.py
+All checks passed
+
+cd frontend && npx eslint <改动 4 文件>   # exit 0
+cd frontend && npx tsc --noEmit          # 4 个既有错误（NotebookCard/SourcesColumn/RedactionCard/SourceDetailContent test），git stash 对照确认非本轮引入
+```

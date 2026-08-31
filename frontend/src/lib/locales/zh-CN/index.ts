@@ -1016,6 +1016,8 @@ export const zhCN = {
     tavilyIncludeDomains: "白名单域名",
     tavilyIncludeDomainsPlaceholder: "例如 nature.com, sciencedirect.com",
     tavilyHelp: "Tavily Search API 允许助手搜索互联网上的实时信息。",
+    tavilyMaxCalls: "单次回答联网搜索次数上限",
+    tavilyMaxCallsHelp: "单个回答内允许的 Tavily 联网搜索次数（1-20，默认 5）。值越大覆盖越广，但回答更慢、API 用量更高。",
     redaction: {
       title: "内容脱敏（出网防护）",
       description: "数据发往外部 AI 模型前自动替换敏感词，返回结果自动还原；库内原文与搜索不受影响",

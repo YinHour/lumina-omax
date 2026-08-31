@@ -9,6 +9,7 @@ import pytest
 class FakeSettings:
     tavily_api_key = "test-key"
     tavily_include_domains = "example.com"
+    tavily_search_max_calls = 2
 
 
 class SlowTavilySearchResults:
@@ -69,10 +70,12 @@ async def test_tavily_search_limits_calls_per_chat_trace(monkeypatch):
     from open_notebook.graphs.observability import chat_trace_id
 
     async def get_settings():
-        return FakeSettings()
+        # FakeSettings.tavily_search_max_calls = 2 (class default); override to 1
+        fs = FakeSettings()
+        fs.tavily_search_max_calls = 1
+        return fs
 
     CountingTavilySearchResults.call_count = 0
-    monkeypatch.setenv("TAVILY_SEARCH_MAX_CALLS", "1")
     monkeypatch.setattr(content_settings.ContentSettings, "get_instance", get_settings)
 
     tavily_module = __import__(
@@ -99,5 +102,6 @@ async def test_tavily_search_limits_calls_per_chat_trace(monkeypatch):
         tools.reset_tavily_trace_state("trace-limit-test")
 
     assert "first query" in first_result
-    assert "maximum web search calls" in second_result.lower()
+    assert "per-answer limit" in second_result.lower()
+    assert "do not mention" in second_result.lower()
     assert CountingTavilySearchResults.call_count == 1

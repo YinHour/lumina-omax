@@ -315,6 +315,7 @@ class SettingsResponse(BaseModel):
     youtube_preferred_languages: Optional[List[str]] = None
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
+    tavily_search_max_calls: int = Field(5, ge=1, le=20)
     firecrawl_api_key: Optional[str] = None
     redaction_enabled: bool = False
 
@@ -328,6 +329,7 @@ class SettingsUpdate(BaseModel):
     youtube_preferred_languages: Optional[List[str]] = None
     tavily_api_key: Optional[str] = None
     tavily_include_domains: Optional[str] = None
+    tavily_search_max_calls: Optional[int] = Field(None, ge=1, le=20)
     firecrawl_api_key: Optional[str] = None
     redaction_enabled: Optional[bool] = None
 

@@ -24,6 +24,7 @@ const settingsSchema = z.object({
   source_batch_limit: z.number().int().min(1).max(200).optional(),
   tavily_api_key: z.string().optional().nullable(),
   tavily_include_domains: z.string().optional().nullable(),
+  tavily_search_max_calls: z.number().int().min(1).max(20).optional(),
   firecrawl_api_key: z.string().optional().nullable(),
 })
 
@@ -58,6 +59,7 @@ export function SettingsForm() {
       source_batch_limit: 50,
       tavily_api_key: '',
       tavily_include_domains: '',
+      tavily_search_max_calls: 5,
       firecrawl_api_key: '',
     }
   })
@@ -82,6 +84,7 @@ export function SettingsForm() {
         source_batch_limit: settings.source_batch_limit ?? 50,
         tavily_api_key: settings.tavily_api_key || '',
         tavily_include_domains: settings.tavily_include_domains || '',
+        tavily_search_max_calls: settings.tavily_search_max_calls ?? 5,
         firecrawl_api_key: settings.firecrawl_api_key || '',
       }
       reset(formData)
@@ -381,15 +384,37 @@ export function SettingsForm() {
               )}
             />
             
-             <Collapsible open={expandedSections.webSearch} onOpenChange={() => toggleSection('webSearch')}>
-              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.webSearch ? 'rotate-180' : ''}`} />
-                {t.settings.helpMeChoose}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
-                <p>{t.settings.tavilyHelp}</p>
-              </CollapsibleContent>
-            </Collapsible>
+              <Collapsible open={expandedSections.webSearch} onOpenChange={() => toggleSection('webSearch')}>
+               <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                 <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.webSearch ? 'rotate-180' : ''}`} />
+                 {t.settings.helpMeChoose}
+               </CollapsibleTrigger>
+               <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                 <p>{t.settings.tavilyHelp}</p>
+               </CollapsibleContent>
+             </Collapsible>
+           </div>
+
+           <div className="space-y-3">
+            <Label htmlFor="tavily_search_max_calls">{t.settings.tavilyMaxCalls}</Label>
+            <Controller
+              name="tavily_search_max_calls"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  id="tavily_search_max_calls"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={field.value ?? 5}
+                  onChange={(event) => field.onChange(event.target.value === '' ? undefined : Number(event.target.value))}
+                  disabled={field.disabled || isLoading}
+                />
+              )}
+            />
+            <p className="text-sm text-muted-foreground">
+              {t.settings.tavilyMaxCallsHelp}
+            </p>
           </div>
         </CardContent>
       </Card>

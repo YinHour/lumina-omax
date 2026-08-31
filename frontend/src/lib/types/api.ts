@@ -100,6 +100,7 @@ export interface SettingsResponse {
   youtube_preferred_languages?: string[]
   tavily_api_key?: string | null
   tavily_include_domains?: string | null
+  tavily_search_max_calls?: number
   firecrawl_api_key?: string | null
   redaction_enabled?: boolean
 }

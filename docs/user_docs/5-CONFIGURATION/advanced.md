@@ -72,7 +72,7 @@ VISION_NUM_PREDICT=384
 ## 联网搜索（Tavily）
 
 ```env
-TAVILY_SEARCH_MAX_CALLS=2   # 每个 chat trace 最多 Tavily 调用次数
+TAVILY_SEARCH_MAX_CALLS=5   # 已由设置项「单次回答联网搜索次数上限」管理（设置页可调，1-20，默认 5）
 ```
 
 超过上限后直接返回降级说明，不再触发真实网络请求。Tavily 免费档月度配额 1000/月，耗尽时返回失败。
